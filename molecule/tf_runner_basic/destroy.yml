@@ -1,0 +1,13 @@
+---
+- name: Destroy
+  hosts: localhost
+  gather_facts: false
+
+  vars:
+    tf_runner_workdir: "/tmp/molecule-tf-runner-basic"
+
+  tasks:
+    - name: "Remove Terraform workdir used by tf_runner_basic scenario"
+      ansible.builtin.file:
+        path: "{{ tf_runner_workdir }}"
+        state: absent

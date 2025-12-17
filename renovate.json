@@ -1,0 +1,57 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended"
+  ],
+  "dependencyDashboard": true,
+  "timezone": "UTC",
+  "schedule": [
+    "before 6am on monday"
+  ],
+  "labels": [
+    "dependencies",
+    "renovate"
+  ],
+  "packageRules": [
+    {
+      "matchManagers": [
+        "npm"
+      ],
+      "groupName": "npm dependencies"
+    },
+    {
+      "groupName": "Ansible Python packages",
+      "matchManagers": [
+        "regex"
+      ],
+      "matchPackageNames": [
+        "ansible-core",
+        "ansible-lint"
+      ]
+    }
+  ],
+  "regexManagers": [
+    {
+      "description": "ANSIBLE_CORE_VERSION env pins in workflows",
+      "fileMatch": [
+        ".github/workflows/.*\\.ya?ml"
+      ],
+      "matchStrings": [
+        "ANSIBLE_CORE_VERSION:\\s*\"(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)\""
+      ],
+      "datasourceTemplate": "pypi",
+      "packageNameTemplate": "ansible-core"
+    },
+    {
+      "description": "ANSIBLE_LINT_VERSION env pins in workflows",
+      "fileMatch": [
+        ".github/workflows/.*\\.ya?ml"
+      ],
+      "matchStrings": [
+        "ANSIBLE_LINT_VERSION:\\s*\"(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)\""
+      ],
+      "datasourceTemplate": "pypi",
+      "packageNameTemplate": "ansible-lint"
+    }
+  ]
+}

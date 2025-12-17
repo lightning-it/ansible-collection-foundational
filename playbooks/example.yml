@@ -1,0 +1,5 @@
+---
+# This is the curated, collection-level example.
+# It can import one or multiple per-role example playbooks.
+
+- import_playbook: tf_runner.yml

@@ -1,0 +1,53 @@
+---
+- name: "Ensure Terraform working directory exists"
+  ansible.builtin.file:
+    path: "{{ tf_runner_workdir }}"
+    state: directory
+    mode: "0750"
+
+- name: "Optionally clean previous Terraform state"
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "{{ tf_runner_workdir }}/.terraform"
+    - "{{ tf_runner_workdir }}/terraform.tfstate"
+    - "{{ tf_runner_workdir }}/terraform.tfstate.backup"
+  when: tf_runner_clean_state
+
+- name: "Render main.tf from module source (if tf_runner_module_source is set)"
+  ansible.builtin.template:
+    src: "main.tf.j2"
+    dest: "{{ tf_runner_workdir }}/main.tf"
+    mode: "0640"
+  when: tf_runner_module_source | length > 0
+
+- name: "Write Terraform variables as terraform.tfvars.json"
+  ansible.builtin.copy:
+    dest: "{{ tf_runner_workdir }}/terraform.tfvars.json"
+    mode: "0640"
+    content: "{{ tf_runner_vars | to_nice_json }}"
+  when: tf_runner_vars | length > 0
+
+- name: "Run 'terraform init'"
+  ansible.builtin.command:
+    cmd: >
+      terraform init
+      {% if tf_runner_init_args | length > 0 %}
+      {{ tf_runner_init_args | join(' ') }}
+      {% endif %}
+    chdir: "{{ tf_runner_workdir }}"
+  register: tf_runner_init_result
+  changed_when: "'Terraform has been successfully initialized!' in tf_runner_init_result.stdout"
+
+- name: "Run 'terraform apply' (unless tf_runner_skip_apply is true)"
+  ansible.builtin.command:
+    cmd: >
+      terraform apply
+      {% if tf_runner_apply_args | length > 0 %}
+      {{ tf_runner_apply_args | join(' ') }}
+      {% endif %}
+    chdir: "{{ tf_runner_workdir }}"
+  when: not tf_runner_skip_apply
+  register: tf_runner_apply_result
+  changed_when: true

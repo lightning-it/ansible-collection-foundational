@@ -1,0 +1,24 @@
+{
+  "name": "ansible-collection-foundational",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Foundational Ansible collection for ModuLix / Lightning IT. Provides generic building blocks and orchestration helpers for consistent, repeatable automation.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lightning-it/ansible-collection-foundational.git"
+  },
+  "bugs": {
+    "url": "https://github.com/lightning-it/ansible-collection-foundational/issues"
+  },
+  "homepage": "https://github.com/lightning-it/ansible-collection-foundational#readme",
+  "license": "GPL-2.0-only",
+  "devDependencies": {
+    "semantic-release": "^25.0.2",
+    "@semantic-release/changelog": "^6.0.0",
+    "@semantic-release/commit-analyzer": "^13.0.0",
+    "@semantic-release/git": "^10.0.1",
+    "@semantic-release/github": "^9.0.0",
+    "@semantic-release/release-notes-generator": "^14.0.0",
+    "conventional-changelog-conventionalcommits": "^7.0.0"
+  }
+}
