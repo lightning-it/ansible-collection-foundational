@@ -2,7 +2,7 @@
   "name": "ansible-collection-foundational",
   "version": "0.0.0",
   "private": true,
-  "description": "Foundational Ansible collection for ModuLix / Lightning IT. Provides generic building blocks and orchestration helpers for consistent, repeatable automation.",
+  "description": "Foundational Ansible collection for ModuLix. Provides generic building blocks and orchestration helpers for consistent, repeatable automation.",
   "repository": {
     "type": "git",
     "url": "https://github.com/lightning-it/ansible-collection-foundational.git"
