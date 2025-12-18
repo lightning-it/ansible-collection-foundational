@@ -33,7 +33,7 @@ repos:
         language: system
         entry: >-
           bash -lc 'docker run --rm -v "$PWD":/repo
-            -w /repo docker.io/rhysd/actionlint:latest'
+          -w /repo docker.io/rhysd/actionlint:latest'
         pass_filenames: false
         files: ^\.github/workflows/.*\.ya?ml$
 

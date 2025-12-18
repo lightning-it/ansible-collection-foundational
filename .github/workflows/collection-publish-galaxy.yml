@@ -1,3 +1,4 @@
+# yamllint disable rule:truthy
 ---
 name: Publish collection to Galaxy
 
@@ -16,11 +17,11 @@ jobs:
       contents: read
 
     steps:
-      # 1) Checkout the repository so we can build the collection from the current tag
+      # 1) Checkout the repository so we can build the collection from the tag
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          # We want the exact tag commit, history depth is not critical here
+          # We want the exact tag commit; depth is not critical here
           fetch-depth: 0
 
       # 2) Setup Python runtime for ansible-core / ansible-galaxy
@@ -40,14 +41,14 @@ jobs:
         run: ansible-galaxy collection build --force
 
       # 5) Publish the built tarball to Ansible Galaxy
-      #    Uses the ANSIBLE_GALAXY_API_KEY environment secret for authentication.
+      #    Uses ANSIBLE_GALAXY_API_KEY secret for authentication.
       - name: Publish collection to Ansible Galaxy
         env:
           ANSIBLE_GALAXY_API_KEY: ${{ secrets.ANSIBLE_GALAXY_API_KEY }}
         run: |
           # Find the collection tarball that was just built.
           # In a single-collection repo this should match exactly one file.
-          tarball=$(ls *.tar.gz)
+          tarball=$(ls ./*.tar.gz)
           echo "Publishing collection tarball: $tarball"
           ansible-galaxy collection publish "$tarball" \
             --api-key "$ANSIBLE_GALAXY_API_KEY"

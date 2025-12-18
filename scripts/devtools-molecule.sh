@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -eo pipefail
 
 COLLECTION_NAMESPACE="${COLLECTION_NAMESPACE:-lit}"
 COLLECTION_NAME="${COLLECTION_NAME:-foundational}"

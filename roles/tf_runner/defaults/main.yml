@@ -5,7 +5,7 @@ tf_runner_workdir: "/tmp/tf-runner"
 
 # Optional: module source address.
 # If set, the role will render a main.tf using templates/main.tf.j2.
-# If empty, the caller must provide Terraform config (e.g. main.tf) in tf_runner_workdir.
+# If empty, the caller must provide Terraform config in tf_runner_workdir.
 tf_runner_module_source: ""
 
 # Optional extra variables passed to Terraform via terraform.tfvars.json.

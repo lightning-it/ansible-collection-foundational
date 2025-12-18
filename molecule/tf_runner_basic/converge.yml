@@ -1,6 +1,7 @@
 ---
 - name: Converge
   hosts: localhost
+  connection: local
   gather_facts: false
 
   vars:
@@ -24,7 +25,6 @@
       ansible.builtin.include_role:
         name: "lit.foundational.tf_runner"
       vars:
-        tf_runner_workdir: "{{ tf_runner_workdir }}"
         tf_runner_clean_state: true
         tf_runner_skip_apply: false
         tf_runner_vars: {}

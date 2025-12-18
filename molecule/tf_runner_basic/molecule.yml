@@ -3,9 +3,7 @@ dependency:
   name: galaxy
 
 driver:
-  name: delegated
-  options:
-    managed: false
+  name: default
 
 platforms:
   - name: localhost

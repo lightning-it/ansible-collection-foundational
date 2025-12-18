@@ -1,6 +1,7 @@
 ---
 - name: Verify
   hosts: localhost
+  connection: local
   gather_facts: false
 
   vars:
@@ -16,5 +17,7 @@
       ansible.builtin.assert:
         that:
           - tfstate_stat.stat.exists
-        fail_msg: "terraform.tfstate was not created by lit.foundational.tf_runner"
-        success_msg: "terraform.tfstate exists, tf_runner appears to have applied successfully."
+        fail_msg: >
+          terraform.tfstate was not created by lit.foundational.tf_runner
+        success_msg: >
+          terraform.tfstate exists, tf_runner appears to have applied.

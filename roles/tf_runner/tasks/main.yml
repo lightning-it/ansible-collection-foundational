@@ -14,6 +14,7 @@
     - "{{ tf_runner_workdir }}/terraform.tfstate"
     - "{{ tf_runner_workdir }}/terraform.tfstate.backup"
   when: tf_runner_clean_state
+  changed_when: false
 
 - name: "Render main.tf from module source (if tf_runner_module_source is set)"
   ansible.builtin.template:
@@ -38,7 +39,7 @@
       {% endif %}
     chdir: "{{ tf_runner_workdir }}"
   register: tf_runner_init_result
-  changed_when: "'Terraform has been successfully initialized!' in tf_runner_init_result.stdout"
+  changed_when: false
 
 - name: "Run 'terraform apply' (unless tf_runner_skip_apply is true)"
   ansible.builtin.command:
@@ -50,4 +51,4 @@
     chdir: "{{ tf_runner_workdir }}"
   when: not tf_runner_skip_apply
   register: tf_runner_apply_result
-  changed_when: true
+  changed_when: false

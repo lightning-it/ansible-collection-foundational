@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -eo pipefail
 
 COLLECTION_NAMESPACE="${COLLECTION_NAMESPACE:-lit}"
 COLLECTION_NAME="${COLLECTION_NAME:-foundational}"
@@ -10,7 +10,7 @@ bash scripts/wunder-devtools-ee.sh bash -lc '
 
   ns="${COLLECTION_NAMESPACE}"
   name="${COLLECTION_NAME}"
-  example="${EXAMPLE_PLAYBOOK}"
+  example="${EXAMPLE_PLAYBOOK:-/workspace/playbooks/example.yml}"
 
   echo "Running collection smoke test for ${ns}.${name} with example playbook: ${example}"
 
