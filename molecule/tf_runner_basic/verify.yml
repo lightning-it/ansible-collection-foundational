@@ -1,0 +1,23 @@
+---
+- name: Verify
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    tf_runner_workdir: "/tmp/molecule-tf-runner-basic"
+
+  tasks:
+    - name: "Check that terraform.tfstate was created"
+      ansible.builtin.stat:
+        path: "{{ tf_runner_workdir }}/terraform.tfstate"
+      register: tfstate_stat
+
+    - name: "Assert that terraform.tfstate exists"
+      ansible.builtin.assert:
+        that:
+          - tfstate_stat.stat.exists
+        fail_msg: >
+          terraform.tfstate was not created by lit.foundational.tf_runner
+        success_msg: >
+          terraform.tfstate exists, tf_runner appears to have applied.

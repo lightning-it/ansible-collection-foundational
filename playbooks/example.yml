@@ -1,0 +1,4 @@
+---
+# Curated collection-level example that pulls in per-role examples.
+- name: Run tf_runner example
+  import_playbook: tf_runner.yml
