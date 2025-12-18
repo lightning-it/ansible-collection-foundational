@@ -13,22 +13,20 @@ ns="${COLLECTION_NAMESPACE:-lit}"
 
 # 2) Derive collection name if not provided
 if [ -z "${COLLECTION_NAME:-}" ]; then
-  # Prefer GITHUB_REPOSITORY if available (CI), else use /workspace basename
-  if [ -n "${GITHUB_REPOSITORY:-}" ]; then
-    repo_basename="${GITHUB_REPOSITORY##*/}"
-  else
-    repo_basename="$(basename /workspace)"
+  if [ -f /workspace/galaxy.yml ]; then
+    name="$(python3 - <<'PY'
+import yaml
+with open("/workspace/galaxy.yml", "r") as f:
+    data = yaml.safe_load(f)
+print(data.get("name", ""))
+PY
+)"
   fi
 
-  case "$repo_basename" in
-    ansible-collection-*)
-      name="${repo_basename#ansible-collection-}"
-      ;;
-    *)
-      echo "WARN: Could not infer COLLECTION_NAME from repo name '${repo_basename}', falling back to 'foundational'" >&2
-      name="foundational"
-      ;;
-  esac
+  if [ -z "${name:-}" ]; then
+    echo "ERROR: COLLECTION_NAME not set and galaxy.yml missing 'name'." >&2
+    exit 1
+  fi
 else
   name="${COLLECTION_NAME}"
 fi
