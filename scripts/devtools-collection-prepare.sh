@@ -6,10 +6,32 @@ set -euo pipefail
 #
 # Expected to run INSIDE the container with:
 #   - /workspace mounted as the collection repo
-#   - COLLECTION_NAMESPACE and COLLECTION_NAME set (defaults provided)
+#   - COLLECTION_NAMESPACE and COLLECTION_NAME optionally set
 
+# 1) Namespace with default
 ns="${COLLECTION_NAMESPACE:-lit}"
-name="${COLLECTION_NAME:-foundational}"
+
+# 2) Derive collection name if not provided
+if [ -z "${COLLECTION_NAME:-}" ]; then
+  # Prefer GITHUB_REPOSITORY if available (CI), else use /workspace basename
+  if [ -n "${GITHUB_REPOSITORY:-}" ]; then
+    repo_basename="${GITHUB_REPOSITORY##*/}"
+  else
+    repo_basename="$(basename /workspace)"
+  fi
+
+  case "$repo_basename" in
+    ansible-collection-*)
+      name="${repo_basename#ansible-collection-}"
+      ;;
+    *)
+      echo "WARN: Could not infer COLLECTION_NAME from repo name '${repo_basename}', falling back to 'foundational'" >&2
+      name="foundational"
+      ;;
+  esac
+else
+  name="${COLLECTION_NAME}"
+fi
 
 echo "Preparing collection ${ns}.${name} inside wunder-devtools-ee..."
 
@@ -19,7 +41,6 @@ rm -rf /tmp/wunder/.cache/ansible-compat \
        /tmp/wunder/${ns}-${name}-*.tar.gz
 
 # 2) Build collection from /workspace (mounted repo)
-# Make sure we are in the repo root
 cd /workspace
 
 ansible-galaxy collection build \

@@ -14,7 +14,10 @@ repos:
       - id: ansible-lint-ee
         name: ansible-lint (wunder-devtools-ee)
         language: system
-        entry: bash scripts/devtools-ansible-lint.sh
+        entry: >-
+          bash -lc "ANSIBLE_CORE_VERSION=2.15.13
+          ANSIBLE_LINT_VERSION=6.22.2
+          scripts/devtools-ansible-lint.sh"
         pass_filenames: false
         files: \.(yml|yaml)$
 
@@ -60,3 +63,13 @@ repos:
         entry: bash scripts/devtools-collection-smoke.sh
         pass_filenames: false
         files: ^(playbooks/|roles/|galaxy\.yml|runtime\.yml)
+
+      # -------------------------------------------------------------------
+      # Galaxy-style role metadata/readme verification (via devtools)
+      # -------------------------------------------------------------------
+      - id: galaxy-verify
+        name: galaxy verify (meta/readme checks via devtools)
+        language: system
+        entry: bash scripts/devtools-galaxy-verify.sh
+        pass_filenames: false
+        files: ^(roles/|galaxy\.yml)

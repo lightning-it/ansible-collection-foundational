@@ -1,9 +1,35 @@
 #!/usr/bin/env bash
 set -eo pipefail
 
+# 1) Namespace with default
 COLLECTION_NAMESPACE="${COLLECTION_NAMESPACE:-lit}"
-COLLECTION_NAME="${COLLECTION_NAME:-foundational}"
 
+# 2) Derive COLLECTION_NAME from repo name if not set
+if [ -z "${COLLECTION_NAME:-}" ]; then
+  # Prefer GITHUB_REPOSITORY in CI (org/repo)
+  if [ -n "${GITHUB_REPOSITORY:-}" ]; then
+    repo_basename="${GITHUB_REPOSITORY##*/}"
+  else
+    # Fallback: current directory name
+    repo_basename="$(basename "$PWD")"
+  fi
+
+  case "$repo_basename" in
+    ansible-collection-*)
+      COLLECTION_NAME="${repo_basename#ansible-collection-}"
+      ;;
+    *)
+      echo "WARN: Could not infer COLLECTION_NAME from repo name '${repo_basename}', falling back to 'foundational'" >&2
+      COLLECTION_NAME="foundational"
+      ;;
+  esac
+fi
+
+echo "Preparing Molecule tests for collection: ${COLLECTION_NAMESPACE}.${COLLECTION_NAME}"
+
+# 3) Run inside wunder-devtools-ee
+COLLECTION_NAMESPACE="$COLLECTION_NAMESPACE" \
+COLLECTION_NAME="$COLLECTION_NAME" \
 bash scripts/wunder-devtools-ee.sh bash -lc '
   set -e
 
