@@ -6,31 +6,25 @@ set -euo pipefail
 #
 # Expected to run INSIDE the container with:
 #   - /workspace mounted as the collection repo
-#   - COLLECTION_NAMESPACE and COLLECTION_NAME optionally set
+#   - COLLECTION_NAMESPACE optionally set
 
 # 1) Namespace with default
 ns="${COLLECTION_NAMESPACE:-lit}"
 
-# 2) Derive collection name if not provided
-if [ -z "${COLLECTION_NAME:-}" ]; then
-  # Prefer GITHUB_REPOSITORY if available (CI), else use /workspace basename
-  if [ -n "${GITHUB_REPOSITORY:-}" ]; then
-    repo_basename="${GITHUB_REPOSITORY##*/}"
-  else
-    repo_basename="$(basename /workspace)"
-  fi
+# 2) Derive collection name strictly from galaxy.yml
+if [ -f /workspace/galaxy.yml ]; then
+  name="$(python3 - <<'PY'
+import yaml
+with open("/workspace/galaxy.yml", "r") as f:
+    data = yaml.safe_load(f)
+print(data.get("name", ""))
+PY
+)"
+fi
 
-  case "$repo_basename" in
-    ansible-collection-*)
-      name="${repo_basename#ansible-collection-}"
-      ;;
-    *)
-      echo "WARN: Could not infer COLLECTION_NAME from repo name '${repo_basename}', falling back to 'foundational'" >&2
-      name="foundational"
-      ;;
-  esac
-else
-  name="${COLLECTION_NAME}"
+if [ -z "${name:-}" ]; then
+  echo "ERROR: Failed to derive collection name from /workspace/galaxy.yml." >&2
+  exit 1
 fi
 
 echo "Preparing collection ${ns}.${name} inside wunder-devtools-ee..."
