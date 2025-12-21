@@ -1,0 +1,49 @@
+---
+vvs_parent_resource_pool: ""
+vvs_folder_name: ""
+vvs_validate_certs: true
+vvs_folder_full_path: "/{{ vvs_datacenter }}/vm/{{ vvs_folder_name }}"
+vvs_folder_type: vm
+vvs_destroy: false
+vvs_guest_force: false
+vvs_hardware_version: 15
+vvs_guest_id: coreos64Guest
+vvs_delegate_to: localhost
+vvs_iso_path: "ISOs/agent-{{ cluster_id }}.x86_64.iso"
+vvs_username: ""
+vvs_password: ""
+vvs_vmware_guest_hardware:
+  num_cpus: 2
+  memory_mb: 16384
+vvs_vmware_guest_disk:
+  - size_gb: 120
+    type: thin
+vvs_vmware_guest_cdrom: []
+vvs_module_defaults_vmware_group:
+  hostname: "{{ vvs_hostname }}"
+  username: "{{ vvs_username }}"
+  password: "{{ vvs_password }}"
+  validate_certs: "{{ vvs_validate_certs }}"
+vvs_module_defaults_vmware_guest:
+  datacenter: "{{ vvs_datacenter }}"
+  resource_pool: "{{ vvs_resource_pool | default(omit) }}"
+  folder: "{{ vvs_folder_full_path }}"
+  force: "{{ vvs_guest_force }}"
+  guest_id: "{{ vvs_guest_id }}"
+  datastore: "{{ vvs_vmware_guest_datastore }}"
+  cdrom:
+    - controller_number: 0
+      unit_number: 0
+      state: present
+      type: iso
+      iso_path: "[{{ vvs_vmware_iso_datastore }}] {{ vvs_iso_path }}"
+  hardware:
+    version: "{{ vvs_hardware_version }}"
+  networks:
+    - name: "{{ vvs_network }}"
+      connected: true
+  advanced_settings:
+    - key: disk.EnableUUID
+      value: "TRUE"
+    - key: stealclock.enable
+      value: "TRUE"

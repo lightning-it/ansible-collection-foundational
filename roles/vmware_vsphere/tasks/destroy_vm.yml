@@ -1,0 +1,12 @@
+---
+- name: Remove nodes from vcenter
+  module_defaults:
+    group/vmware: "{{ vvs_module_defaults_vmware_group }}"
+    community.vmware.vmware_guest: "{{ vvs_module_defaults_vmware_guest }}"
+  delegate_to: "{{ vvs_delegate_to }}"
+  community.vmware.vmware_guest:
+    name: "{{ hostvars[item]['inventory_hostname'] }}"
+    state: absent
+    force: true
+  with_items:
+    - "{{ vmware_hosts | default([]) }}"

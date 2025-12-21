@@ -1,0 +1,15 @@
+---
+- name: Add nodes to vcenter
+  module_defaults:
+    group/vmware: "{{ vvs_module_defaults_vmware_group }}"
+    community.vmware.vmware_guest: "{{ vvs_module_defaults_vmware_guest }}"
+  delegate_to: "{{ vvs_delegate_to }}"
+  community.vmware.vmware_guest:
+    name: "{{ hostvars[item]['inventory_hostname'] }}"
+    state: present
+    esxi_hostname: "{{ vvs_vmware_guest_esxi_hostname | default(omit) }}"
+    cluster: "{{ vvs_vmware_guest_cluster | default(omit) }}"
+    disk: "{{ vvs_vmware_guest_disk }}"
+    hardware: "{{ vvs_vmware_guest_hardware }}"
+  with_items:
+    - "{{ vmware_hosts | default([]) }}"

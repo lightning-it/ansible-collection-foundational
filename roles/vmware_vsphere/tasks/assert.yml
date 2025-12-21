@@ -1,0 +1,21 @@
+---
+- name: Test required values for create
+  ansible.builtin.assert:
+    that:
+      - vvs_vmware_guest_esxi_hostname | default('') | length > 0 or vvs_vmware_guest_cluster | default('') | length > 0
+      - vvs_vmware_guest_datastore | length > 0
+      - vvs_vmware_iso_datastore | length > 0
+      - vvs_datacenter is defined
+      - vvs_network is defined
+      - vvs_folder_full_path | length > 0
+      - vvs_folder_name | length > 0
+  when: not vvs_destroy | bool
+
+- name: Test required values for destroy
+  ansible.builtin.assert:
+    that:
+      - vvs_datacenter is defined
+      - vvs_network is defined
+      - vvs_folder_full_path | length > 0
+      - vvs_folder_name | length > 0
+  when: vvs_destroy | bool

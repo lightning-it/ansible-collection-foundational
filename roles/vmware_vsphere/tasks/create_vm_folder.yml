@@ -1,0 +1,12 @@
+---
+- name: Create VM folder {{ vvs_folder_name }}
+  run_once: true
+  module_defaults:
+    group/vmware: "{{ vvs_module_defaults_vmware_group }}"
+    community.vmware.vmware_guest: "{{ vvs_module_defaults_vmware_guest }}"
+  delegate_to: "{{ vvs_delegate_to }}"
+  community.vmware.vcenter_folder:
+    datacenter: "{{ vvs_datacenter }}"
+    folder_name: "{{ vvs_folder_name }}"
+    folder_type: vm
+    state: present
