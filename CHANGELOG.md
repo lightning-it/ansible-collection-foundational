@@ -1,3 +1,7 @@
+## 1.2.0 (2025-12-22)
+
+* feat: add VMware vSphere role for managing VMs and folders (#7) ([13f2100](https://github.com/lightning-it/ansible-collection-foundational/commit/13f2100)), closes [#7](https://github.com/lightning-it/ansible-collection-foundational/issues/7)
+
 ## <small>1.1.2 (2025-12-19)</small>
 
 * fix: streamline release process by adding bump_galaxy_version script (#4) ([87f62b5](https://github.com/lightning-it/ansible-collection-foundational/commit/87f62b5)), closes [#4](https://github.com/lightning-it/ansible-collection-foundational/issues/4)
