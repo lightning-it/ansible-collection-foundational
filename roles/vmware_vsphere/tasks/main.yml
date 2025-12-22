@@ -1,0 +1,58 @@
+---
+- name: Ensure all needed vars are present
+  ansible.builtin.include_tasks: assert.yml
+  tags:
+    - always
+
+- name: Fetch vSphere username from Vault or fallback
+  ansible.builtin.set_fact:
+    vmware_vsphere_username: >-
+      {{
+        lookup(
+          'community.hashi_vault.hashi_vault',
+          vmware_vsphere_vmware_username_lookup,
+          default=vmware_vsphere_username,
+        )
+      }}
+  tags:
+    - always
+
+- name: Fetch vSphere password from Vault or fallback
+  ansible.builtin.set_fact:
+    vmware_vsphere_password: >-
+      {{
+        lookup(
+          'community.hashi_vault.hashi_vault',
+          vmware_vsphere_vmware_password_lookup,
+          default=vmware_vsphere_password,
+        )
+      }}
+  no_log: true
+  tags:
+    - always
+
+- name: Create VM folder
+  ansible.builtin.include_tasks: create_vm_folder.yml
+  when: not vmware_vsphere_destroy | bool
+  tags:
+    - create_vm_folder
+
+- name: Create VMs
+  ansible.builtin.include_tasks: create_vm.yml
+  when: not vmware_vsphere_destroy | bool
+  tags:
+    - create_vms
+
+- name: Destroy VMs
+  ansible.builtin.include_tasks: destroy_vm.yml
+  when: vmware_vsphere_destroy | bool
+  tags:
+    - destroy_vms
+    - destroy_all
+
+- name: Destroy VM folder
+  ansible.builtin.include_tasks: destroy_vm_folder.yml
+  when: vmware_vsphere_destroy | bool
+  tags:
+    - destroy_vm_folder
+    - destroy_all

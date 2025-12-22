@@ -1,31 +1,32 @@
+---
 namespace: lit
 name: foundational
 version: 1.1.2
 readme: README.md
-description: 'Foundational Ansible collection for ModuLix, providing generic building
-  blocks and orchestration helpers for consistent, repeatable platform automation.
-
-  '
+description: >
+  Foundational Ansible collection for ModuLix, providing generic building blocks
+  and orchestration helpers for consistent, repeatable platform automation.
 repository: https://github.com/lightning-it/ansible-collection-foundational
 authors:
-- Lightning IT
+  - Lightning IT
 license:
-- GPL-2.0-only
+  - GPL-2.0-only
 tags:
-- terraform
-- modulix
-- foundational
-- orchestration
-- automation
+  - infrastructure
+  - terraform
+  - modulix
+  - foundational
+  - orchestration
+  - automation
 dependencies: {}
 build_ignore:
-- node_modules
-- vagrant
-- .git
-- .github
-- .gitignore
-- .molecule
-- ansible_collections
-- infra
-- '*.terraform*'
-- '*.tar.gz'
+  - node_modules
+  - vagrant
+  - .git
+  - .github
+  - .gitignore
+  - .molecule
+  - ansible_collections
+  - infra
+  - "*.terraform*"
+  - "*.tar.gz"

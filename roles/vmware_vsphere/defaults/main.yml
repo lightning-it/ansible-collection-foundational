@@ -1,0 +1,52 @@
+---
+vmware_vsphere_parent_resource_pool: ""
+vmware_vsphere_folder_name: ""
+vmware_vsphere_validate_certs: true
+vmware_vsphere_folder_full_path: >-
+  /{{ vmware_vsphere_datacenter }}/vm/{{ vmware_vsphere_folder_name }}
+vmware_vsphere_folder_type: vm
+vmware_vsphere_destroy: false
+vmware_vsphere_guest_force: false
+vmware_vsphere_hardware_version: 15
+vmware_vsphere_guest_id: coreos64Guest
+vmware_vsphere_delegate_to: localhost
+vmware_vsphere_iso_path: "ISOs/agent-{{ cluster_id }}.x86_64.iso"
+vmware_vsphere_username: ""
+vmware_vsphere_password: ""
+vmware_vsphere_vmware_guest_hardware:
+  num_cpus: 2
+  memory_mb: 16384
+vmware_vsphere_vmware_guest_disk:
+  - size_gb: 120
+    type: thin
+vmware_vsphere_vmware_guest_cdrom: []
+vmware_vsphere_module_defaults_vmware_group:
+  hostname: "{{ vmware_vsphere_hostname }}"
+  username: "{{ vmware_vsphere_username }}"
+  password: "{{ vmware_vsphere_password }}"
+  validate_certs: "{{ vmware_vsphere_validate_certs }}"
+vmware_vsphere_module_defaults_vmware_guest:
+  datacenter: "{{ vmware_vsphere_datacenter }}"
+  resource_pool: "{{ vmware_vsphere_resource_pool | default(omit) }}"
+  folder: "{{ vmware_vsphere_folder_full_path }}"
+  force: "{{ vmware_vsphere_guest_force }}"
+  guest_id: "{{ vmware_vsphere_guest_id }}"
+  datastore: "{{ vmware_vsphere_vmware_guest_datastore }}"
+  cdrom:
+    - controller_number: 0
+      unit_number: 0
+      state: present
+      type: iso
+      iso_path: >-
+        [{{ vmware_vsphere_vmware_iso_datastore }}]
+        {{ vmware_vsphere_iso_path }}
+  hardware:
+    version: "{{ vmware_vsphere_hardware_version }}"
+  networks:
+    - name: "{{ vmware_vsphere_network }}"
+      connected: true
+  advanced_settings:
+    - key: disk.EnableUUID
+      value: "TRUE"
+    - key: stealclock.enable
+      value: "TRUE"

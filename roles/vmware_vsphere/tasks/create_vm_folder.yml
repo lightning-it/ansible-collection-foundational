@@ -1,0 +1,13 @@
+---
+- name: Create VM folder {{ vmware_vsphere_folder_name }}
+  run_once: true
+  module_defaults:
+    group/vmware: "{{ vmware_vsphere_module_defaults_vmware_group }}"
+    community.vmware.vmware_guest: >-
+      {{ vmware_vsphere_module_defaults_vmware_guest }}
+  delegate_to: "{{ vmware_vsphere_delegate_to }}"
+  community.vmware.vcenter_folder:
+    datacenter: "{{ vmware_vsphere_datacenter }}"
+    folder_name: "{{ vmware_vsphere_folder_name }}"
+    folder_type: vm
+    state: present
