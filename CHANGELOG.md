@@ -1,3 +1,16 @@
+## 1.3.0 (2025-12-29)
+
+* chore: sync shared assets from lightning-it/shared-assets (#14) ([e3afbc2](https://github.com/lightning-it/ansible-collection-foundational/commit/e3afbc2)), closes [#14](https://github.com/lightning-it/ansible-collection-foundational/issues/14)
+* chore: sync shared assets from lightning-it/shared-assets (#17) ([6f30350](https://github.com/lightning-it/ansible-collection-foundational/commit/6f30350)), closes [#17](https://github.com/lightning-it/ansible-collection-foundational/issues/17)
+* chore: sync shared assets from lightning-it/shared-assets (#18) ([d4df557](https://github.com/lightning-it/ansible-collection-foundational/commit/d4df557)), closes [#18](https://github.com/lightning-it/ansible-collection-foundational/issues/18)
+* chore: sync shared assets from lightning-it/shared-assets (#20) ([a2cffcc](https://github.com/lightning-it/ansible-collection-foundational/commit/a2cffcc)), closes [#20](https://github.com/lightning-it/ansible-collection-foundational/issues/20)
+* chore: sync shared assets from lightning-it/shared-assets (#21) ([ec59dd3](https://github.com/lightning-it/ansible-collection-foundational/commit/ec59dd3)), closes [#21](https://github.com/lightning-it/ansible-collection-foundational/issues/21)
+* chore: sync shared assets from lightning-it/shared-assets (#22) ([9a48f49](https://github.com/lightning-it/ansible-collection-foundational/commit/9a48f49)), closes [#22](https://github.com/lightning-it/ansible-collection-foundational/issues/22)
+* chore: sync shared assets from lightning-it/shared-assets (#23) ([d11ffa3](https://github.com/lightning-it/ansible-collection-foundational/commit/d11ffa3)), closes [#23](https://github.com/lightning-it/ansible-collection-foundational/issues/23)
+* chore: sync shared assets from lightning-it/shared-assets (#8) ([bfa8a43](https://github.com/lightning-it/ansible-collection-foundational/commit/bfa8a43)), closes [#8](https://github.com/lightning-it/ansible-collection-foundational/issues/8)
+* fix: standardize variable names and improve YAML structure in Terragrunt role (#19) ([f4dc198](https://github.com/lightning-it/ansible-collection-foundational/commit/f4dc198)), closes [#19](https://github.com/lightning-it/ansible-collection-foundational/issues/19)
+* feat: add initial Terragrunt role with linting, release, and task definitions (#16) ([ae734e1](https://github.com/lightning-it/ansible-collection-foundational/commit/ae734e1)), closes [#16](https://github.com/lightning-it/ansible-collection-foundational/issues/16)
+
 ## 1.2.0 (2025-12-22)
 
 * feat: add VMware vSphere role for managing VMs and folders (#7) ([13f2100](https://github.com/lightning-it/ansible-collection-foundational/commit/13f2100)), closes [#7](https://github.com/lightning-it/ansible-collection-foundational/issues/7)
