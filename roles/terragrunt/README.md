@@ -20,7 +20,7 @@ No.
   hosts: localhost
   gather_facts: false
   vars:
-    ter_terragrunt_template: custom.hcl.j2
+    terragrunt_template: custom.hcl.j2
   roles:
     - role: terragrunt
   tags:

@@ -1,3 +1,4 @@
+---
 galaxy_info:
   author: Dirk Egert
   description: Role to create custom terragrunt environments
