@@ -24,3 +24,4 @@ jobs:
           release-type: simple
           # Ensures tags look like v1.2.3 (matches your CI tag trigger "v*")
           include-v-in-tag: true
+          token: ${{ secrets.SYNC_BOT_TOKEN }}
