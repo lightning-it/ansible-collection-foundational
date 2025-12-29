@@ -2,6 +2,8 @@
 - name: assert | Test all variable are defined
   ansible.builtin.assert:
     that:
-      - ter_http_username is defined and ter_http_username | length > 0
-      - ter_http_password is defined and ter_http_password | length > 0
+      - terragrunt_http_username is defined
+      - terragrunt_http_username | length > 0
+      - terragrunt_http_password is defined
+      - terragrunt_http_password | length > 0
     quiet: true

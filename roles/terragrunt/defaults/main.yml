@@ -1,7 +1,8 @@
 ---
-ter_terragrunt_destroy: false
-ter_skip_confirmation: false
-ter_source: ""
-ter_terragrunt_template: terragrunt.hcl.j2
-ter_http_username: ""
-ter_http_password: ""
+terragrunt_destroy: false
+terragrunt_skip_confirmation: false
+terragrunt_source: ""
+terragrunt_template: terragrunt.hcl.j2
+terragrunt_http_username: ""
+terragrunt_http_password: ""
+terragrunt_plan_file: ""
