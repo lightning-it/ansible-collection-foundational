@@ -1,0 +1,20 @@
+# Automatically find the root terragrunt.hcl and inherit its
+# configuration
+include {
+  path = find_in_parent_folders("root.hcl")
+}
+
+terraform {
+  source = "{{ ter_source }}"
+}
+
+locals {
+  # Parse the file path we're in to read the env name: e.g., env
+  # will be "stag" in the stag folder, "test" in the test folder,
+  # etc.
+  parsed = regex(".*/environments/(?P<env>.*?)", get_terragrunt_dir())
+  env    = local.parsed.env
+}
+
+inputs = {
+}
