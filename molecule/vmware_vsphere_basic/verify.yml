@@ -1,0 +1,12 @@
+---
+- name: Verify vmware_vsphere stub mode
+  hosts: vmware_vsphere
+  gather_facts: false
+  vars:
+    vmware_vsphere_stub_mode: true
+  tasks:
+    - name: Assert stub mode variable set
+      ansible.builtin.assert:
+        that:
+          - vmware_vsphere_stub_mode | bool
+        fail_msg: "vmware_vsphere_stub_mode was not set to true"

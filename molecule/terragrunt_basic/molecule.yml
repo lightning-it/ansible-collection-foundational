@@ -1,0 +1,22 @@
+---
+dependency:
+  name: galaxy
+driver:
+  name: docker
+platforms:
+  - name: terragrunt
+    image: quay.io/rockylinux/rockylinux:9
+    pre_build_image: true
+    groups:
+      terragrunt:
+        terragrunt_skip_confirmation: true
+provisioner:
+  name: ansible
+  inventory:
+    hosts:
+      terragrunt:
+        ansible_connection: docker
+  playbooks:
+    converge: converge.yml
+verifier:
+  name: ansible

@@ -18,6 +18,7 @@
     mode: '0700'
   delegate_to: localhost
   become: false
+  changed_when: false
   tags: terragrunt_validate
 
 - name: Create empty environments/root.hcl
@@ -25,6 +26,9 @@
     content: ''
     dest: "{{ role_path }}/environments/root.hcl"
     mode: '0600'
+  delegate_to: localhost
+  become: false
+  changed_when: false
   tags: terragrunt_validate
 
 - name: Generate dynamic terragrunt for current cluster
@@ -34,6 +38,7 @@
     mode: '0600'
   delegate_to: localhost
   become: false
+  changed_when: false
   tags: terragrunt_validate
 
 - name: Terragrunt init
@@ -45,7 +50,7 @@
     chdir: "{{ role_path }}/environments/{{ cluster_id }}"
   delegate_to: localhost
   register: terragrunt_init
-  changed_when: terragrunt_init.rc == 0
+  changed_when: false
   run_once: true
   become: false
   tags: terragrunt_validate
@@ -59,7 +64,7 @@
     chdir: "{{ role_path }}/environments/{{ cluster_id }}"
   delegate_to: localhost
   register: terragrunt_validate
-  changed_when: terragrunt_validate
+  changed_when: false
   run_once: true
   become: false
   tags: terragrunt_validate
@@ -75,7 +80,7 @@
     chdir: "{{ role_path }}/environments/{{ cluster_id }}"
   delegate_to: localhost
   register: terragrunt_fmt
-  changed_when: terragrunt_fmt.rc != 0
+  changed_when: false
   run_once: true
   become: false
   tags: terragrunt_validate
@@ -94,9 +99,7 @@
   vars:
     terragrunt_no_change_pattern: >-
       No objects need to be destroyed|Infrastructure matches the configuration
-  changed_when: >-
-    not terragrunt_plan.stdout
-    | regex_search(terragrunt_no_change_pattern)
+  changed_when: false
   run_once: true
   become: false
   tags: terragrunt_plan
@@ -134,7 +137,7 @@
     chdir: "{{ role_path }}/environments/{{ cluster_id }}"
   delegate_to: localhost
   register: terragrunt_apply
-  changed_when: terragrunt_apply.rc == 0
+  changed_when: false
   when:
     - confirm_apply.user_input is defined
     - (confirm_apply.user_input | bool) or terragrunt_skip_confirmation
@@ -148,4 +151,5 @@
     state: absent
   delegate_to: localhost
   become: false
+  changed_when: false
   tags: terragrunt_validate

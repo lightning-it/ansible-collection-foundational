@@ -1,4 +1,10 @@
 ---
+- name: Skip role in stub mode (e.g., Molecule)
+  ansible.builtin.meta: end_play
+  when: vmware_vsphere_stub_mode | bool
+  tags:
+    - always
+
 - name: Ensure all needed vars are present
   ansible.builtin.include_tasks: assert.yml
   tags:

@@ -1,0 +1,27 @@
+---
+- name: Example - lit.foundational.terragrunt
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    ansible_connection: local
+    cluster_id: example
+    terragrunt_source: "./module"
+    terragrunt_plan_file: /tmp/terragrunt.plan
+    terragrunt_skip_confirmation: true
+
+  pre_tasks:
+    - name: Create terragrunt stub in PATH (demo only)
+      ansible.builtin.copy:
+        dest: /usr/local/bin/terragrunt
+        mode: "0755"
+        content: |
+          #!/bin/sh
+          echo "terragrunt stub $*"
+          if [ "$1" = "plan" ]; then
+            echo "No objects need to be destroyed"
+          fi
+
+  roles:
+    - role: lit.foundational.terragrunt

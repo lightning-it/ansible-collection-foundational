@@ -1,0 +1,22 @@
+---
+dependency:
+  name: galaxy
+driver:
+  name: docker
+platforms:
+  - name: vmware_vsphere
+    image: quay.io/rockylinux/rockylinux:9
+    pre_build_image: true
+    groups:
+      vmware_vsphere:
+        vmware_vsphere_stub_mode: true
+provisioner:
+  name: ansible
+  inventory:
+    hosts:
+      vmware_vsphere:
+        ansible_connection: docker
+  playbooks:
+    converge: converge.yml
+verifier:
+  name: ansible

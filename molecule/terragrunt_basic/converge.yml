@@ -1,0 +1,46 @@
+---
+- name: Converge terragrunt role
+  hosts: terragrunt
+  gather_facts: false
+
+  vars:
+    cluster_id: demo
+    terragrunt_source: "./module"
+    terragrunt_plan_file: /tmp/terragrunt.plan
+    terragrunt_skip_confirmation: true
+
+  pre_tasks:
+    - name: Ensure python3 is present
+      ansible.builtin.raw: |
+        if ! command -v python3 >/dev/null 2>&1; then
+          dnf -y install python3
+        fi
+      changed_when: false
+
+    - name: Create terragrunt stub in PATH (test only)
+      ansible.builtin.copy:
+        dest: /usr/local/bin/terragrunt
+        mode: "0755"
+        content: |
+          #!/bin/sh
+          echo "terragrunt stub $*"
+          if [ "$1" = "plan" ]; then
+            echo "No objects need to be destroyed"
+          fi
+      changed_when: false
+
+    - name: Create terragrunt stub on controller (test only)
+      ansible.builtin.copy:
+        dest: /usr/local/bin/terragrunt
+        mode: "0755"
+        content: |
+          #!/bin/sh
+          echo "terragrunt stub $*"
+          if [ "$1" = "plan" ]; then
+            echo "No objects need to be destroyed"
+          fi
+      delegate_to: localhost
+      changed_when: false
+
+  roles:
+    - role: lit.foundational.terragrunt

@@ -198,7 +198,7 @@ collection root** in `molecule/`, not inside `roles/`.
   bash scripts/devtools-molecule.sh
   ```
 
-- Scenario names: `tf_runner_basic`, `keycloak_config_local`, etc.
+- Scenario names: `terragrunt_basic`, `keycloak_config_local`, etc.
 
 ### 3.2 Heavy scenarios
 
