@@ -1,3 +1,9 @@
+## [1.3.1](https://github.com/lightning-it/ansible-collection-foundational/compare/v1.3.0...v1.3.1) (2025-12-30)
+
+### Bug Fixes
+
+* roles refactored ([fadabbd](https://github.com/lightning-it/ansible-collection-foundational/commit/fadabbdf306a59be44243a6d6340a4ac4de2082e))
+
 ## 1.3.0 (2025-12-29)
 
 * chore: sync shared assets from lightning-it/shared-assets (#14) ([e3afbc2](https://github.com/lightning-it/ansible-collection-foundational/commit/e3afbc2)), closes [#14](https://github.com/lightning-it/ansible-collection-foundational/issues/14)
