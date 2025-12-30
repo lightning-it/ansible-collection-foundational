@@ -1,0 +1,16 @@
+---
+- name: Verify terragrunt role
+  hosts: terragrunt
+  gather_facts: false
+  tasks:
+    - name: Stat terragrunt stub
+      ansible.builtin.stat:
+        path: /usr/local/bin/terragrunt
+      register: terragrunt_stub
+
+    - name: Assert stub present
+      ansible.builtin.assert:
+        that:
+          - terragrunt_stub.stat.exists
+          - terragrunt_stub.stat.mode == '0755'
+        fail_msg: "terragrunt stub not found or not executable"

@@ -2,13 +2,13 @@
 
 Foundational Ansible collection for ModuLix / Lightning IT. It provides generic
 building blocks and orchestration helpers for consistent, repeatable automation.
-The initial role in this collection is:
+The primary role in this collection is:
 
-- `tf_runner` – a generic Terraform runner role that:
-  - prepares a Terraform working directory on the control host,
-  - optionally cleans previous state,
-  - writes variables into `terraform.tfvars.json`,
-  - runs `terraform init` and `terraform apply` with configurable arguments.
+- `terragrunt` – a Terragrunt wrapper that:
+  - prepares a per-cluster working directory on the control host,
+  - renders a dynamic `terragrunt.hcl`,
+  - runs `terragrunt init`, `terragrunt plan`, and `terragrunt apply` with
+    optional confirmation and auth support.
 
 ---
 
@@ -22,49 +22,46 @@ ansible-galaxy collection install \
   git+https://github.com/lightning-it/ansible-collection-foundational.git,main
 ```
 
-### Example: using `lit.foundational.tf_runner`
+### Example: using `lit.foundational.terragrunt`
 
-Minimal playbook to run `tf_runner` against a very simple Terraform
-configuration (no real resources, but fully exercises `init` + `apply`):
+Minimal playbook to run `terragrunt` against a stubbed terragrunt binary (for
+demo/smoke purposes). Replace the stub and `terragrunt_source` with your module
+source in real use:
 
 ```yaml
 ---
-- name: Example - lit.foundational.tf_runner
+- name: Example - lit.foundational.terragrunt
   hosts: localhost
   gather_facts: false
 
   vars:
-    tf_runner_workdir: "/tmp/tf-runner-example"
+    cluster_id: example
+    terragrunt_source: "./module"
+    terragrunt_skip_confirmation: true
 
   tasks:
-    - name: Ensure Terraform working directory exists
-      ansible.builtin.file:
-        path: "{{ tf_runner_workdir }}"
-        state: directory
-        mode: "0750"
-
-    - name: Write minimal Terraform configuration
+    - name: Create terragrunt stub in PATH (demo only)
       ansible.builtin.copy:
-        dest: "{{ tf_runner_workdir }}/main.tf"
-        mode: "0640"
+        dest: /usr/local/bin/terragrunt
+        mode: "0755"
         content: |
-          terraform {
-            required_version = ">= 1.3.0"
-          }
+          #!/bin/sh
+          echo "terragrunt stub $*"
+          if [ "$1" = "plan" ]; then
+            echo "No objects need to be destroyed"
+          fi
 
-    - name: Run lit.foundational.tf_runner
+    - name: Run lit.foundational.terragrunt
       ansible.builtin.include_role:
-        name: "lit.foundational.tf_runner"
+        name: "lit.foundational.terragrunt"
       vars:
-        tf_runner_workdir: "{{ tf_runner_workdir }}"
-        tf_runner_clean_state: true
-        tf_runner_skip_apply: false
-        tf_runner_vars: {}
+        terragrunt_plan_file: /tmp/terragrunt.plan
+        terragrunt_skip_confirmation: true
 ```
 
 See also:
 
-- `playbooks/tf_runner.yml` – focused example only for `tf_runner`.
+- `playbooks/terragrunt.yml` – focused example only for `terragrunt`.
 - `playbooks/example.yml` – collection-level example playbook used as the
   canonical entrypoint in CI.
 
@@ -74,7 +71,7 @@ See also:
 
 - `galaxy.yml` defines the collection metadata (namespace `lit`, name
   `foundational`, license `GPL-2.0-only`).
-- Roles live under `roles/` (e.g. `roles/tf_runner/`).
+- Roles live under `roles/` (e.g. `roles/terragrunt/`).
 - The collection can be built locally with:
 
   ```bash
@@ -83,8 +80,10 @@ See also:
 
 - Molecule scenarios are located under `molecule/`, for example:
 
-  - `molecule/tf_runner_basic/` – runs the `tf_runner` role against a
-    minimal valid Terraform configuration to exercise `init` + `apply`.
+  - `molecule/terragrunt_basic/` – runs the `terragrunt` role against a
+    stubbed terragrunt binary to exercise `init` + `plan` + `apply`.
+  - `molecule/vmware_vsphere_basic/` – stubs the vmware_vsphere role (stub mode)
+    so Molecule can run without a vSphere backend.
 
 ---
 
@@ -121,7 +120,7 @@ This will, among other things:
 - run `ansible-lint` inside the devtools container (after building/installing
   the collection),
 - run all non-`*_heavy` Molecule scenarios inside the devtools container
-  (e.g. `tf_runner_basic`),
+  (e.g. `terragrunt_basic`),
 - lint `.github/workflows/*.yml` via `actionlint` (Docker),
 - validate `renovate.json` via `renovate-config-validator` (Docker), if present.
 
@@ -155,5 +154,5 @@ Use this smoke test whenever you want to verify that the collection is:
 
 - buildable,
 - installable,
-- and usable via FQCN (e.g. `lit.foundational.tf_runner`) before pushing or
+- and usable via FQCN (e.g. `lit.foundational.terragrunt`) before pushing or
   tagging a release.
