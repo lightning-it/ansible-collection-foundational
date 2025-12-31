@@ -69,7 +69,7 @@ For collections using semantic-release:
 Each pull request should include:
 
 - A concise title following conventional commits  
-  (e.g. `fix: address selinux idempotency`, `feat: add terragrunt role`).
+  (e.g. `fix: address selinux idempotency`, `feat: add tf_runner role`).
 - A description covering:
   - the problem,
   - the solution,
