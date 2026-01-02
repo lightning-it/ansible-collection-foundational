@@ -1,4 +1,6 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["./renovate.base.json"]
+  "extends": [
+    "github>lightning-it/shared-assets//ansible-collection/base/renovate.base.json"
+  ]
 }
