@@ -1,243 +1,32 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:recommended"
+    "config:recommended",
+    ":dependencyDashboard",
+    ":semanticCommits",
+    ":semanticCommitType(chore)",
+    ":semanticCommitScope(deps)"
   ],
-  "dependencyDashboard": true,
+  "labels": ["dependencies", "renovate"],
   "timezone": "UTC",
   "schedule": [],
-  "labels": [
-    "dependencies",
-    "renovate",
-    "shared-assets"
-  ],
-  "npm": {
-    "enabled": true
-  },
-  "github-actions": {
-    "enabled": true
-  },
+  "rebaseWhen": "conflicted",
+  "prConcurrentLimit": 5,
   "packageRules": [
     {
-      "matchManagers": [
-        "pre-commit"
-      ],
-      "groupName": "pre-commit hooks"
-    },
-    {
-      "matchManagers": [
-        "npm"
-      ],
-      "groupName": "npm dependencies"
-    },
-    {
       "groupName": "ansible-core (2.18.x only)",
-      "matchPackageNames": [
-        "ansible-core"
-      ],
+      "matchPackageNames": ["ansible-core"],
       "allowedVersions": "/^2\\.18\\./"
-    },
-    {
-      "groupName": "semantic-release toolchain",
-      "description": "Keep semantic-release and its plugins in sync across all template repos",
-      "matchManagers": [
-        "npm"
-      ],
-      "matchPackageNames": [
-        "semantic-release",
-        "@semantic-release/changelog",
-        "@semantic-release/commit-analyzer",
-        "@semantic-release/release-notes-generator",
-        "@semantic-release/github",
-        "@semantic-release/git",
-        "conventional-changelog-conventionalcommits"
-      ],
-      "separateMajorMinor": true,
-      "separateMultipleMajor": true
-    },
-    {
-      "description": "Highlight major updates for semantic-release itself",
-      "matchManagers": [
-        "npm"
-      ],
-      "matchPackageNames": [
-        "semantic-release"
-      ],
-      "matchUpdateTypes": [
-        "major"
-      ],
-      "labels": [
-        "dependencies",
-        "renovate",
-        "breaking-release-tools"
-      ]
     }
   ],
   "regexManagers": [
     {
-      "description": "Node.js versions in workflow files",
-      "fileMatch": [
-        "(^|.*/)\\.github/workflows/.*\\.ya?ml$"
-      ],
-      "matchStrings": [
-        "node-version:\\s*['\"]?(?<currentValue>[0-9.]+)['\"]?"
-      ],
-      "datasourceTemplate": "node",
-      "depNameTemplate": "node",
-      "versioningTemplate": "node"
-    },
-    {
-      "description": "Python version in workflows (python-version / PYTHON_VERSION)",
-      "fileMatch": [
-        "(^|.*/)\\.github/workflows/.*\\.ya?ml$"
-      ],
-      "matchStrings": [
-        "python-version:\\s*\\\"?(?<currentValue>[0-9]+\\.[0-9]+(?:\\.[0-9]+)?)\\\"?",
-        "PYTHON_VERSION:\\s*\\\"(?<currentValue>[0-9]+\\.[0-9]+(?:\\.[0-9]+)?)\\\""
-      ],
-      "datasourceTemplate": "python-version",
-      "depNameTemplate": "python",
-      "versioningTemplate": "python"
-    },
-    {
-      "description": "Terraform version in workflow env (TERRAFORM_VERSION / terraform_version)",
-      "fileMatch": [
-        "(^|.*/)\\.github/workflows/.*\\.ya?ml$"
-      ],
-      "matchStrings": [
-        "TERRAFORM_VERSION:\\s*\\\"(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)\\\"",
-        "terraform_version[:=]\\s*[\\\"']?(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)[\\\"']?"
-      ],
-      "datasourceTemplate": "github-releases",
-      "packageNameTemplate": "hashicorp/terraform",
-      "versioningTemplate": "hashicorp",
-      "extractVersionTemplate": "^v(?<version>.*)$"
-    },
-    {
       "description": "ansible-core version in workflow env (ANSIBLE_CORE_VERSION)",
-      "fileMatch": [
-        "(^|.*/)\\.github/workflows/.*\\.ya?ml$"
-      ],
-      "matchStrings": [
-        "ANSIBLE_CORE_VERSION:\\s*\\\"(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)\\\""
-      ],
+      "fileMatch": [".github/workflows/.*\\.ya?ml"],
+      "matchStrings": ["ANSIBLE_CORE_VERSION:\\s*\"(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)\""],
       "datasourceTemplate": "pypi",
       "packageNameTemplate": "ansible-core",
       "versioningTemplate": "pep440"
-    },
-    {
-      "description": "ansible-lint version in workflow env (ANSIBLE_LINT_VERSION)",
-      "fileMatch": [
-        "(^|.*/)\\.github/workflows/.*\\.ya?ml$"
-      ],
-      "matchStrings": [
-        "ANSIBLE_LINT_VERSION:\\s*\\\"(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)\\\""
-      ],
-      "datasourceTemplate": "pypi",
-      "packageNameTemplate": "ansible-lint",
-      "versioningTemplate": "pep440"
-    },
-    {
-      "description": "ansible-core version in pre-commit templates (ANSIBLE_CORE_VERSION=...)",
-      "fileMatch": [
-        "(^|.*/)\\.pre-commit-config\\.ya?ml$",
-        "(^|.*/)pre-commit-config\\.shared\\.ya?ml$"
-      ],
-      "matchStrings": [
-        "ANSIBLE_CORE_VERSION=(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)"
-      ],
-      "datasourceTemplate": "pypi",
-      "packageNameTemplate": "ansible-core",
-      "versioningTemplate": "pep440"
-    },
-    {
-      "description": "ansible-lint version in pre-commit templates (ANSIBLE_LINT_VERSION=...)",
-      "fileMatch": [
-        "(^|.*/)\\.pre-commit-config\\.ya?ml$",
-        "(^|.*/)pre-commit-config\\.shared\\.ya?ml$"
-      ],
-      "matchStrings": [
-        "ANSIBLE_LINT_VERSION=(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)"
-      ],
-      "datasourceTemplate": "pypi",
-      "packageNameTemplate": "ansible-lint",
-      "versioningTemplate": "pep440"
-    },
-    {
-      "description": "ansible-core pins in workflows and requirements",
-      "fileMatch": [
-        "(^|.*/)\\.github/workflows/.*\\.ya?ml$",
-        "(^|.*/)requirements\\.txt$"
-      ],
-      "matchStrings": [
-        "ansible-core==(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)"
-      ],
-      "datasourceTemplate": "pypi",
-      "packageNameTemplate": "ansible-core"
-    },
-    {
-      "description": "ansible-lint pins in workflows and requirements",
-      "fileMatch": [
-        "(^|.*/)\\.github/workflows/.*\\.ya?ml$",
-        "(^|.*/)requirements\\.txt$"
-      ],
-      "matchStrings": [
-        "ansible-lint==(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)"
-      ],
-      "datasourceTemplate": "pypi",
-      "packageNameTemplate": "ansible-lint"
-    },
-    {
-      "description": "wunder-devtools-ee image tag in scripts and workflows",
-      "fileMatch": [
-        "(^|.*/)scripts/.*\\.sh$",
-        "(^|.*/)\\.github/workflows/.*\\.ya?ml$"
-      ],
-      "matchStrings": [
-        "ghcr\\.io/lightning-it/wunder-devtools-ee:v(?<currentValue>[0-9.]+)"
-      ],
-      "datasourceTemplate": "docker",
-      "packageNameTemplate": "ghcr.io/lightning-it/wunder-devtools-ee"
-    },
-    {
-      "description": "actionlint docker image in pre-commit and scripts",
-      "fileMatch": [
-        "(^|.*/)\\.pre-commit-config\\.ya?ml$",
-        "(^|.*/)pre-commit-config\\.shared\\.ya?ml$",
-        "(^|.*/)scripts/.*\\.sh$"
-      ],
-      "matchStrings": [
-        "docker\\.io/rhysd/actionlint:(?<currentValue>v?[0-9.]+)"
-      ],
-      "datasourceTemplate": "docker",
-      "packageNameTemplate": "rhysd/actionlint"
-    },
-    {
-      "description": "Renovate docker image in pre-commit and scripts",
-      "fileMatch": [
-        "(^|.*/)\\.pre-commit-config\\.ya?ml$",
-        "(^|.*/)pre-commit-config\\.shared\\.ya?ml$",
-        "(^|.*/)scripts/.*\\.sh$"
-      ],
-      "matchStrings": [
-        "renovate/renovate:(?<currentValue>[0-9.]+)"
-      ],
-      "datasourceTemplate": "docker",
-      "packageNameTemplate": "renovate/renovate"
-    },
-    {
-      "description": "Rocky Linux images in Molecule files",
-      "fileMatch": [
-        "(^|.*/)molecule/.*/molecule\\.ya?ml$"
-      ],
-      "matchStrings": [
-        "quay\\.io/rockylinux/rockylinux:(?<currentValue>[0-9.]+)"
-      ],
-      "datasourceTemplate": "docker",
-      "packageNameTemplate": "quay.io/rockylinux/rockylinux"
     }
-  ],
-  "pre-commit": {
-    "enabled": true
-  }
+  ]
 }
