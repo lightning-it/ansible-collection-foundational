@@ -10,10 +10,13 @@
     community.vmware.vmware_guest: >-
       {{ vmware_vsphere_module_defaults_vmware_guest }}
   delegate_to: "{{ vmware_vsphere_delegate_to }}"
-  community.vmware.vcenter_folder:
+  vmware.vmware.folder:
+    hostname: "{{ vmware_vsphere_hostname }}"
+    username: "{{ vmware_vsphere_username }}"
+    password: "{{ vmware_vsphere_password }}"
+    validate_certs: "{{ vmware_vsphere_validate_certs }}"
     datacenter: "{{ vmware_vsphere_datacenter }}"
-    folder_name: "{{ vmware_vsphere_folder_name }}"
-    folder_type: vm
+    absolute_path: "{{ vmware_vsphere_folder_full_path }}"
     state: present
   when: not vmware_vsphere_destroy | bool
 
@@ -23,9 +26,12 @@
     community.vmware.vmware_guest: >-
       {{ vmware_vsphere_module_defaults_vmware_guest }}
   delegate_to: "{{ vmware_vsphere_delegate_to }}"
-  community.vmware.vcenter_folder:
+  vmware.vmware.folder:
+    hostname: "{{ vmware_vsphere_hostname }}"
+    username: "{{ vmware_vsphere_username }}"
+    password: "{{ vmware_vsphere_password }}"
+    validate_certs: "{{ vmware_vsphere_validate_certs }}"
     datacenter: "{{ vmware_vsphere_datacenter }}"
-    folder_name: "{{ vmware_vsphere_folder_name }}"
-    folder_type: vm
+    absolute_path: "{{ vmware_vsphere_folder_full_path }}"
     state: absent
   when: vmware_vsphere_destroy | bool

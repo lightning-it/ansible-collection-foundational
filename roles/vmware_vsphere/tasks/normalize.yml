@@ -10,6 +10,12 @@
     vmware_vsphere_vmware_guest_esxi_hostname: >-
       {{ vmware_vsphere_vmware_guest_esxi_hostname
          | default(vmware_vsphere_esxi_hostname | default('')) }}
+    vmware_vsphere_hostname: >-
+      {{
+        vmware_vsphere_hostname
+          | default(vcenter_hostname | default('', true), true)
+          | default('', true)
+      }}
   tags:
     - always
 
