@@ -91,7 +91,7 @@ bash scripts/wunder-devtools-ee.sh bash -lc '
     exit 1
   fi
 
-  export ANSIBLE_COLLECTIONS_PATH="${COLLECTIONS_DIR}:/usr/share/ansible/collections"
+  export ANSIBLE_COLLECTIONS_PATH="${COLLECTIONS_DIR}:${HOME}/.ansible/collections:/usr/share/ansible/collections"
 
   # -------------------------------------------------------------
   # 2) Install declared dependencies into the SAME per-run dir
@@ -121,6 +121,10 @@ PY
       ansible-galaxy collection install "$dep_fqcn" -p "${COLLECTIONS_DIR}" --force
     fi
   done
+
+  # Molecule docker driver relies on community.docker; ensure it is present in the same path
+  echo "Ensuring community.docker is available for Molecule (docker driver)..."
+  ansible-galaxy collection install community.docker -p "${COLLECTIONS_DIR}" --force
 
   # -------------------------------------------------------------
   # 3) Configure Ansible env for Molecule

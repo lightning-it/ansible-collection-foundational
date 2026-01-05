@@ -1,0 +1,38 @@
+---
+# Normalize/alias variables so inventories can use shorter names
+# while the role keeps its strict internal API.
+
+- name: Normalize vSphere placement vars
+  ansible.builtin.set_fact:
+    vmware_vsphere_vmware_guest_cluster: >-
+      {{ vmware_vsphere_vmware_guest_cluster
+         | default(vmware_vsphere_cluster | default('')) }}
+    vmware_vsphere_vmware_guest_esxi_hostname: >-
+      {{ vmware_vsphere_vmware_guest_esxi_hostname
+         | default(vmware_vsphere_esxi_hostname | default('')) }}
+  tags:
+    - always
+
+- name: Normalize datastore vars
+  ansible.builtin.set_fact:
+    vmware_vsphere_vmware_guest_datastore: >-
+      {{ vmware_vsphere_vmware_guest_datastore
+         | default(vmware_vsphere_datastore | default('')) }}
+    vmware_vsphere_vmware_iso_datastore: >-
+      {{ vmware_vsphere_vmware_iso_datastore
+         | default(vmware_vsphere_iso_datastore | default('')) }}
+  tags:
+    - always
+
+- name: Normalize network vars
+  ansible.builtin.set_fact:
+    # canonical internal var
+    vmware_vsphere_vmware_guest_network: >-
+      {{ vmware_vsphere_vmware_guest_network
+         | default(vmware_vsphere_network | default('')) }}
+    # optional legacy alias (keep both in sync)
+    vmware_vsphere_network: >-
+      {{ vmware_vsphere_network
+         | default(vmware_vsphere_vmware_guest_network | default('')) }}
+  tags:
+    - always

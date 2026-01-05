@@ -1,23 +1,147 @@
 ---
+# tasks/assert.yml
+#
+# This file validates all required inputs before running any VMware modules.
+# It is designed to be safe even when optional features (like ISO attach) are disabled.
+
+- name: Derive helper flags for validation
+  ansible.builtin.set_fact:
+    # VM name: prefer explicit vmware_vsphere_vm_name, otherwise inventory_hostname
+    _vmware_vsphere_vm_name_effective: >-
+      {{ vmware_vsphere_vm_name | default(inventory_hostname) }}
+
+    # Whether network is required.
+    # Default: true (backwards-compatible), but can be disabled by setting
+    # vmware_vsphere_require_network: false
+    _vmware_vsphere_require_network: >-
+      {{ vmware_vsphere_require_network | default(true) | bool }}
+
+    # ISO handling:
+    # Default behavior: ISO datastore is only required if an ISO is actually requested.
+    #
+    # You can force the requirement explicitly via:
+    # - vmware_vsphere_require_iso_datastore: true
+    #
+    # ISO is considered "requested" if ANY of these are set:
+    # - vmware_vsphere_iso_path
+    # - vmware_vsphere_iso_file
+    # - vmware_vsphere_vmware_iso_datastore (non-empty)
+    _vmware_vsphere_iso_requested: >-
+      {{
+        (vmware_vsphere_iso_path | default('') | length > 0)
+        or (vmware_vsphere_iso_file | default('') | length > 0)
+        or (vmware_vsphere_vmware_iso_datastore | default('') | length > 0)
+      }}
+
+    _vmware_vsphere_require_iso_datastore: >-
+      {{ vmware_vsphere_require_iso_datastore | default(false) | bool }}
+  tags:
+    - always
+
+
 - name: Test required values for create
   ansible.builtin.assert:
     that:
+      # placement (one of them must be set)
       - >-
-          vmware_vsphere_vmware_guest_esxi_hostname | default('') | length > 0
-          or vmware_vsphere_vmware_guest_cluster | default('') | length > 0
-      - vmware_vsphere_vmware_guest_datastore | length > 0
-      - vmware_vsphere_vmware_iso_datastore | length > 0
-      - vmware_vsphere_datacenter is defined
-      - vmware_vsphere_network is defined
-      - vmware_vsphere_folder_full_path | length > 0
-      - vmware_vsphere_folder_name | length > 0
+          (vmware_vsphere_vmware_guest_esxi_hostname | default('') | length > 0)
+          or (vmware_vsphere_vmware_guest_cluster | default('') | length > 0)
+
+      # vCenter connection target
+      - vmware_vsphere_hostname | default('') | length > 0
+
+      # VM identity (effective name must be non-empty)
+      - _vmware_vsphere_vm_name_effective | default('') | length > 0
+
+      # clone/source
+      - vmware_vsphere_template | default('') | length > 0
+
+      # storage
+      - vmware_vsphere_vmware_guest_datastore | default('') | length > 0
+
+      # ISO datastore is optional by default:
+      # - required if vmware_vsphere_require_iso_datastore == true
+      # - OR if ISO is requested via iso_path/iso_file/etc.
+      - >-
+          (not _vmware_vsphere_require_iso_datastore and not _vmware_vsphere_iso_requested)
+          or (vmware_vsphere_vmware_iso_datastore | default('') | length > 0)
+
+      # inventory/placement context
+      - vmware_vsphere_datacenter | default('') | length > 0
+
+      # network: required by default, but can be disabled via vmware_vsphere_require_network=false
+      - >-
+          (not _vmware_vsphere_require_network)
+          or (
+            (vmware_vsphere_network is string and (vmware_vsphere_network | length > 0))
+            or (vmware_vsphere_network is sequence and (vmware_vsphere_network | length > 0))
+            or (vmware_vsphere_network is mapping and (vmware_vsphere_network | length > 0))
+          )
+
+      # folder
+      - vmware_vsphere_folder_full_path | default('') | length > 0
+      - vmware_vsphere_folder_name | default('') | length > 0
+    fail_msg: >-
+      Missing required variables for VM create (host={{ inventory_hostname }}).
+
+      Required (create):
+      - placement: vmware_vsphere_vmware_guest_cluster OR vmware_vsphere_vmware_guest_esxi_hostname
+      - vmware_vsphere_hostname
+      - vmware_vsphere_template
+      - vmware_vsphere_vmware_guest_datastore
+      - vmware_vsphere_datacenter
+      - vmware_vsphere_folder_full_path + vmware_vsphere_folder_name
+      - vmware_vsphere_network (unless vmware_vsphere_require_network=false)
+
+      VM name:
+      - uses vmware_vsphere_vm_name if set, otherwise inventory_hostname='{{ inventory_hostname }}'
+
+      ISO handling:
+      - vmware_vsphere_vmware_iso_datastore is required only if ISO is requested
+        (vmware_vsphere_iso_path / vmware_vsphere_iso_file) or vmware_vsphere_require_iso_datastore=true.
   when: not vmware_vsphere_destroy | bool
+
 
 - name: Test required values for destroy
   ansible.builtin.assert:
     that:
-      - vmware_vsphere_datacenter is defined
-      - vmware_vsphere_network is defined
-      - vmware_vsphere_folder_full_path | length > 0
-      - vmware_vsphere_folder_name | length > 0
+      - vmware_vsphere_hostname | default('') | length > 0
+      - _vmware_vsphere_vm_name_effective | default('') | length > 0
+      - vmware_vsphere_datacenter | default('') | length > 0
+
+      # network: required by default, but can be disabled via vmware_vsphere_require_network=false
+      - >-
+          (not _vmware_vsphere_require_network)
+          or (
+            (vmware_vsphere_network is string and (vmware_vsphere_network | length > 0))
+            or (vmware_vsphere_network is sequence and (vmware_vsphere_network | length > 0))
+            or (vmware_vsphere_network is mapping and (vmware_vsphere_network | length > 0))
+          )
+
+      - vmware_vsphere_folder_full_path | default('') | length > 0
+      - vmware_vsphere_folder_name | default('') | length > 0
+    fail_msg: >-
+      Missing required variables for VM destroy (host={{ inventory_hostname }}).
+
+      Required (destroy):
+      - vmware_vsphere_hostname
+      - vmware_vsphere_datacenter
+      - vmware_vsphere_folder_full_path + vmware_vsphere_folder_name
+      - vmware_vsphere_network (unless vmware_vsphere_require_network=false)
+
+      VM name:
+      - uses vmware_vsphere_vm_name if set, otherwise inventory_hostname='{{ inventory_hostname }}'
   when: vmware_vsphere_destroy | bool
+
+
+- name: Ensure vSphere credentials are provided
+  ansible.builtin.assert:
+    that:
+      - vmware_vsphere_username | default('') | length > 0
+      - vmware_vsphere_password | default('') | length > 0
+    fail_msg: >-
+      vSphere credentials are missing. Provide vmware_vsphere_username / vmware_vsphere_password
+      or set vmware_vsphere_vmware_username_lookup / vmware_vsphere_vmware_password_lookup.
+  no_log: true
+  tags:
+    - always

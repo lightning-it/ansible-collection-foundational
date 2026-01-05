@@ -1,0 +1,21 @@
+---
+# Bootstrap defaults used by other task files.
+
+- name: Ensure lookup vars exist
+  ansible.builtin.set_fact:
+    vmware_vsphere_vmware_username_lookup: "{{ vmware_vsphere_vmware_username_lookup | default('') }}"
+    vmware_vsphere_vmware_password_lookup: "{{ vmware_vsphere_vmware_password_lookup | default('') }}"
+  tags:
+    - always
+
+- name: Ensure delegate target is set
+  ansible.builtin.set_fact:
+    vmware_vsphere_delegate_to: "{{ vmware_vsphere_delegate_to | default('localhost') }}"
+  tags:
+    - always
+
+- name: Ensure vmware_hosts list exists
+  ansible.builtin.set_fact:
+    vmware_hosts: "{{ vmware_hosts | default([inventory_hostname]) }}"
+  tags:
+    - always

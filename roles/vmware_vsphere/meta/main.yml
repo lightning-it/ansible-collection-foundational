@@ -1,11 +1,19 @@
 ---
 galaxy_info:
   role_name: vmware_vsphere
-  namespace: default
-  author: Dirk Egert
-  description: Role to manage vmware_vsphere
-  company: degert-it.de
-  license: license (BSD, MIT)
-  min_ansible_version: '2.8'
-  galaxy_tags: []
+  namespace: lit
+  author: Lightning IT
+  description: Manage vSphere folders and VMs for agent-based installs.
+  company: Lightning IT
+  license: GPL-2.0-only
+  min_ansible_version: "2.15"
+  platforms:
+    - name: EL
+      versions:
+        - "9"
+  galaxy_tags:
+    - modulix
+    - vmware
+    - vsphere
+    - virtualization
 dependencies: []

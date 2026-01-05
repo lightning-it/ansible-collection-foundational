@@ -1,0 +1,31 @@
+---
+# tasks/manage_folder.yml
+#
+# Create or delete the VM folder for the current target host.
+# No run_once here, because folder_name can be host-specific.
+
+- name: Ensure VM folder present ({{ vmware_vsphere_folder_name }})
+  module_defaults:
+    group/vmware: "{{ vmware_vsphere_module_defaults_vmware_group }}"
+    community.vmware.vmware_guest: >-
+      {{ vmware_vsphere_module_defaults_vmware_guest }}
+  delegate_to: "{{ vmware_vsphere_delegate_to }}"
+  community.vmware.vcenter_folder:
+    datacenter: "{{ vmware_vsphere_datacenter }}"
+    folder_name: "{{ vmware_vsphere_folder_name }}"
+    folder_type: vm
+    state: present
+  when: not vmware_vsphere_destroy | bool
+
+- name: Ensure VM folder absent ({{ vmware_vsphere_folder_name }})
+  module_defaults:
+    group/vmware: "{{ vmware_vsphere_module_defaults_vmware_group }}"
+    community.vmware.vmware_guest: >-
+      {{ vmware_vsphere_module_defaults_vmware_guest }}
+  delegate_to: "{{ vmware_vsphere_delegate_to }}"
+  community.vmware.vcenter_folder:
+    datacenter: "{{ vmware_vsphere_datacenter }}"
+    folder_name: "{{ vmware_vsphere_folder_name }}"
+    folder_type: vm
+    state: absent
+  when: vmware_vsphere_destroy | bool

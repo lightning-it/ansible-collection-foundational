@@ -1,0 +1,81 @@
+---
+# manage_vm.yml
+# Create or delete VM(s) in vCenter.
+# - Create path acts on the current host (inventory_hostname)
+# - Destroy path can act on multiple VMs via vmware_hosts, defaulting to [inventory_hostname]
+
+- name: Check if VM already exists
+  module_defaults:
+    group/vmware: "{{ vmware_vsphere_module_defaults_vmware_group }}"
+  delegate_to: "{{ vmware_vsphere_delegate_to }}"
+  community.vmware.vmware_guest_info:
+    datacenter: "{{ vmware_vsphere_datacenter }}"
+    name: "{{ vmware_vsphere_vm_name | default(inventory_hostname) }}"
+    folder: "{{ vmware_vsphere_folder_full_path | default(omit) }}"
+  register: vmware_vsphere_vm_info
+  when: not vmware_vsphere_destroy | bool
+  tags:
+    - manage_vm
+    - create_vm
+
+- name: Flag VM existence
+  ansible.builtin.set_fact:
+    vmware_vsphere_vm_exists: "{{ vmware_vsphere_vm_info is defined and vmware_vsphere_vm_info.instance is defined }}"
+  when: not vmware_vsphere_destroy | bool
+  tags:
+    - manage_vm
+    - create_vm
+
+- name: Create VM in vCenter when absent ({{ vmware_vsphere_vm_name | default(inventory_hostname) }})
+  module_defaults:
+    group/vmware: "{{ vmware_vsphere_module_defaults_vmware_group }}"
+    community.vmware.vmware_guest: "{{ vmware_vsphere_module_defaults_vmware_guest }}"
+  delegate_to: "{{ vmware_vsphere_delegate_to }}"
+  community.vmware.vmware_guest:
+    name: "{{ vmware_vsphere_vm_name | default(inventory_hostname) }}"
+    state: present
+
+    # Placement (one of them must be set)
+    esxi_hostname: >-
+      {{ (vmware_vsphere_vmware_guest_esxi_hostname | default('') | length > 0)
+         | ternary(vmware_vsphere_vmware_guest_esxi_hostname, omit) }}
+    cluster: >-
+      {{ (vmware_vsphere_vmware_guest_cluster | default('') | length > 0)
+         | ternary(vmware_vsphere_vmware_guest_cluster, omit) }}
+
+    # Inventory/placement context
+    datacenter: "{{ vmware_vsphere_datacenter | default(omit) }}"
+    folder: "{{ vmware_vsphere_folder_full_path | default(omit) }}"
+
+    # Optional structures (only pass if present in role defaults/vars)
+    disk: "{{ vmware_vsphere_vmware_guest_disk | default(omit) }}"
+    hardware: "{{ vmware_vsphere_vmware_guest_hardware | default(omit) }}"
+  when:
+    - not vmware_vsphere_destroy | bool
+    - not vmware_vsphere_vm_exists | default(false) | bool
+  tags:
+    - manage_vm
+    - create_vm
+
+
+- name: Remove VM(s) from vCenter
+  module_defaults:
+    group/vmware: "{{ vmware_vsphere_module_defaults_vmware_group }}"
+    community.vmware.vmware_guest: "{{ vmware_vsphere_module_defaults_vmware_guest }}"
+  delegate_to: "{{ vmware_vsphere_delegate_to }}"
+  community.vmware.vmware_guest:
+    name: "{{ item }}"
+    state: absent
+    force: true
+
+    # Optional context (safe)
+    datacenter: "{{ vmware_vsphere_datacenter | default(omit) }}"
+    folder: "{{ vmware_vsphere_folder_full_path | default(omit) }}"
+  loop: "{{ vmware_hosts | default([inventory_hostname]) }}"
+  loop_control:
+    label: "{{ item }}"
+  when: vmware_vsphere_destroy | bool
+  tags:
+    - manage_vm
+    - destroy_vm
+    - destroy_all
