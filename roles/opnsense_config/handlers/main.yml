@@ -1,0 +1,51 @@
+---
+- name: Reboot OPNsense
+  listen: Reboot OPNsense
+  block:
+    - name: Reboot via API when credentials provided
+      ansible.builtin.uri:
+        url: "https://{{ ansible_host | default(inventory_hostname) }}:{{ opnsense_api_port }}/api/core/system/reboot"
+        method: POST
+        force_basic_auth: true
+        url_username: "{{ opnsense_api_key }}"
+        url_password: "{{ opnsense_api_secret }}"
+        status_code: [200, 201, 204]
+        validate_certs: "{{ opnsense_api_validate_certs }}"
+      register: opnsense_api_reboot
+      delegate_to: localhost
+      become: false
+      when:
+        - opnsense_api_key | default('') | length > 0
+        - opnsense_api_secret | default('') | length > 0
+
+    - name: Reboot via SSH command (fallback)
+      ansible.builtin.command: configctl system reboot
+      when:
+        - opnsense_api_key | default('') | length == 0
+          or opnsense_api_secret | default('') | length == 0
+
+    - name: Wait for reboot (SSH)
+      ansible.builtin.wait_for:
+        host: "{{ ansible_host | default(inventory_hostname) }}"
+        port: "{{ opnsense_ssh_port }}"
+        state: started
+        delay: 10
+        timeout: "{{ opnsense_ssh_wait_timeout }}"
+      delegate_to: localhost
+      become: false
+      when:
+        - opnsense_api_key | default('') | length == 0
+          or opnsense_api_secret | default('') | length == 0
+
+    - name: Wait for reboot (API)
+      ansible.builtin.wait_for:
+        host: "{{ ansible_host | default(inventory_hostname) }}"
+        port: "{{ opnsense_api_port }}"
+        state: started
+        delay: 10
+        timeout: "{{ opnsense_api_wait_timeout }}"
+      delegate_to: localhost
+      become: false
+      when:
+        - opnsense_api_key | default('') | length > 0
+        - opnsense_api_secret | default('') | length > 0

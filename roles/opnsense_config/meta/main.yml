@@ -1,0 +1,10 @@
+---
+galaxy_info:
+  role_name: opnsense_config
+  namespace: lit
+  author: Lightning IT
+  description: Apply OPNsense config.xml and reboot when changed
+  license: GPL-2.0-only
+  min_ansible_version: "2.15"
+
+dependencies: []
