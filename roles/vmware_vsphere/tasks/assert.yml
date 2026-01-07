@@ -53,9 +53,6 @@
       # VM identity (effective name must be non-empty)
       - _vmware_vsphere_vm_name_effective | default('') | length > 0
 
-      # clone/source
-      - vmware_vsphere_template | default('') | length > 0
-
       # storage
       - vmware_vsphere_vmware_guest_datastore | default('') | length > 0
 
@@ -87,7 +84,6 @@
       Required (create):
       - placement: vmware_vsphere_vmware_guest_cluster OR vmware_vsphere_vmware_guest_esxi_hostname
       - vmware_vsphere_hostname
-      - vmware_vsphere_template
       - vmware_vsphere_vmware_guest_datastore
       - vmware_vsphere_datacenter
       - vmware_vsphere_folder_full_path + vmware_vsphere_folder_name

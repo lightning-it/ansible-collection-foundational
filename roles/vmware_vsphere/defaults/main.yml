@@ -46,6 +46,7 @@ vmware_vsphere_guest_id: coreos64Guest
 vmware_vsphere_iso_path: "ISOs/agent-{{ cluster_id | default('') }}.x86_64.iso"
 vmware_vsphere_username: ""
 vmware_vsphere_password: ""
+vmware_vsphere_template: ""
 vmware_vsphere_vmware_username_lookup: ""
 vmware_vsphere_vmware_password_lookup: ""
 vmware_vsphere_vmware_guest_hardware:
