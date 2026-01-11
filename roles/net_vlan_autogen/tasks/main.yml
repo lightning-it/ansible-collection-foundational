@@ -26,6 +26,24 @@
           | default(net_wan_connection_name, true)
           | default('wan')
       }}
+    _net_autogen_wan_ip_cidr: >-
+      {{
+        net_vlan_autogen_wan_ip_cidr
+          | default(net_wan_ip_cidr, true)
+          | default('', true)
+      }}
+    _net_autogen_wan_gateway4: >-
+      {{
+        net_vlan_autogen_wan_gateway4
+          | default(net_wan_gateway4, true)
+          | default('', true)
+      }}
+    _net_autogen_wan_dns: >-
+      {{
+        net_vlan_autogen_wan_dns
+          | default(net_wan_dns, true)
+          | default([], true)
+      }}
     _net_autogen_admin_connection_name: >-
       {{
         net_vlan_autogen_admin_connection_name
@@ -38,7 +56,16 @@
           | default(net_trunk_connection_name, true)
           | default('trunk-parent')
       }}
-    _net_autogen_wan_dhcp4: "{{ net_vlan_autogen_wan_dhcp4 | default(net_wan_dhcp4, true) | default(true) | bool }}"
+    _net_autogen_wan_dhcp4: >-
+      {{
+        (
+          net_wan_dhcp4
+            if (net_wan_dhcp4 is defined)
+            else net_vlan_autogen_wan_dhcp4
+        )
+        | default(true)
+        | bool
+      }}
     _net_autogen_admin_dns: "{{ net_vlan_autogen_admin_dns | default(net_admin_dns, true) | default([], true) }}"
     _net_autogen_vlan_configs: >-
       {{
@@ -65,6 +92,7 @@
       - net_admin_gateway4 | default('') | length > 0
       - _net_autogen_vlan_configs is sequence
       - _net_autogen_vlan_configs | length > 0
+      - (_net_autogen_wan_dhcp4) or (_net_autogen_wan_ip_cidr | default('') | length > 0)
     fail_msg: >-
       Missing required inputs for net_vlan_autogen on {{ inventory_hostname }}.
 
@@ -75,6 +103,7 @@
       - net_admin_ip_cidr
       - net_admin_gateway4
       - net_vlan_configs (list of objects with id + ip_cidr)
+      - net_wan_ip_cidr (when DHCP is disabled)
   when:
     - _net_autogen_vlan_configs is defined
     - _net_autogen_vlan_configs | length > 0
@@ -101,6 +130,7 @@
             'parent': _net_autogen_trunk_connection_name,
             'vlan_id': (item.id | int),
             'autoconnect': true,
+            'state': 'up',
             'ip': { 'address': [ item.ip_cidr ] }
           }
         ]
@@ -114,6 +144,27 @@
   changed_when: false
   tags: [always]
 
+- name: Build WAN IP dict
+  ansible.builtin.set_fact:
+    _net_autogen_wan_ip: >-
+      {{
+        ({ 'dhcp4': true })
+          if _net_autogen_wan_dhcp4
+          else (
+            { 'address': [ _net_autogen_wan_ip_cidr ] }
+            | combine(
+                (_net_autogen_wan_gateway4 | length > 0)
+                  | ternary({ 'gateway4': _net_autogen_wan_gateway4 }, {})
+              )
+            | combine(
+                (_net_autogen_wan_dns | length > 0)
+                  | ternary({ 'dns': _net_autogen_wan_dns }, {})
+              )
+          )
+      }}
+  changed_when: false
+  tags: [always]
+
 - name: Build net_lan_ifaces + generated network_connections
   ansible.builtin.set_fact:
     _net_autogen_lan_ifaces: >-
@@ -122,7 +173,7 @@
         | map(attribute='id')
         | map('int')
         | map('string')
-        | map('regex_replace', '^(.*)$', net_trunk_parent ~ '.\\1')
+        | map('regex_replace', '^', net_trunk_parent ~ '.')
         | list
       }}
     _net_autogen_network_connections: >-
@@ -133,13 +184,15 @@
             'type': 'ethernet',
             'interface_name': net_wan_iface,
             'autoconnect': true,
-            'ip': { 'dhcp4': _net_autogen_wan_dhcp4 }
+            'state': 'up',
+            'ip': _net_autogen_wan_ip
           },
           {
             'name': _net_autogen_admin_connection_name,
             'type': 'ethernet',
             'interface_name': net_admin_iface,
             'autoconnect': true,
+            'state': 'up',
             'ip': {
               'address': [ net_admin_ip_cidr ],
               'gateway4': net_admin_gateway4,
@@ -151,6 +204,7 @@
             'type': 'ethernet',
             'interface_name': net_trunk_parent,
             'autoconnect': true,
+            'state': 'up',
             'ip': { 'dhcp4': false }
           }
         ] + (_net_vlan_network_connections | default([]))

@@ -23,6 +23,9 @@ net_vlan_autogen_trunk_connection_name: trunk-parent
 
 # WAN behavior (DHCP by default)
 net_vlan_autogen_wan_dhcp4: true
+net_vlan_autogen_wan_ip_cidr: ""
+net_vlan_autogen_wan_gateway4: ""
+net_vlan_autogen_wan_dns: []
 
 # Admin DNS list (optional)
 net_vlan_autogen_admin_dns: []

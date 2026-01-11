@@ -26,6 +26,9 @@ Optional:
 
 - `net_vlan_autogen_admin_dns` (list)
 - `net_vlan_autogen_wan_dhcp4` (bool, default true)
+- `net_vlan_autogen_wan_ip_cidr` (string, required when DHCP is disabled)
+- `net_vlan_autogen_wan_gateway4` (string, optional gateway when DHCP is disabled)
+- `net_vlan_autogen_wan_dns` (list, optional DNS when DHCP is disabled)
 - `net_vlan_autogen_overwrite` (bool, default false)
 - `net_vlan_autogen_wan_connection_name` (default `wan`)
 - `net_vlan_autogen_admin_connection_name` (default `admin`)
