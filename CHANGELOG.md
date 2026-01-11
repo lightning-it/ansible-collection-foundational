@@ -1,3 +1,9 @@
+## [1.3.3](https://github.com/lightning-it/ansible-collection-foundational/compare/v1.3.2...v1.3.3) (2026-01-11)
+
+### Bug Fixes
+
+* refactor role vmware vsphere ([#45](https://github.com/lightning-it/ansible-collection-foundational/issues/45)) ([4c8d02a](https://github.com/lightning-it/ansible-collection-foundational/commit/4c8d02a5c5f1764a69c772f21d9a2b535fe26ced))
+
 ## [1.3.2](https://github.com/lightning-it/ansible-collection-foundational/compare/v1.3.1...v1.3.2) (2026-01-04)
 
 ### Bug Fixes
