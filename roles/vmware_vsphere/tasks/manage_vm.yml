@@ -54,7 +54,9 @@
 
 - name: Fail fast when VM is orphaned
   ansible.builtin.fail:
-    msg: "VM '{{ vmware_vsphere_vm_name | default(inventory_hostname) }}' is orphaned in vCenter. Remove or re-register it before reconfiguring."
+    msg: >-
+      VM '{{ vmware_vsphere_vm_name | default(inventory_hostname) }}' is
+      orphaned in vCenter. Remove or re-register it before reconfiguring.
   when:
     - not vmware_vsphere_destroy | bool
     - vmware_vsphere_vm_exists | default(false) | bool

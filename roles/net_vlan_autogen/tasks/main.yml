@@ -10,13 +10,52 @@
 # - net_lan_ifaces
 # ---------------------------------------------------------------------------
 
+- name: Normalize role variables
+  ansible.builtin.set_fact:
+    _net_autogen_enabled: "{{ net_vlan_autogen_enabled | default(net_autogen_enabled, true) | default(true) | bool }}"
+    _net_autogen_overwrite: >-
+      {{
+        net_vlan_autogen_overwrite
+          | default(net_autogen_overwrite, true)
+          | default(false)
+          | bool
+      }}
+    _net_autogen_wan_connection_name: >-
+      {{
+        net_vlan_autogen_wan_connection_name
+          | default(net_wan_connection_name, true)
+          | default('wan')
+      }}
+    _net_autogen_admin_connection_name: >-
+      {{
+        net_vlan_autogen_admin_connection_name
+          | default(net_admin_connection_name, true)
+          | default('admin')
+      }}
+    _net_autogen_trunk_connection_name: >-
+      {{
+        net_vlan_autogen_trunk_connection_name
+          | default(net_trunk_connection_name, true)
+          | default('trunk-parent')
+      }}
+    _net_autogen_wan_dhcp4: "{{ net_vlan_autogen_wan_dhcp4 | default(net_wan_dhcp4, true) | default(true) | bool }}"
+    _net_autogen_admin_dns: "{{ net_vlan_autogen_admin_dns | default(net_admin_dns, true) | default([], true) }}"
+    _net_autogen_vlan_configs: >-
+      {{
+        net_vlan_autogen_vlan_configs
+          | default(net_vlan_configs, true)
+          | default([], true)
+      }}
+  changed_when: false
+  tags: [always]
+
 - name: Skip when autogen is disabled
   ansible.builtin.meta: end_play
-  when: not (net_autogen_enabled | bool)
+  when: not _net_autogen_enabled
   tags: [always]
 
 # Only run if there is something to generate
-- name: Validate inputs (only if net_vlan_configs is provided)
+- name: Validate inputs (only if VLAN configs are provided)
   ansible.builtin.assert:
     that:
       - net_wan_iface | default('') | length > 0
@@ -24,8 +63,8 @@
       - net_trunk_parent | default('') | length > 0
       - net_admin_ip_cidr | default('') | length > 0
       - net_admin_gateway4 | default('') | length > 0
-      - net_vlan_configs is sequence
-      - net_vlan_configs | length > 0
+      - _net_autogen_vlan_configs is sequence
+      - _net_autogen_vlan_configs | length > 0
     fail_msg: >-
       Missing required inputs for net_vlan_autogen on {{ inventory_hostname }}.
 
@@ -37,16 +76,16 @@
       - net_admin_gateway4
       - net_vlan_configs (list of objects with id + ip_cidr)
   when:
-    - net_vlan_configs is defined
-    - net_vlan_configs | length > 0
+    - _net_autogen_vlan_configs is defined
+    - _net_autogen_vlan_configs | length > 0
   tags: [always]
 
 - name: Initialize VLAN network_connections list
   ansible.builtin.set_fact:
     _net_vlan_network_connections: []
   when:
-    - net_vlan_configs is defined
-    - net_vlan_configs | length > 0
+    - _net_autogen_vlan_configs is defined
+    - _net_autogen_vlan_configs | length > 0
   changed_when: false
   tags: [always]
 
@@ -59,19 +98,19 @@
             'name': 'vlan' ~ (item.id | string),
             'type': 'vlan',
             'interface_name': net_trunk_parent ~ '.' ~ (item.id | string),
-            'parent': net_trunk_connection_name,
+            'parent': _net_autogen_trunk_connection_name,
             'vlan_id': (item.id | int),
             'autoconnect': true,
             'ip': { 'address': [ item.ip_cidr ] }
           }
         ]
       }}
-  loop: "{{ net_vlan_configs }}"
+  loop: "{{ _net_autogen_vlan_configs }}"
   loop_control:
     label: "{{ item.id }}"
   when:
-    - net_vlan_configs is defined
-    - net_vlan_configs | length > 0
+    - _net_autogen_vlan_configs is defined
+    - _net_autogen_vlan_configs | length > 0
   changed_when: false
   tags: [always]
 
@@ -79,7 +118,7 @@
   ansible.builtin.set_fact:
     _net_autogen_lan_ifaces: >-
       {{
-        net_vlan_configs
+        _net_autogen_vlan_configs
         | map(attribute='id')
         | map('int')
         | map('string')
@@ -90,25 +129,25 @@
       {{
         [
           {
-            'name': net_wan_connection_name,
+            'name': _net_autogen_wan_connection_name,
             'type': 'ethernet',
             'interface_name': net_wan_iface,
             'autoconnect': true,
-            'ip': { 'dhcp4': (net_wan_dhcp4 | default(true) | bool) }
+            'ip': { 'dhcp4': _net_autogen_wan_dhcp4 }
           },
           {
-            'name': net_admin_connection_name,
+            'name': _net_autogen_admin_connection_name,
             'type': 'ethernet',
             'interface_name': net_admin_iface,
             'autoconnect': true,
             'ip': {
               'address': [ net_admin_ip_cidr ],
               'gateway4': net_admin_gateway4,
-              'dns': (net_admin_dns | default([]))
+              'dns': _net_autogen_admin_dns
             }
           },
           {
-            'name': net_trunk_connection_name,
+            'name': _net_autogen_trunk_connection_name,
             'type': 'ethernet',
             'interface_name': net_trunk_parent,
             'autoconnect': true,
@@ -117,8 +156,8 @@
         ] + (_net_vlan_network_connections | default([]))
       }}
   when:
-    - net_vlan_configs is defined
-    - net_vlan_configs | length > 0
+    - _net_autogen_vlan_configs is defined
+    - _net_autogen_vlan_configs | length > 0
   changed_when: false
   tags: [always]
 
@@ -127,9 +166,9 @@
     net_lan_ifaces: "{{ _net_autogen_lan_ifaces }}"
     network_connections: "{{ _net_autogen_network_connections }}"
   when:
-    - net_vlan_configs is defined
-    - net_vlan_configs | length > 0
-    - (net_autogen_overwrite | bool) or (network_connections is not defined)
+    - _net_autogen_vlan_configs is defined
+    - _net_autogen_vlan_configs | length > 0
+    - _net_autogen_overwrite or (network_connections is not defined)
   tags: [always]
 
 - name: Debug summary (optional)
@@ -138,6 +177,6 @@
       - "net_lan_ifaces: {{ net_lan_ifaces | default([]) }}"
       - "network_connections count: {{ (network_connections | default([])) | length }}"
   when:
-    - net_vlan_configs is defined
-    - net_vlan_configs | length > 0
+    - _net_autogen_vlan_configs is defined
+    - _net_autogen_vlan_configs | length > 0
   tags: [never, debug]

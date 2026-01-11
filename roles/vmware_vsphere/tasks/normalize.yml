@@ -46,7 +46,10 @@
                 )
           )
       -%}
-        {{ (net if net is mapping else {'name': net}) | combine({'connected': true, 'start_connected': true}) }}{% if not loop.last %},{% endif %}
+        {{
+          (net if net is mapping else {'name': net})
+            | combine({'connected': true, 'start_connected': true})
+        }}{% if not loop.last %},{% endif %}
       {%- endfor -%}
       ]
     # optional legacy alias (keep both in sync)
