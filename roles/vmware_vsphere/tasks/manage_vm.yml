@@ -114,6 +114,7 @@
     folder: "{{ vmware_vsphere_folder_full_path | default(omit) }}"
 
     # Optional structures (only pass if present in role defaults/vars)
+    template: "{{ vmware_vsphere_template | default(omit) }}"
     disk: "{{ vmware_vsphere_vmware_guest_disk | default(omit) }}"
     hardware: "{{ vmware_vsphere_vmware_guest_hardware | default(omit) }}"
     networks: >-
@@ -128,6 +129,22 @@
   when:
     - not vmware_vsphere_destroy | bool
     - not vmware_vsphere_vm_exists | default(false) | bool
+  tags:
+    - manage_vm
+    - create_vm
+
+- name: Ensure VM is powered on when requested
+  module_defaults:
+    group/vmware: "{{ vmware_vsphere_module_defaults_vmware_group }}"
+  delegate_to: "{{ vmware_vsphere_delegate_to }}"
+  community.vmware.vmware_guest_powerstate:
+    name: "{{ vmware_vsphere_vm_name | default(inventory_hostname) }}"
+    datacenter: "{{ vmware_vsphere_datacenter | default(omit) }}"
+    folder: "{{ vmware_vsphere_folder_full_path | default(omit) }}"
+    state: powered-on
+  when:
+    - not vmware_vsphere_destroy | bool
+    - vmware_vsphere_power_on | default(true) | bool
   tags:
     - manage_vm
     - create_vm

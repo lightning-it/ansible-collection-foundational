@@ -36,16 +36,19 @@
     vmware_vsphere_vmware_guest_network: >-
       {{ vmware_vsphere_vmware_guest_network
          | default(vmware_vsphere_network | default('')) }}
-    vmware_vsphere_vmware_guest_networks: >-
-      {{
-        vmware_vsphere_vmware_guest_networks
-          | default(
-              (
-                vmware_vsphere_network is sequence
-              )
-              | ternary(vmware_vsphere_network, [vmware_vsphere_network])
-            )
-      }}
+    vmware_vsphere_vmware_guest_networks: |
+      [
+      {%- for net in (
+            vmware_vsphere_vmware_guest_networks
+              | default(
+                  (vmware_vsphere_network is sequence)
+                    | ternary(vmware_vsphere_network, [vmware_vsphere_network])
+                )
+          )
+      -%}
+        {{ (net if net is mapping else {'name': net}) | combine({'connected': true, 'start_connected': true}) }}{% if not loop.last %},{% endif %}
+      {%- endfor -%}
+      ]
     # optional legacy alias (keep both in sync)
     vmware_vsphere_network: >-
       {{ vmware_vsphere_network
