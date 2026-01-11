@@ -5,60 +5,35 @@
   tags:
     - always
 
+- name: Load assets
+  ansible.builtin.include_tasks: assets.yml
+  tags:
+    - always
+
+- name: Normalize role input vars
+  ansible.builtin.include_tasks: normalize.yml
+  tags:
+    - always
+
+- name: Resolve credentials (Vault/Env/Vars)
+  ansible.builtin.include_tasks: resolve_credentials.yml
+  tags:
+    - always
+
 - name: Ensure all needed vars are present
   ansible.builtin.include_tasks: assert.yml
   tags:
     - always
 
-- name: Fetch vSphere username from Vault or fallback
-  ansible.builtin.set_fact:
-    vmware_vsphere_username: >-
-      {{
-        lookup(
-          'community.hashi_vault.hashi_vault',
-          vmware_vsphere_vmware_username_lookup,
-          default=vmware_vsphere_username,
-        )
-      }}
+# Folder management is host-specific (folder_name can differ per VM),
+# so do not use run_once. Delegate behavior is handled by module_defaults.
+- name: Manage VM folder
+  ansible.builtin.include_tasks: manage_folder.yml
   tags:
-    - always
+    - manage_folder
 
-- name: Fetch vSphere password from Vault or fallback
-  ansible.builtin.set_fact:
-    vmware_vsphere_password: >-
-      {{
-        lookup(
-          'community.hashi_vault.hashi_vault',
-          vmware_vsphere_vmware_password_lookup,
-          default=vmware_vsphere_password,
-        )
-      }}
-  no_log: true
+# VM management (create/destroy). Keep separate tags for convenience.
+- name: Manage VM(s)
+  ansible.builtin.include_tasks: manage_vm.yml
   tags:
-    - always
-
-- name: Create VM folder
-  ansible.builtin.include_tasks: create_vm_folder.yml
-  when: not vmware_vsphere_destroy | bool
-  tags:
-    - create_vm_folder
-
-- name: Create VMs
-  ansible.builtin.include_tasks: create_vm.yml
-  when: not vmware_vsphere_destroy | bool
-  tags:
-    - create_vms
-
-- name: Destroy VMs
-  ansible.builtin.include_tasks: destroy_vm.yml
-  when: vmware_vsphere_destroy | bool
-  tags:
-    - destroy_vms
-    - destroy_all
-
-- name: Destroy VM folder
-  ansible.builtin.include_tasks: destroy_vm_folder.yml
-  when: vmware_vsphere_destroy | bool
-  tags:
-    - destroy_vm_folder
-    - destroy_all
+    - manage_vm

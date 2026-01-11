@@ -1,0 +1,37 @@
+---
+# tasks/manage_folder.yml
+#
+# Create or delete the VM folder for the current target host.
+# No run_once here, because folder_name can be host-specific.
+
+- name: Ensure VM folder present ({{ vmware_vsphere_folder_name }})
+  module_defaults:
+    group/vmware: "{{ vmware_vsphere_module_defaults_vmware_group }}"
+    community.vmware.vmware_guest: >-
+      {{ vmware_vsphere_module_defaults_vmware_guest }}
+  delegate_to: "{{ vmware_vsphere_delegate_to }}"
+  vmware.vmware.folder:
+    hostname: "{{ vmware_vsphere_hostname }}"
+    username: "{{ vmware_vsphere_username }}"
+    password: "{{ vmware_vsphere_password }}"
+    validate_certs: "{{ vmware_vsphere_validate_certs }}"
+    datacenter: "{{ vmware_vsphere_datacenter }}"
+    absolute_path: "{{ vmware_vsphere_folder_full_path }}"
+    state: present
+  when: not vmware_vsphere_destroy | bool
+
+- name: Ensure VM folder absent ({{ vmware_vsphere_folder_name }})
+  module_defaults:
+    group/vmware: "{{ vmware_vsphere_module_defaults_vmware_group }}"
+    community.vmware.vmware_guest: >-
+      {{ vmware_vsphere_module_defaults_vmware_guest }}
+  delegate_to: "{{ vmware_vsphere_delegate_to }}"
+  vmware.vmware.folder:
+    hostname: "{{ vmware_vsphere_hostname }}"
+    username: "{{ vmware_vsphere_username }}"
+    password: "{{ vmware_vsphere_password }}"
+    validate_certs: "{{ vmware_vsphere_validate_certs }}"
+    datacenter: "{{ vmware_vsphere_datacenter }}"
+    absolute_path: "{{ vmware_vsphere_folder_full_path }}"
+    state: absent
+  when: vmware_vsphere_destroy | bool

@@ -1,18 +1,54 @@
 ---
+# Force VMware API calls locally (inside the EE container)
+vmware_vsphere_delegate_to: localhost
+
+# Behaviour defaults
+vmware_vsphere_power_on: true
+vmware_vsphere_wait_for_ip: true
+vmware_vsphere_guest_ip_family: ipv4
+vmware_vsphere_nic_type: vmxnet3
+vmware_vsphere_disk_thin_provisioned: true
+
+# Sizing defaults
+vmware_vsphere_cpu_count: 2
+vmware_vsphere_memory_mb: 4096
+
+# Domain defaults (optionally defined elsewhere)
+vmware_vsphere_domain: "{{ domain_name | default('') }}"
+vmware_vsphere_dns_servers: "{{ dns_servers | default([]) }}"
+vmware_vsphere_ntp_servers: "{{ ntp_servers | default([]) }}"
+
+# Metadata defaults
+vmware_vsphere_custom_attributes: {}
+vmware_vsphere_tags: []
+vmware_vsphere_annotation: "Created by Ansible via Modulix"
+
+
 vmware_vsphere_parent_resource_pool: ""
 vmware_vsphere_folder_name: ""
 vmware_vsphere_validate_certs: true
 vmware_vsphere_folder_full_path: >-
-  /{{ vmware_vsphere_datacenter }}/vm/{{ vmware_vsphere_folder_name }}
+  {{
+    (
+      vmware_vsphere_folder_name | default('') | regex_search('^/')
+    )
+    | ternary(
+        vmware_vsphere_folder_name,
+        '/'+ vmware_vsphere_datacenter + '/vm/' + (vmware_vsphere_folder_name | default(''))
+      )
+  }}
 vmware_vsphere_folder_type: vm
 vmware_vsphere_destroy: false
 vmware_vsphere_guest_force: false
 vmware_vsphere_hardware_version: 15
-vmware_vsphere_guest_id: coreos64Guest
-vmware_vsphere_delegate_to: localhost
-vmware_vsphere_iso_path: "ISOs/agent-{{ cluster_id }}.x86_64.iso"
+vmware_vsphere_guest_id: ""
+# Safe default; allow cluster_id to be undefined without breaking module_defaults
+vmware_vsphere_iso_path: "ISOs/agent-{{ cluster_id | default('') }}.x86_64.iso"
 vmware_vsphere_username: ""
 vmware_vsphere_password: ""
+vmware_vsphere_template: ""
+vmware_vsphere_vmware_username_lookup: ""
+vmware_vsphere_vmware_password_lookup: ""
 vmware_vsphere_vmware_guest_hardware:
   num_cpus: 2
   memory_mb: 16384
@@ -33,14 +69,25 @@ vmware_vsphere_module_defaults_vmware_guest:
   force: "{{ vmware_vsphere_guest_force }}"
   guest_id: "{{ vmware_vsphere_guest_id }}"
   datastore: "{{ vmware_vsphere_vmware_guest_datastore }}"
-  cdrom:
-    - controller_number: 0
-      unit_number: 0
-      state: present
-      type: iso
-      iso_path: >-
-        [{{ vmware_vsphere_vmware_iso_datastore }}]
-        {{ vmware_vsphere_iso_path }}
+  cdrom: >-
+    {{
+      (
+        (vmware_vsphere_vmware_iso_datastore | default('') | length > 0)
+        and (vmware_vsphere_iso_path | default('') | length > 0)
+      )
+      | ternary(
+          [
+            {
+              'controller_number': 0,
+              'unit_number': 0,
+              'state': 'present',
+              'type': 'iso',
+              'iso_path': '[%s] %s' | format(vmware_vsphere_vmware_iso_datastore, vmware_vsphere_iso_path),
+            }
+          ],
+          []
+        )
+    }}
   hardware:
     version: "{{ vmware_vsphere_hardware_version }}"
   networks:
