@@ -8,10 +8,17 @@
 # Output facts:
 # - network_connections (unless already defined or overwrite enabled)
 # - net_lan_ifaces
+#
+# Notes:
+# - VLAN "parent" uses the trunk connection name (default "trunk-parent") so
+#   linux_system_roles.network can resolve the dependency correctly.
+# - Trunk parent often has no IP, so default its state to "present" (not "up")
+#   to avoid NetworkManager activation failures (ip-config-unavailable).
 # ---------------------------------------------------------------------------
 
 - name: Normalize role variables
   ansible.builtin.set_fact:
+    # Main switches
     _net_autogen_enabled: "{{ net_vlan_autogen_enabled | default(net_autogen_enabled, true) | default(true) | bool }}"
     _net_autogen_overwrite: >-
       {{
@@ -20,11 +27,45 @@
           | default(false)
           | bool
       }}
+
+    # Connection names (logical)
     _net_autogen_wan_connection_name: >-
       {{
         net_vlan_autogen_wan_connection_name
           | default(net_wan_connection_name, true)
           | default('wan')
+      }}
+    _net_autogen_admin_connection_name: >-
+      {{
+        net_vlan_autogen_admin_connection_name
+          | default(net_admin_connection_name, true)
+          | default('admin')
+      }}
+    _net_autogen_trunk_connection_name: >-
+      {{
+        net_vlan_autogen_trunk_connection_name
+          | default(net_trunk_connection_name, true)
+          | default('trunk-parent')
+      }}
+
+    # Trunk parent state: default "present" (safer than "up" without IP)
+    _net_autogen_trunk_parent_state: >-
+      {{
+        net_trunk_parent_state
+          | default(net_vlan_autogen_trunk_parent_state, true)
+          | default('present')
+      }}
+
+    # WAN config (DHCP vs static)
+    _net_autogen_wan_dhcp4: >-
+      {{
+        (
+          net_wan_dhcp4
+            if (net_wan_dhcp4 is defined)
+            else net_vlan_autogen_wan_dhcp4
+        )
+        | default(true)
+        | bool
       }}
     _net_autogen_wan_ip_cidr: >-
       {{
@@ -44,34 +85,27 @@
           | default(net_wan_dns, true)
           | default([], true)
       }}
-    _net_autogen_admin_connection_name: >-
-      {{
-        net_vlan_autogen_admin_connection_name
-          | default(net_admin_connection_name, true)
-          | default('admin')
-      }}
-    _net_autogen_trunk_connection_name: >-
-      {{
-        net_vlan_autogen_trunk_connection_name
-          | default(net_trunk_connection_name, true)
-          | default('trunk-parent')
-      }}
-    _net_autogen_wan_dhcp4: >-
-      {{
-        (
-          net_wan_dhcp4
-            if (net_wan_dhcp4 is defined)
-            else net_vlan_autogen_wan_dhcp4
-        )
-        | default(true)
-        | bool
-      }}
+
+    # ADMIN DNS + VLAN configs
     _net_autogen_admin_dns: "{{ net_vlan_autogen_admin_dns | default(net_admin_dns, true) | default([], true) }}"
     _net_autogen_vlan_configs: >-
       {{
         net_vlan_autogen_vlan_configs
           | default(net_vlan_configs, true)
           | default([], true)
+      }}
+  changed_when: false
+  tags: [always]
+
+- name: Derive VLAN activation state
+  ansible.builtin.set_fact:
+    _net_autogen_vlan_state: >-
+      {{
+        net_vlan_autogen_vlan_state
+          | default(
+              (_net_autogen_trunk_parent_state == 'up') | ternary('up', 'present'),
+              true
+            )
       }}
   changed_when: false
   tags: [always]
@@ -92,6 +126,7 @@
       - net_admin_gateway4 | default('') | length > 0
       - _net_autogen_vlan_configs is sequence
       - _net_autogen_vlan_configs | length > 0
+      - _net_autogen_trunk_parent_state in ['present', 'up']
       - (_net_autogen_wan_dhcp4) or (_net_autogen_wan_ip_cidr | default('') | length > 0)
     fail_msg: >-
       Missing required inputs for net_vlan_autogen on {{ inventory_hostname }}.
@@ -104,6 +139,9 @@
       - net_admin_gateway4
       - net_vlan_configs (list of objects with id + ip_cidr)
       - net_wan_ip_cidr (when DHCP is disabled)
+
+      Optional:
+      - net_trunk_parent_state: present|up (default: present)
   when:
     - _net_autogen_vlan_configs is defined
     - _net_autogen_vlan_configs | length > 0
@@ -130,7 +168,7 @@
             'parent': _net_autogen_trunk_connection_name,
             'vlan_id': (item.id | int),
             'autoconnect': true,
-            'state': 'up',
+            'state': _net_autogen_vlan_state,
             'ip': { 'address': [ item.ip_cidr ] }
           }
         ]
@@ -167,15 +205,17 @@
 
 - name: Build net_lan_ifaces + generated network_connections
   ansible.builtin.set_fact:
+    # ens36.4051, ens36.4052, ...
     _net_autogen_lan_ifaces: >-
       {{
         _net_autogen_vlan_configs
         | map(attribute='id')
         | map('int')
         | map('string')
-        | map('regex_replace', '^', net_trunk_parent ~ '.')
+        | map('regex_replace', '^(.*)$', net_trunk_parent ~ '.\\1')
         | list
       }}
+
     _net_autogen_network_connections: >-
       {{
         [
@@ -204,7 +244,7 @@
             'type': 'ethernet',
             'interface_name': net_trunk_parent,
             'autoconnect': true,
-            'state': 'up',
+            'state': _net_autogen_trunk_parent_state,
             'ip': { 'dhcp4': false }
           }
         ] + (_net_vlan_network_connections | default([]))
@@ -230,6 +270,7 @@
     msg:
       - "net_lan_ifaces: {{ net_lan_ifaces | default([]) }}"
       - "network_connections count: {{ (network_connections | default([])) | length }}"
+      - "trunk parent state: {{ _net_autogen_trunk_parent_state }}"
   when:
     - _net_autogen_vlan_configs is defined
     - _net_autogen_vlan_configs | length > 0

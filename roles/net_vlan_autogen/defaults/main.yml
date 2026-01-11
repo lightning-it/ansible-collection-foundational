@@ -21,6 +21,10 @@ net_vlan_autogen_wan_connection_name: wan
 net_vlan_autogen_admin_connection_name: admin
 net_vlan_autogen_trunk_connection_name: trunk-parent
 
+# Optional VLAN activation state (up|present). Defaults to "up" only when the
+# trunk parent state is "up", otherwise "present".
+net_vlan_autogen_vlan_state: ""
+
 # WAN behavior (DHCP by default)
 net_vlan_autogen_wan_dhcp4: true
 net_vlan_autogen_wan_ip_cidr: ""

@@ -33,6 +33,12 @@ Optional:
 - `net_vlan_autogen_wan_connection_name` (default `wan`)
 - `net_vlan_autogen_admin_connection_name` (default `admin`)
 - `net_vlan_autogen_trunk_connection_name` (default `trunk-parent`)
+- `net_vlan_autogen_vlan_state` (up|present, default derived from trunk parent state)
+
+Notes:
+
+- VLAN subinterfaces reference the trunk **connection name** (not just the device, e.g., `trunk-parent`) so `fedora.linux_system_roles.network` can resolve the parent profile.
+- VLANs default to `present` when the trunk parent is `present` to avoid activation errors; set the trunk parent state to `up` (or override `net_vlan_autogen_vlan_state`) to activate VLANs.
 
 Example `net_vlan_autogen_vlan_configs`:
 
