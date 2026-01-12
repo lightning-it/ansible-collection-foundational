@@ -50,9 +50,9 @@
 - name: Validate role counts (0..1 each)
   ansible.builtin.assert:
     that:
-      - (_net_ifaces | selectattr('role','equalto','uplink') | list | length) <= 1
-      - (_net_ifaces | selectattr('role','equalto','mgmt') | list | length) <= 1
-      - (_net_ifaces | selectattr('role','equalto','trunk') | list | length) <= 1
+      - (_net_ifaces | selectattr('role', 'equalto', 'uplink') | list | length) <= 1
+      - (_net_ifaces | selectattr('role', 'equalto', 'mgmt') | list | length) <= 1
+      - (_net_ifaces | selectattr('role', 'equalto', 'trunk') | list | length) <= 1
     fail_msg: >-
       net_ifaces must not define a role more than once (uplink/mgmt/trunk).
       Got roles: {{ _net_ifaces | map(attribute='role') | list }}
@@ -60,12 +60,24 @@
 
 - name: Select net_ifaces role entries
   ansible.builtin.set_fact:
-    _net_uplink_list: "{{ _net_ifaces | selectattr('role','equalto','uplink') | list }}"
-    _net_mgmt_list: "{{ _net_ifaces | selectattr('role','equalto','mgmt') | list }}"
-    _net_trunk_list: "{{ _net_ifaces | selectattr('role','equalto','trunk') | list }}"
-    _net_iface_uplink: "{{ (_net_ifaces | selectattr('role','equalto','uplink') | list | first) | default({}, true) }}"
-    _net_iface_mgmt: "{{ (_net_ifaces | selectattr('role','equalto','mgmt') | list | first) | default({}, true) }}"
-    _net_iface_trunk: "{{ (_net_ifaces | selectattr('role','equalto','trunk') | list | first) | default({}, true) }}"
+    _net_uplink_list: "{{ _net_ifaces | selectattr('role', 'equalto', 'uplink') | list }}"
+    _net_mgmt_list: "{{ _net_ifaces | selectattr('role', 'equalto', 'mgmt') | list }}"
+    _net_trunk_list: "{{ _net_ifaces | selectattr('role', 'equalto', 'trunk') | list }}"
+    _net_iface_uplink: >-
+      {{
+        (_net_ifaces | selectattr('role', 'equalto', 'uplink') | list | first)
+        | default({}, true)
+      }}
+    _net_iface_mgmt: >-
+      {{
+        (_net_ifaces | selectattr('role', 'equalto', 'mgmt') | list | first)
+        | default({}, true)
+      }}
+    _net_iface_trunk: >-
+      {{
+        (_net_ifaces | selectattr('role', 'equalto', 'trunk') | list | first)
+        | default({}, true)
+      }}
   changed_when: false
   tags: [always]
 
@@ -89,7 +101,12 @@
     _net_autogen_trunk_connection_name: "{{ net_vlan_autogen_trunk_connection_name | default('trunk-parent') }}"
 
     # Trunk parent state
-    _net_autogen_trunk_parent_state: "{{ net_trunk_parent_state | default(net_vlan_autogen_trunk_parent_state, true) | default('present') }}"
+    _net_autogen_trunk_parent_state: >-
+      {{
+        net_trunk_parent_state
+        | default(net_vlan_autogen_trunk_parent_state, true)
+        | default('present')
+      }}
 
     # Resolve interface names (empty if role not present)
     _net_autogen_wan_iface: "{{ _net_iface_uplink.iface | default('', true) }}"
@@ -104,7 +121,11 @@
             if (_net_has_uplink and (_net_iface_uplink.dhcp4 is defined))
             else (
               false
-                if (_net_has_uplink and (_net_iface_uplink.ipv4 is defined) and ((_net_iface_uplink.ipv4 | string) | length > 0))
+                if (
+                  _net_has_uplink
+                  and (_net_iface_uplink.ipv4 is defined)
+                  and ((_net_iface_uplink.ipv4 | string) | length > 0)
+                )
                 else true
             )
         ) | bool
@@ -172,7 +193,9 @@
 
       # vlan constraints (only if provided)
       - _net_autogen_vlan_configs is sequence
-      - (_net_autogen_vlan_configs | selectattr('ip_cidr','defined') | list | length) == (_net_autogen_vlan_configs | length)
+      - >-
+          (_net_autogen_vlan_configs | selectattr('ip_cidr', 'defined') | list | length)
+          == (_net_autogen_vlan_configs | length)
     fail_msg: >-
       Missing required inputs for net_vlan_autogen on {{ inventory_hostname }}.
       Provided roles: {{ _net_ifaces | map(attribute='role') | list }}.
