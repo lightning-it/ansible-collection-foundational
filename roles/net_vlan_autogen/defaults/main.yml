@@ -1,44 +1,9 @@
 ---
-# ---------------------------------------------------------------------------
-# lit.foundational.net_vlan_autogen (defaults)
-#
-# This role generates facts only:
-# - network_connections (for fedora.linux_system_roles.network)
-# - net_lan_ifaces      (e.g., for firewall zone bindings)
-#
-# It does NOT apply network itself.
-# ---------------------------------------------------------------------------
-
-# Enable/disable the autogen logic
 net_vlan_autogen_enabled: true
-
-# If false (default): do NOT overwrite existing network_connections.
-# If true: overwrite network_connections with the generated list.
 net_vlan_autogen_overwrite: false
 
-# Optional naming
-net_vlan_autogen_wan_connection_name: wan
-net_vlan_autogen_admin_connection_name: admin
-net_vlan_autogen_trunk_connection_name: trunk-parent
+net_vlan_autogen_wan_connection_name: "wan"
+net_vlan_autogen_admin_connection_name: "admin"
+net_vlan_autogen_trunk_connection_name: "trunk-parent"
 
-# Optional VLAN activation state (up|present). Defaults to "up" only when the
-# trunk parent state is "up", otherwise "present".
-net_vlan_autogen_vlan_state: ""
-
-# WAN behavior (DHCP by default)
-net_vlan_autogen_wan_dhcp4: true
-net_vlan_autogen_wan_ip_cidr: ""
-net_vlan_autogen_wan_gateway4: ""
-net_vlan_autogen_wan_dns: []
-
-# Admin DNS list (optional)
-net_vlan_autogen_admin_dns: []
-
-# VLAN configs (source of truth)
-# Example:
-# net_vlan_autogen_vlan_configs:
-#   - id: 4051
-#     ip_cidr: "10.10.51.1/24"
-#   - id: 4052
-#     ip_cidr: "10.10.52.1/24"
-net_vlan_autogen_vlan_configs: []
+net_vlan_autogen_trunk_parent_state: "present"

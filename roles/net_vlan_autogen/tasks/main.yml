@@ -1,112 +1,151 @@
 ---
 # ---------------------------------------------------------------------------
-# Build network_connections + net_lan_ifaces from:
-# - net_wan_iface, net_admin_iface, net_trunk_parent
-# - net_admin_ip_cidr, net_admin_gateway4, net_admin_dns
-# - net_vlan_configs: [{id, ip_cidr}, ...]
+# Build network_connections + net_lan_ifaces from net_ifaces (profile-free).
+#
+# net_ifaces:
+#   - role: uplink   (0..1)
+#     iface: ens33
+#     dhcp4: true|false (optional)
+#     ipv4: 167.235.214.60/29 (optional if dhcp4=true)
+#     gw4:  167.235.214.57    (optional)
+#     dns:  [1.1.1.1]         (optional)
+#   - role: mgmt     (0..1)
+#     iface: ens34
+#     ipv4: 10.10.30.1/24
+#     gw4:  10.10.30.1         (optional; omit for firewalls that are GW)
+#     dns:  [...]              (optional)
+#   - role: trunk    (0..1)
+#     iface: ens36
+#     vlans:                    (optional; may be empty)
+#       - id: 171
+#         ipv4: 10.10.10.1/24
 #
 # Output facts:
 # - network_connections (unless already defined or overwrite enabled)
-# - net_lan_ifaces
-#
-# Notes:
-# - VLAN "parent" uses the trunk connection name (default "trunk-parent") so
-#   linux_system_roles.network can resolve the dependency correctly.
-# - Trunk parent often has no IP, so default its state to "present" (not "up")
-#   to avoid NetworkManager activation failures (ip-config-unavailable).
+# - net_lan_ifaces (VLAN subinterfaces, may be empty)
 # ---------------------------------------------------------------------------
 
-- name: Normalize role variables
+- name: Initialize net_ifaces input model
+  ansible.builtin.set_fact:
+    _net_ifaces: "{{ net_ifaces | default([], true) }}"
+  changed_when: false
+  tags: [always]
+
+- name: Validate net_ifaces is present
+  ansible.builtin.assert:
+    that:
+      - _net_ifaces | length > 0
+    fail_msg: "net_ifaces must be provided and contain at least one entry."
+  tags: [always]
+
+- name: Validate net_ifaces roles are allowed
+  ansible.builtin.assert:
+    that:
+      - (_net_ifaces | map(attribute='role') | difference(['uplink','mgmt','trunk']) | length) == 0
+    fail_msg: >-
+      net_ifaces contains unsupported roles. Allowed: uplink, mgmt, trunk.
+      Got: {{ _net_ifaces | map(attribute='role') | list }}
+  tags: [always]
+
+- name: Validate role counts (0..1 each)
+  ansible.builtin.assert:
+    that:
+      - (_net_ifaces | selectattr('role','equalto','uplink') | list | length) <= 1
+      - (_net_ifaces | selectattr('role','equalto','mgmt') | list | length) <= 1
+      - (_net_ifaces | selectattr('role','equalto','trunk') | list | length) <= 1
+    fail_msg: >-
+      net_ifaces must not define a role more than once (uplink/mgmt/trunk).
+      Got roles: {{ _net_ifaces | map(attribute='role') | list }}
+  tags: [always]
+
+- name: Select net_ifaces role entries
+  ansible.builtin.set_fact:
+    _net_uplink_list: "{{ _net_ifaces | selectattr('role','equalto','uplink') | list }}"
+    _net_mgmt_list: "{{ _net_ifaces | selectattr('role','equalto','mgmt') | list }}"
+    _net_trunk_list: "{{ _net_ifaces | selectattr('role','equalto','trunk') | list }}"
+    _net_iface_uplink: "{{ (_net_ifaces | selectattr('role','equalto','uplink') | list | first) | default({}, true) }}"
+    _net_iface_mgmt: "{{ (_net_ifaces | selectattr('role','equalto','mgmt') | list | first) | default({}, true) }}"
+    _net_iface_trunk: "{{ (_net_ifaces | selectattr('role','equalto','trunk') | list | first) | default({}, true) }}"
+  changed_when: false
+  tags: [always]
+
+- name: Set presence flags
+  ansible.builtin.set_fact:
+    _net_has_uplink: "{{ (_net_uplink_list | length) > 0 }}"
+    _net_has_mgmt: "{{ (_net_mgmt_list | length) > 0 }}"
+    _net_has_trunk: "{{ (_net_trunk_list | length) > 0 }}"
+  changed_when: false
+  tags: [always]
+
+- name: Normalize derived variables
   ansible.builtin.set_fact:
     # Main switches
-    _net_autogen_enabled: "{{ net_vlan_autogen_enabled | default(net_autogen_enabled, true) | default(true) | bool }}"
-    _net_autogen_overwrite: >-
-      {{
-        net_vlan_autogen_overwrite
-          | default(net_autogen_overwrite, true)
-          | default(false)
-          | bool
-      }}
+    _net_autogen_enabled: "{{ net_vlan_autogen_enabled | default(true) | bool }}"
+    _net_autogen_overwrite: "{{ net_vlan_autogen_overwrite | default(false) | bool }}"
 
     # Connection names (logical)
-    _net_autogen_wan_connection_name: >-
-      {{
-        net_vlan_autogen_wan_connection_name
-          | default(net_wan_connection_name, true)
-          | default('wan')
-      }}
-    _net_autogen_admin_connection_name: >-
-      {{
-        net_vlan_autogen_admin_connection_name
-          | default(net_admin_connection_name, true)
-          | default('admin')
-      }}
-    _net_autogen_trunk_connection_name: >-
-      {{
-        net_vlan_autogen_trunk_connection_name
-          | default(net_trunk_connection_name, true)
-          | default('trunk-parent')
-      }}
+    _net_autogen_wan_connection_name: "{{ net_vlan_autogen_wan_connection_name | default('wan') }}"
+    _net_autogen_admin_connection_name: "{{ net_vlan_autogen_admin_connection_name | default('admin') }}"
+    _net_autogen_trunk_connection_name: "{{ net_vlan_autogen_trunk_connection_name | default('trunk-parent') }}"
 
-    # Trunk parent state: default "present" (safer than "up" without IP)
-    _net_autogen_trunk_parent_state: >-
-      {{
-        net_trunk_parent_state
-          | default(net_vlan_autogen_trunk_parent_state, true)
-          | default('present')
-      }}
+    # Trunk parent state
+    _net_autogen_trunk_parent_state: "{{ net_trunk_parent_state | default(net_vlan_autogen_trunk_parent_state, true) | default('present') }}"
 
-    # WAN config (DHCP vs static)
+    # Resolve interface names (empty if role not present)
+    _net_autogen_wan_iface: "{{ _net_iface_uplink.iface | default('', true) }}"
+    _net_autogen_admin_iface: "{{ _net_iface_mgmt.iface | default('', true) }}"
+    _net_autogen_trunk_parent: "{{ _net_iface_trunk.iface | default('', true) }}"
+
+    # WAN config (only meaningful if uplink exists)
     _net_autogen_wan_dhcp4: >-
       {{
         (
-          net_wan_dhcp4
-            if (net_wan_dhcp4 is defined)
-            else net_vlan_autogen_wan_dhcp4
-        )
-        | default(true)
-        | bool
+          _net_iface_uplink.dhcp4
+            if (_net_has_uplink and (_net_iface_uplink.dhcp4 is defined))
+            else (
+              false
+                if (_net_has_uplink and (_net_iface_uplink.ipv4 is defined) and ((_net_iface_uplink.ipv4 | string) | length > 0))
+                else true
+            )
+        ) | bool
       }}
-    _net_autogen_wan_ip_cidr: >-
-      {{
-        net_vlan_autogen_wan_ip_cidr
-          | default(net_wan_ip_cidr, true)
-          | default('', true)
-      }}
-    _net_autogen_wan_gateway4: >-
-      {{
-        net_vlan_autogen_wan_gateway4
-          | default(net_wan_gateway4, true)
-          | default('', true)
-      }}
-    _net_autogen_wan_dns: >-
-      {{
-        net_vlan_autogen_wan_dns
-          | default(net_wan_dns, true)
-          | default([], true)
-      }}
+    _net_autogen_wan_ip_cidr: "{{ _net_iface_uplink.ipv4 | default('', true) }}"
+    _net_autogen_wan_gateway4: "{{ _net_iface_uplink.gw4 | default('', true) }}"
+    _net_autogen_wan_dns: "{{ _net_iface_uplink.dns | default([], true) }}"
 
-    # ADMIN DNS + VLAN configs
-    _net_autogen_admin_dns: "{{ net_vlan_autogen_admin_dns | default(net_admin_dns, true) | default([], true) }}"
+    # MGMT config (only meaningful if mgmt exists)
+    _net_autogen_admin_ip_cidr: "{{ _net_iface_mgmt.ipv4 | default('', true) }}"
+    _net_autogen_admin_gateway4: "{{ _net_iface_mgmt.gw4 | default('', true) }}"
+    _net_autogen_admin_dns: "{{ _net_iface_mgmt.dns | default([], true) }}"
+  changed_when: false
+  tags: [always]
+
+- name: Initialize VLAN configs from trunk (may be empty / trunk may be absent)
+  ansible.builtin.set_fact:
+    _net_autogen_vlan_configs: []
+  changed_when: false
+  tags: [always]
+
+- name: Append VLAN configs from trunk.vlans (safe if absent/empty)
+  ansible.builtin.set_fact:
     _net_autogen_vlan_configs: >-
       {{
-        net_vlan_autogen_vlan_configs
-          | default(net_vlan_configs, true)
-          | default([], true)
+        _net_autogen_vlan_configs + [
+          {
+            'id': (item.id | int),
+            'ip_cidr': (item.ipv4 | default(item.ip_cidr, true))
+          }
+        ]
       }}
+  loop: "{{ (_net_iface_trunk.vlans | default([], true)) }}"
+  loop_control:
+    label: "{{ item.id | default('unknown') }}"
   changed_when: false
   tags: [always]
 
 - name: Derive VLAN activation state
   ansible.builtin.set_fact:
-    _net_autogen_vlan_state: >-
-      {{
-        net_vlan_autogen_vlan_state
-          | default(
-              (_net_autogen_trunk_parent_state == 'up') | ternary('up', 'present'),
-              true
-            )
-      }}
+    _net_autogen_vlan_state: "{{ (_net_autogen_trunk_parent_state == 'up') | ternary('up', 'present') }}"
   changed_when: false
   tags: [always]
 
@@ -115,48 +154,37 @@
   when: not _net_autogen_enabled
   tags: [always]
 
-# Only run if there is something to generate
-- name: Validate inputs (only if VLAN configs are provided)
+- name: Validate inputs (profile-free)
   ansible.builtin.assert:
     that:
-      - net_wan_iface | default('') | length > 0
-      - net_admin_iface | default('') | length > 0
-      - net_trunk_parent | default('') | length > 0
-      - net_admin_ip_cidr | default('') | length > 0
-      - net_admin_gateway4 | default('') | length > 0
-      - _net_autogen_vlan_configs is sequence
-      - _net_autogen_vlan_configs | length > 0
       - _net_autogen_trunk_parent_state in ['present', 'up']
-      - (_net_autogen_wan_dhcp4) or (_net_autogen_wan_ip_cidr | default('') | length > 0)
+
+      # uplink constraints (only if uplink present)
+      - (not _net_has_uplink) or (_net_autogen_wan_iface | length > 0)
+      - (not _net_has_uplink) or (_net_autogen_wan_dhcp4 or (_net_autogen_wan_ip_cidr | length > 0))
+
+      # mgmt constraints (only if mgmt present)
+      - (not _net_has_mgmt) or (_net_autogen_admin_iface | length > 0)
+      - (not _net_has_mgmt) or (_net_autogen_admin_ip_cidr | length > 0)
+
+      # trunk constraints (only if trunk present)
+      - (not _net_has_trunk) or (_net_autogen_trunk_parent | length > 0)
+
+      # vlan constraints (only if provided)
+      - _net_autogen_vlan_configs is sequence
+      - (_net_autogen_vlan_configs | selectattr('ip_cidr','defined') | list | length) == (_net_autogen_vlan_configs | length)
     fail_msg: >-
       Missing required inputs for net_vlan_autogen on {{ inventory_hostname }}.
-
-      Required:
-      - net_wan_iface
-      - net_admin_iface
-      - net_trunk_parent
-      - net_admin_ip_cidr
-      - net_admin_gateway4
-      - net_vlan_configs (list of objects with id + ip_cidr)
-      - net_wan_ip_cidr (when DHCP is disabled)
-
-      Optional:
-      - net_trunk_parent_state: present|up (default: present)
-  when:
-    - _net_autogen_vlan_configs is defined
-    - _net_autogen_vlan_configs | length > 0
+      Provided roles: {{ _net_ifaces | map(attribute='role') | list }}.
   tags: [always]
 
 - name: Initialize VLAN network_connections list
   ansible.builtin.set_fact:
     _net_vlan_network_connections: []
-  when:
-    - _net_autogen_vlan_configs is defined
-    - _net_autogen_vlan_configs | length > 0
   changed_when: false
   tags: [always]
 
-- name: Append VLAN subinterfaces
+- name: Append VLAN subinterfaces (only if trunk exists; loop safe when VLAN list is empty)
   ansible.builtin.set_fact:
     _net_vlan_network_connections: >-
       {{
@@ -164,7 +192,7 @@
           {
             'name': 'vlan' ~ (item.id | string),
             'type': 'vlan',
-            'interface_name': net_trunk_parent ~ '.' ~ (item.id | string),
+            'interface_name': _net_autogen_trunk_parent ~ '.' ~ (item.id | string),
             'parent': _net_autogen_trunk_connection_name,
             'vlan_id': (item.id | int),
             'autoconnect': true,
@@ -176,13 +204,11 @@
   loop: "{{ _net_autogen_vlan_configs }}"
   loop_control:
     label: "{{ item.id }}"
-  when:
-    - _net_autogen_vlan_configs is defined
-    - _net_autogen_vlan_configs | length > 0
+  when: _net_has_trunk
   changed_when: false
   tags: [always]
 
-- name: Build WAN IP dict
+- name: Build WAN IP dict (only if uplink exists)
   ansible.builtin.set_fact:
     _net_autogen_wan_ip: >-
       {{
@@ -200,78 +226,99 @@
               )
           )
       }}
+  when: _net_has_uplink
   changed_when: false
   tags: [always]
 
-- name: Build net_lan_ifaces + generated network_connections
+- name: Build net_lan_ifaces (VLAN subif names; may be empty)
   ansible.builtin.set_fact:
-    # ens36.4051, ens36.4052, ...
     _net_autogen_lan_ifaces: >-
       {{
-        _net_autogen_vlan_configs
+        (_net_autogen_vlan_configs | default([]))
         | map(attribute='id')
-        | map('int')
         | map('string')
-        | map('regex_replace', '^(.*)$', net_trunk_parent ~ '.\\1')
+        | map('regex_replace', '^', _net_autogen_trunk_parent ~ '.')
         | list
       }}
+  when: _net_has_trunk
+  changed_when: false
+  tags: [always]
 
+- name: Build generated network_connections (profile-free)
+  ansible.builtin.set_fact:
     _net_autogen_network_connections: >-
       {{
-        [
-          {
-            'name': _net_autogen_wan_connection_name,
-            'type': 'ethernet',
-            'interface_name': net_wan_iface,
-            'autoconnect': true,
-            'state': 'up',
-            'ip': _net_autogen_wan_ip
-          },
-          {
-            'name': _net_autogen_admin_connection_name,
-            'type': 'ethernet',
-            'interface_name': net_admin_iface,
-            'autoconnect': true,
-            'state': 'up',
-            'ip': {
-              'address': [ net_admin_ip_cidr ],
-              'gateway4': net_admin_gateway4,
-              'dns': _net_autogen_admin_dns
-            }
-          },
-          {
-            'name': _net_autogen_trunk_connection_name,
-            'type': 'ethernet',
-            'interface_name': net_trunk_parent,
-            'autoconnect': true,
-            'state': _net_autogen_trunk_parent_state,
-            'ip': { 'dhcp4': false }
-          }
-        ] + (_net_vlan_network_connections | default([]))
+        ([])
+
+        + (
+            _net_has_uplink
+            | ternary(
+                [
+                  {
+                    'name': _net_autogen_wan_connection_name,
+                    'type': 'ethernet',
+                    'interface_name': _net_autogen_wan_iface,
+                    'autoconnect': true,
+                    'state': 'up',
+                    'ip': _net_autogen_wan_ip
+                  }
+                ],
+                []
+              )
+          )
+
+        + (
+            _net_has_mgmt
+            | ternary(
+                [
+                  {
+                    'name': _net_autogen_admin_connection_name,
+                    'type': 'ethernet',
+                    'interface_name': _net_autogen_admin_iface,
+                    'autoconnect': true,
+                    'state': 'up',
+                    'ip': (
+                      { 'address': [ _net_autogen_admin_ip_cidr ] }
+                      | combine(
+                          (_net_autogen_admin_gateway4 | default('') | length > 0)
+                            | ternary({ 'gateway4': _net_autogen_admin_gateway4 }, {})
+                        )
+                      | combine(
+                          (_net_autogen_admin_dns | default([]) | length > 0)
+                            | ternary({ 'dns': _net_autogen_admin_dns }, {})
+                        )
+                    )
+                  }
+                ],
+                []
+              )
+          )
+
+        + (
+            _net_has_trunk
+            | ternary(
+                [
+                  {
+                    'name': _net_autogen_trunk_connection_name,
+                    'type': 'ethernet',
+                    'interface_name': _net_autogen_trunk_parent,
+                    'autoconnect': true,
+                    'state': _net_autogen_trunk_parent_state,
+                    'ip': { 'dhcp4': false }
+                  }
+                ],
+                []
+              )
+          )
+
+        + (_net_vlan_network_connections | default([]))
       }}
-  when:
-    - _net_autogen_vlan_configs is defined
-    - _net_autogen_vlan_configs | length > 0
   changed_when: false
   tags: [always]
 
 - name: Publish generated facts (unless network_connections already set)
   ansible.builtin.set_fact:
-    net_lan_ifaces: "{{ _net_autogen_lan_ifaces }}"
+    net_lan_ifaces: "{{ (_net_autogen_lan_ifaces | default([])) }}"
     network_connections: "{{ _net_autogen_network_connections }}"
-  when:
-    - _net_autogen_vlan_configs is defined
-    - _net_autogen_vlan_configs | length > 0
-    - _net_autogen_overwrite or (network_connections is not defined)
+  when: _net_autogen_overwrite or (network_connections is not defined)
   tags: [always]
-
-- name: Debug summary (optional)
-  ansible.builtin.debug:
-    msg:
-      - "net_lan_ifaces: {{ net_lan_ifaces | default([]) }}"
-      - "network_connections count: {{ (network_connections | default([])) | length }}"
-      - "trunk parent state: {{ _net_autogen_trunk_parent_state }}"
-  when:
-    - _net_autogen_vlan_configs is defined
-    - _net_autogen_vlan_configs | length > 0
-  tags: [never, debug]
