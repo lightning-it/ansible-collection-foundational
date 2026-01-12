@@ -9,15 +9,15 @@ platforms:
   - name: net_vlan_autogen
     image: quay.io/rockylinux/rockylinux:9
     pre_build_image: true
-    groups:
-      net_vlan_autogen: {}
 
 provisioner:
   name: ansible
   inventory:
     hosts:
-      net_vlan_autogen:
-        ansible_connection: docker
+      all:
+        hosts:
+          net_vlan_autogen:
+            ansible_connection: docker
   playbooks:
     converge: converge.yml
 
