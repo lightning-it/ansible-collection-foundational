@@ -1,0 +1,59 @@
+---
+- name: Assert required inputs
+  ansible.builtin.assert:
+    that:
+      - oob_baseuri | length > 0
+      - oob_user | length > 0
+      - oob_password | length > 0
+    fail_msg: "oob_baseuri/oob_user/oob_password müssen gesetzt sein."
+
+- name: Normalize baseuri (prepend https:// if missing)
+  ansible.builtin.set_fact:
+    _oob_baseuri_effective: >-
+      {{
+        (oob_baseuri if (oob_baseuri is match('^https?://')) else ('https://' ~ oob_baseuri))
+      }}
+
+# Auto-discovery if needed
+- name: Ensure Redfish IDs are known (include inventory role if needed)
+  ansible.builtin.include_role:
+    name: lit.foundational.oob_redfish_inventory
+  vars:
+    oob_baseuri: "{{ _oob_baseuri_effective }}"
+    oob_user: "{{ oob_user }}"
+    oob_password: "{{ oob_password }}"
+    oob_validate_certs: "{{ oob_validate_certs }}"
+    oob_ca_path: "{{ oob_ca_path }}"
+    oob_timeout: "{{ oob_timeout }}"
+    oob_no_log: "{{ oob_no_log }}"
+    oob_debug: false
+    # keep possible overrides
+    oob_system_id: "{{ oob_system_id }}"
+    oob_manager_id: "{{ oob_manager_id }}"
+    oob_chassis_id: "{{ oob_chassis_id }}"
+  when: >
+    (oob_system_id is not defined) or (oob_system_id == 'auto') or
+    (oob_manager_id is not defined) or (oob_manager_id == 'auto') or
+    (oob_chassis_id is not defined) or (oob_chassis_id == 'auto')
+
+- name: Require at least one action
+  ansible.builtin.assert:
+    that:
+      - (oob_power_action | length > 0) or (oob_boot_target | length > 0) or (oob_virtual_media_action | length > 0) or (oob_boot_disable_override | bool)
+    fail_msg: "Keine Aktion gesetzt. Setze oob_power_action oder oob_boot_target oder oob_virtual_media_action (oder oob_boot_disable_override=true)."
+
+- name: Power action (optional)
+  ansible.builtin.include_tasks: power.yml
+  when: oob_power_action | length > 0
+
+- name: Boot override disable (optional)
+  ansible.builtin.include_tasks: boot_disable.yml
+  when: oob_boot_disable_override | bool
+
+- name: Boot override set (optional)
+  ansible.builtin.include_tasks: boot.yml
+  when: oob_boot_target | length > 0
+
+- name: Virtual media (optional)
+  ansible.builtin.include_tasks: virtual_media.yml
+  when: oob_virtual_media_action | length > 0

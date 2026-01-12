@@ -1,0 +1,50 @@
+---
+- name: Normalize boot target (friendly -> Redfish values)
+  ansible.builtin.set_fact:
+    _oob_bootdevice: >-
+      {{
+        {
+          'pxe': 'Pxe',
+          'cd': 'Cd',
+          'dvd': 'Cd',
+          'usb': 'Usb',
+          'hdd': 'Hdd',
+          'bios': 'BiosSetup',
+          'biossetup': 'BiosSetup',
+          'uefitarget': 'UefiTarget',
+          'uefibootnext': 'UefiBootNext'
+        }.get(oob_boot_target | lower, oob_boot_target)
+      }}
+
+- name: Validate boot target requirements
+  ansible.builtin.assert:
+    that:
+      - _oob_bootdevice | length > 0
+      - (_oob_bootdevice != 'UefiTarget') or (oob_uefi_target | length > 0)
+      - (_oob_bootdevice != 'UefiBootNext') or (oob_boot_next | length > 0)
+    fail_msg: >
+      Boot target requires extra vars:
+      UefiTarget => oob_uefi_target,
+      UefiBootNext => oob_boot_next.
+
+- name: Pick boot command (one-time vs persistent)
+  ansible.builtin.set_fact:
+    _oob_boot_command: "{{ (oob_boot_persistent | bool) | ternary('EnableContinuousBootOverride','SetOneTimeBoot') }}"
+
+- name: Set boot override
+  community.general.redfish_command:
+    category: Systems
+    command: "{{ _oob_boot_command }}"
+    resource_id: "{{ oob_system_id }}"
+    bootdevice: "{{ _oob_bootdevice }}"
+    boot_override_mode: "{{ oob_boot_override_mode }}"
+    boot_next: "{{ (oob_boot_next | length > 0) | ternary(oob_boot_next, omit) }}"
+    uefi_target: "{{ (oob_uefi_target | length > 0) | ternary(oob_uefi_target, omit) }}"
+    baseuri: "{{ _oob_baseuri_effective }}"
+    username: "{{ oob_user }}"
+    password: "{{ oob_password }}"
+    timeout: "{{ oob_timeout }}"
+    validate_certs: "{{ oob_validate_certs }}"
+    ca_path: "{{ (oob_ca_path | length > 0) | ternary(oob_ca_path, omit) }}"
+  register: _rf_boot
+  no_log: "{{ oob_no_log }}"

@@ -1,0 +1,42 @@
+---
+- name: Validate power action
+  ansible.builtin.assert:
+    that:
+      - (oob_power_action | lower) in ["on","off","force_off","reboot","graceful_shutdown","graceful_restart","force_restart"]
+    fail_msg: "Unsupported oob_power_action='{{ oob_power_action }}'."
+
+- name: Map power action to Redfish command
+  ansible.builtin.set_fact:
+    _oob_power_command: >-
+      {{
+        {
+          'on': 'PowerOn',
+          'off': 'PowerForceOff',
+          'force_off': 'PowerForceOff',
+          'reboot': 'PowerReboot',
+          'graceful_shutdown': 'PowerGracefulShutdown',
+          'graceful_restart': 'PowerGracefulRestart',
+          'force_restart': 'PowerForceRestart'
+        }[oob_power_action | lower]
+      }}
+
+- name: Execute power command
+  community.general.redfish_command:
+    category: Systems
+    command: "{{ _oob_power_command }}"
+    resource_id: "{{ oob_system_id }}"
+    baseuri: "{{ _oob_baseuri_effective }}"
+    username: "{{ oob_user }}"
+    password: "{{ oob_password }}"
+    timeout: "{{ oob_timeout }}"
+    validate_certs: "{{ oob_validate_certs }}"
+    ca_path: "{{ (oob_ca_path | length > 0) | ternary(oob_ca_path, omit) }}"
+    wait: "{{ oob_power_wait | bool }}"
+    wait_timeout: "{{ oob_power_wait_timeout }}"
+  register: _rf_power
+  no_log: "{{ oob_no_log }}"
+
+- name: Debug power result
+  ansible.builtin.debug:
+    var: _rf_power.msg
+  when: oob_debug | bool

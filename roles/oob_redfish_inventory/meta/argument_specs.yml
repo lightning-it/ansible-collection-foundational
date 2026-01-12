@@ -1,0 +1,41 @@
+---
+argument_specs:
+  main:
+    short_description: Discover Redfish IDs and basic inventory.
+    options:
+      oob_baseuri:
+        type: str
+        required: false
+      oob_user:
+        type: str
+        required: true
+      oob_password:
+        type: str
+        required: true
+      oob_validate_certs:
+        type: bool
+        default: false
+      oob_ca_path:
+        type: str
+        required: false
+      oob_timeout:
+        type: int
+        default: 60
+      oob_check_availability:
+        type: bool
+        default: true
+      oob_system_id:
+        type: str
+        default: "auto"
+      oob_manager_id:
+        type: str
+        default: "auto"
+      oob_chassis_id:
+        type: str
+        default: "auto"
+      oob_no_log:
+        type: bool
+        default: true
+      oob_debug:
+        type: bool
+        default: false

@@ -1,0 +1,11 @@
+---
+galaxy_info:
+  role_name: oob_redfish_inventory
+  author: lit
+  description: "Discover Redfish resource IDs (System/Manager/Chassis) and basic inventory facts"
+  license: GPL-3.0-or-later
+  min_ansible_version: "2.14"
+  platforms:
+    - name: EL
+      versions: ["9"]
+dependencies: []
