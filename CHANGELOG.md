@@ -1,3 +1,9 @@
+## [1.4.0](https://github.com/lightning-it/ansible-collection-foundational/compare/v1.3.3...v1.4.0) (2026-01-12)
+
+### Features
+
+* network helper added ([#46](https://github.com/lightning-it/ansible-collection-foundational/issues/46)) ([ca708c4](https://github.com/lightning-it/ansible-collection-foundational/commit/ca708c4837ecf12e5f3dcd351931257e8dc78fc7))
+
 ## [1.3.3](https://github.com/lightning-it/ansible-collection-foundational/compare/v1.3.2...v1.3.3) (2026-01-11)
 
 ### Bug Fixes
