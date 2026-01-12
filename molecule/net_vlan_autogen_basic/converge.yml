@@ -1,0 +1,34 @@
+---
+- name: Converge net_vlan_autogen role
+  hosts: net_vlan_autogen
+  gather_facts: false
+
+  vars:
+    net_ifaces:
+      - role: uplink
+        iface: ens33
+        dhcp4: true
+      - role: mgmt
+        iface: ens34
+        ipv4: 10.10.30.1/24
+        gw4: 10.10.30.254
+        dns:
+          - 1.1.1.1
+      - role: trunk
+        iface: ens36
+        vlans:
+          - id: 171
+            ipv4: 10.10.10.1/24
+          - id: 172
+            ipv4: 10.10.11.1/24
+
+  pre_tasks:
+    - name: Ensure python3 is present
+      ansible.builtin.raw: |
+        if ! command -v python3 >/dev/null 2>&1; then
+          dnf -y install python3
+        fi
+      changed_when: false
+
+  roles:
+    - role: lit.foundational.net_vlan_autogen

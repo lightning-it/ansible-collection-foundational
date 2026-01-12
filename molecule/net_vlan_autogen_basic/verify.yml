@@ -1,0 +1,127 @@
+---
+- name: Verify net_vlan_autogen role
+  hosts: net_vlan_autogen
+  gather_facts: false
+
+  vars:
+    expected_lan_ifaces:
+      - ens36.171
+      - ens36.172
+    net_ifaces:
+      - role: uplink
+        iface: ens33
+        dhcp4: true
+      - role: mgmt
+        iface: ens34
+        ipv4: 10.10.30.1/24
+        gw4: 10.10.30.254
+        dns:
+          - 1.1.1.1
+      - role: trunk
+        iface: ens36
+        vlans:
+          - id: 171
+            ipv4: 10.10.10.1/24
+          - id: 172
+            ipv4: 10.10.11.1/24
+
+  tasks:
+    - name: Regenerate facts for verification
+      ansible.builtin.include_role:
+        name: lit.foundational.net_vlan_autogen
+
+    - name: Assert generated facts exist
+      ansible.builtin.assert:
+        that:
+          - network_connections is defined
+          - net_lan_ifaces is defined
+        fail_msg: "Generated facts are missing"
+
+    - name: Select generated connections
+      ansible.builtin.set_fact:
+        conn_wan: >-
+          {{
+            network_connections
+            | selectattr('name', 'equalto', 'wan')
+            | list
+            | first
+            | default({})
+          }}
+        conn_admin: >-
+          {{
+            network_connections
+            | selectattr('name', 'equalto', 'admin')
+            | list
+            | first
+            | default({})
+          }}
+        conn_trunk: >-
+          {{
+            network_connections
+            | selectattr('name', 'equalto', 'trunk-parent')
+            | list
+            | first
+            | default({})
+          }}
+        vlan_171: >-
+          {{
+            network_connections
+            | selectattr('name', 'equalto', 'vlan171')
+            | list
+            | first
+            | default({})
+          }}
+        vlan_172: >-
+          {{
+            network_connections
+            | selectattr('name', 'equalto', 'vlan172')
+            | list
+            | first
+            | default({})
+          }}
+      changed_when: false
+
+    - name: Assert WAN connection content
+      ansible.builtin.assert:
+        that:
+          - conn_wan.interface_name == 'ens33'
+          - conn_wan.type == 'ethernet'
+          - conn_wan.ip.dhcp4 | bool
+        fail_msg: "WAN connection does not match expected values"
+
+    - name: Assert admin connection content
+      ansible.builtin.assert:
+        that:
+          - conn_admin.interface_name == 'ens34'
+          - conn_admin.type == 'ethernet'
+          - conn_admin.ip.address == ['10.10.30.1/24']
+          - conn_admin.ip.gateway4 == '10.10.30.254'
+          - conn_admin.ip.dns == ['1.1.1.1']
+        fail_msg: "Admin connection does not match expected values"
+
+    - name: Assert trunk connection content
+      ansible.builtin.assert:
+        that:
+          - conn_trunk.interface_name == 'ens36'
+          - conn_trunk.type == 'ethernet'
+          - conn_trunk.ip.dhcp4 == false
+        fail_msg: "Trunk connection does not match expected values"
+
+    - name: Assert VLAN connection content
+      ansible.builtin.assert:
+        that:
+          - vlan_171.interface_name == 'ens36.171'
+          - vlan_171.parent == 'trunk-parent'
+          - vlan_171.vlan_id == 171
+          - vlan_171.ip.address == ['10.10.10.1/24']
+          - vlan_172.interface_name == 'ens36.172'
+          - vlan_172.parent == 'trunk-parent'
+          - vlan_172.vlan_id == 172
+          - vlan_172.ip.address == ['10.10.11.1/24']
+        fail_msg: "VLAN connections do not match expected values"
+
+    - name: Assert net_lan_ifaces content
+      ansible.builtin.assert:
+        that:
+          - net_lan_ifaces | sort == expected_lan_ifaces | sort
+        fail_msg: "net_lan_ifaces does not match expected VLAN interfaces"
