@@ -46,3 +46,12 @@ Playbook examples:
     oob_boot_target: cd
     oob_power_action: reboot
 ```
+
+You can also build the URL from a base + image name:
+```yaml
+  vars:
+    oob_virtual_media_action: insert
+    oob_virtual_media_category: Systems
+    oob_virtual_media_base_url: "http://files.example.local/isos"
+    oob_virtual_media_image: "rhel-9.4.iso"
+```

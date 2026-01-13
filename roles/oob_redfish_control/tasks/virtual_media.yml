@@ -1,4 +1,34 @@
 ---
+- name: Normalize virtual media image inputs
+  ansible.builtin.set_fact:
+    _oob_vm_image_url_input: "{{ vars.get('oob_virtual_media_image_url', '') | string }}"
+    _oob_vm_base_url_input: "{{ vars.get('oob_virtual_media_base_url', '') | string }}"
+    _oob_vm_image_input: "{{ vars.get('oob_virtual_media_image', '') | string }}"
+  changed_when: false
+
+- name: Build virtual media image URL when base/image provided
+  ansible.builtin.set_fact:
+    oob_virtual_media_image_url: >-
+      {{
+        (_oob_vm_image_url_input | length > 0)
+        | ternary(
+          _oob_vm_image_url_input,
+          (
+            (
+              (_oob_vm_base_url_input | length > 0)
+              and (_oob_vm_image_input | length > 0)
+            )
+            | ternary(
+              (_oob_vm_base_url_input | regex_replace('/+$', ''))
+              ~ '/'
+              ~ (_oob_vm_image_input | regex_replace('^/+', '')),
+              ''
+            )
+          )
+        )
+      }}
+  changed_when: false
+
 - name: Validate virtual media action
   ansible.builtin.assert:
     that:
@@ -9,11 +39,27 @@
 
 - name: Map virtual media action to Redfish command
   ansible.builtin.set_fact:
-    _oob_vm_command: "{{ (oob_virtual_media_action | lower) == 'insert' | ternary('VirtualMediaInsert','VirtualMediaEject') }}"
+    _oob_vm_command: "{{ ((oob_virtual_media_action | lower) == 'insert') | ternary('VirtualMediaInsert','VirtualMediaEject') }}"
 
 - name: Determine resource_id for virtual media
   ansible.builtin.set_fact:
-    _oob_vm_resource_id: "{{ (oob_virtual_media_category | lower) == 'manager' | ternary(oob_manager_id, oob_system_id) }}"
+    _oob_vm_resource_id: "{{ ((oob_virtual_media_category | lower) == 'manager') | ternary(oob_manager_id, oob_system_id) }}"
+
+- name: Eject existing virtual media before insert
+  community.general.redfish_command:
+    category: "{{ oob_virtual_media_category }}"
+    command: VirtualMediaEject
+    resource_id: "{{ _oob_vm_resource_id }}"
+    baseuri: "{{ _oob_baseuri_effective }}"
+    username: "{{ oob_user }}"
+    password: "{{ oob_password }}"
+    timeout: "{{ oob_timeout }}"
+    validate_certs: "{{ oob_validate_certs }}"
+    ca_path: "{{ (oob_ca_path | length > 0) | ternary(oob_ca_path, omit) }}"
+  register: _rf_vm_eject
+  no_log: "{{ oob_no_log }}"
+  failed_when: false
+  when: (oob_virtual_media_action | lower) == 'insert'
 
 - name: Execute virtual media action
   community.general.redfish_command:
