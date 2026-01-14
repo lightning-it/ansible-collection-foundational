@@ -1,3 +1,9 @@
+## [1.6.0](https://github.com/lightning-it/ansible-collection-foundational/compare/v1.5.0...v1.6.0) (2026-01-14)
+
+### Features
+
+* add kubeplay role with tasks, verification, and documentation ([#49](https://github.com/lightning-it/ansible-collection-foundational/issues/49)) ([180ad37](https://github.com/lightning-it/ansible-collection-foundational/commit/180ad375f6349a2c5f421380dcf9b861041e297f))
+
 ## [1.5.0](https://github.com/lightning-it/ansible-collection-foundational/compare/v1.4.0...v1.5.0) (2026-01-14)
 
 ### Features
