@@ -1,0 +1,25 @@
+---
+dependency:
+  name: galaxy
+
+driver:
+  name: docker
+
+platforms:
+  - name: kubeplay
+    image: quay.io/rockylinux/rockylinux:9
+    pre_build_image: true
+
+provisioner:
+  name: ansible
+  inventory:
+    hosts:
+      all:
+        hosts:
+          kubeplay:
+            ansible_connection: docker
+  playbooks:
+    converge: converge.yml
+
+verifier:
+  name: ansible

@@ -1,0 +1,23 @@
+---
+galaxy_info:
+  role_name: kubeplay
+  namespace: lit
+  author: Rene Osorio
+  description: Wrapper role to run application roles (vault, nexus, etc.).
+  company: Lightning IT
+  license: GPL-3.0-only
+  min_ansible_version: "2.18"
+
+  platforms:
+    - name: EL
+      versions:
+        - "9"
+
+  galaxy_tags:
+    - modulix
+    - kubernetes
+    - apps
+    - wrapper
+    - kubeplay
+
+dependencies: []
