@@ -1,14 +1,44 @@
 # lit.foundational
 
-Foundational Ansible collection for ModuLix / Lightning IT. It provides generic
-building blocks and orchestration helpers for consistent, repeatable automation.
-The primary role in this collection is:
+Foundational Ansible collection for ModuLix.  
+It provides generic building blocks and orchestration helpers for consistent, repeatable automation.
 
-- `terragrunt` – a Terragrunt wrapper that:
+## What’s inside
+
+### Key roles
+
+- `lit.foundational.terragrunt`  
+  Terragrunt wrapper that:
   - prepares a per-cluster working directory on the control host,
   - renders a dynamic `terragrunt.hcl`,
-  - runs `terragrunt init`, `terragrunt plan`, and `terragrunt apply` with
-    optional confirmation and auth support.
+  - runs `terragrunt init`, `terragrunt plan`, and `terragrunt apply`
+    with optional confirmation and auth support.
+
+- `lit.foundational.oob_redfish_inventory`  
+  Vendor-neutral Redfish discovery (read-only):
+  - discovers Redfish resource IDs (`System`, `Manager`, `Chassis`),
+  - exposes a small `oob_redfish` summary dict for downstream tasks.
+
+- `lit.foundational.oob_redfish_control`  
+  Vendor-neutral Redfish control actions:
+  - power actions (on/off/reboot/graceful…),
+  - one-time or persistent boot override (PXE/CD/USB/HDD/UEFI targets),
+  - optional virtual media insert/eject.
+
+---
+
+## Dependencies
+
+### Redfish roles
+
+The Redfish roles use the `community.general` collection.
+
+Add this to your collection `galaxy.yml`:
+
+```yaml
+dependencies:
+  community.general: ">=10.6.0"
+```
 
 ---
 
@@ -21,6 +51,65 @@ from GitHub (example: `main` branch):
 ansible-galaxy collection install \
   git+https://github.com/lightning-it/ansible-collection-foundational.git,main
 ```
+
+---
+
+## Quick start
+
+### Redfish (OOB) inventory + control
+
+**Inventory hosts should point to the BMC endpoint** (iDRAC / iLO / XCC / …).  
+Run Redfish tasks with a **local connection** (no SSH to the BMC required):
+
+```ini
+[oob]
+idrac01 ansible_host=10.0.0.10
+ilo01   ansible_host=10.0.0.11
+
+[oob:vars]
+ansible_connection=local
+ansible_python_interpreter=/usr/bin/python3
+
+oob_user=admin
+oob_password=secret
+oob_validate_certs=false
+```
+
+#### Example: one-time PXE boot + reboot
+
+```yaml
+---
+- hosts: oob
+  gather_facts: false
+  roles:
+    - lit.foundational.oob_redfish_inventory
+    - lit.foundational.oob_redfish_control
+  vars:
+    oob_boot_target: pxe
+    oob_power_action: reboot
+```
+
+#### Example: mount ISO via VirtualMedia + boot CD + reboot
+
+```yaml
+---
+- hosts: oob
+  gather_facts: false
+  roles:
+    - lit.foundational.oob_redfish_control
+  vars:
+    oob_virtual_media_action: insert
+    oob_virtual_media_category: Systems
+    oob_virtual_media_image_url: "http://files.example.local/rhel-9.4.iso"
+
+    oob_boot_target: cd
+    oob_power_action: reboot
+```
+
+> Note: In a “real” unattended install, Redfish usually only does **boot selection + reboot**.  
+> The OS installation itself should be handled by PXE/Kickstart or an ISO workflow.
+
+---
 
 ### Example: using `lit.foundational.terragrunt`
 
@@ -69,9 +158,8 @@ See also:
 
 ## Development
 
-- `galaxy.yml` defines the collection metadata (namespace `lit`, name
-  `foundational`, license `GPL-2.0-only`).
-- Roles live under `roles/` (e.g. `roles/terragrunt/`).
+- `galaxy.yml` defines the collection metadata (namespace `lit`, name `foundational`).
+- Roles live under `roles/` (e.g. `roles/terragrunt/`, `roles/oob_redfish_*`).
 - The collection can be built locally with:
 
   ```bash
@@ -93,22 +181,14 @@ This repository uses **pre-commit** and a shared devtools container
 (`wunder-devtools-ee`) to keep linting and runtime tests consistent between
 local development and CI.
 
-### 1. Install pre-commit
-
-If you haven’t already:
+### 1) Install pre-commit
 
 ```bash
 pip install pre-commit
 pre-commit install
 ```
 
-This installs the configured hooks for this repo (YAML, Ansible, Molecule, GitHub
-Actions, Renovate, etc.).
-
-### 2. Run all linters locally
-
-To run all configured checks (YAML, ansible-lint, Molecule, GitHub Actions
-workflow linting, Renovate config validation):
+### 2) Run all linters locally
 
 ```bash
 pre-commit run --all-files
@@ -119,16 +199,14 @@ This will, among other things:
 - run `yamllint` inside the `wunder-devtools-ee` container,
 - run `ansible-lint` inside the devtools container (after building/installing
   the collection),
-- run all non-`*_heavy` Molecule scenarios inside the devtools container
-  (e.g. `terragrunt_basic`),
+- run all non-`*_heavy` Molecule scenarios inside the devtools container,
 - lint `.github/workflows/*.yml` via `actionlint` (Docker),
 - validate `renovate.json` via `renovate-config-validator` (Docker), if present.
 
 Heavy scenarios such as Vagrant/RHEL9 tests are named with a `_heavy` suffix and
-run via dedicated manual scripts (e.g. `devtools-molecule-rhel9_rdp_heavy.sh`)
-and are not part of the default hook.
+run via dedicated manual scripts and are not part of the default hook.
 
-### 3. Run the collection smoke test
+### 3) Run the collection smoke test
 
 For a full **collection smoke test** (build + install + example playbook via
 FQCN inside devtools):
@@ -154,5 +232,4 @@ Use this smoke test whenever you want to verify that the collection is:
 
 - buildable,
 - installable,
-- and usable via FQCN (e.g. `lit.foundational.terragrunt`) before pushing or
-  tagging a release.
+- and usable via FQCN before pushing or tagging a release.

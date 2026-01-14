@@ -1,0 +1,10 @@
+---
+- name: RHEL9 install bootstrap via Redfish (PXE)
+  hosts: oob
+  gather_facts: false
+  roles:
+    - lit.foundational.oob_redfish_control
+  vars:
+    # Set one-time PXE and reboot. The actual install is done by PXE/Kickstart infrastructure.
+    oob_boot_target: pxe
+    oob_power_action: reboot

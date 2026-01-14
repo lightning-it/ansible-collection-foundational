@@ -1,0 +1,17 @@
+---
+argument_specs:
+  main:
+    short_description: Perform Redfish actions (power/boot/virtual media).
+    options:
+      oob_baseuri: { type: str, required: false }
+      oob_user: { type: str, required: true }
+      oob_password: { type: str, required: true }
+      oob_validate_certs: { type: bool, default: false }
+      oob_ca_path: { type: str, required: false }
+      oob_timeout: { type: int, default: 60 }
+      oob_no_log: { type: bool, default: true }
+      oob_debug: { type: bool, default: false }
+
+      oob_power_action: { type: str, required: false }
+      oob_boot_target: { type: str, required: false }
+      oob_virtual_media_action: { type: str, required: false }

@@ -1,0 +1,24 @@
+---
+# If you inventory hosts as the BMC/IPMI endpoint, this "just works".
+oob_baseuri: "{{ inventory_hostname }}"
+
+# Required creds
+oob_user: ""
+oob_password: ""
+
+# TLS
+oob_validate_certs: false
+oob_ca_path: ""          # only used if oob_validate_certs: true
+
+# HTTP behavior
+oob_timeout: 60
+oob_check_availability: true
+
+# Discovery / overrides
+oob_system_id: "auto"
+oob_manager_id: "auto"
+oob_chassis_id: "auto"
+
+# Security / logging
+oob_no_log: true
+oob_debug: false

@@ -1,0 +1,11 @@
+---
+galaxy_info:
+  role_name: oob_redfish_control
+  author: lit
+  description: "Perform Redfish actions: power, boot override, virtual media (vendor-neutral)"
+  license: GPL-3.0-or-later
+  min_ansible_version: "2.14"
+  platforms:
+    - name: EL
+      versions: ["9"]
+dependencies: []

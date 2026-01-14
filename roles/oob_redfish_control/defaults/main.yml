@@ -1,0 +1,40 @@
+---
+oob_baseuri: "{{ inventory_hostname }}"
+oob_user: ""
+oob_password: ""
+
+oob_validate_certs: false
+oob_ca_path: ""
+oob_timeout: 60
+
+# Security / logging
+oob_no_log: true
+oob_debug: false
+
+# Actions (set what you need; role executes the provided ones)
+oob_power_action: ""              # on|off|reboot|graceful_shutdown|graceful_restart|force_restart|force_off
+oob_power_wait: false
+oob_power_wait_timeout: 120
+
+oob_boot_target: ""               # pxe|cd|usb|hdd|bios|UefiTarget|UefiBootNext (you can pass native values too)
+oob_boot_override_mode: "UEFI"    # UEFI|Legacy
+oob_boot_persistent: false        # true => EnableContinuousBootOverride
+oob_boot_next: ""                 # used when boot target is UefiBootNext
+oob_uefi_target: ""               # used when boot target is UefiTarget
+oob_boot_disable_override: false  # runs DisableBootOverride
+
+oob_virtual_media_action: ""      # insert|eject
+oob_virtual_media_category: "Systems"   # Systems|Manager
+oob_virtual_media_image_url: ""         # required for insert/eject
+oob_virtual_media_media_types: ["CD", "DVD"]  # typical ISO
+oob_virtual_media_username: ""
+oob_virtual_media_password: ""
+oob_virtual_media_transfer_protocol_type: ""
+oob_virtual_media_transfer_method: ""
+oob_virtual_media_write_protected: true
+oob_virtual_media_inserted: true
+
+# IDs (usually set by oob_redfish_inventory; if "auto"/undefined, control role will include inventory role)
+oob_system_id: "auto"
+oob_manager_id: "auto"
+oob_chassis_id: "auto"

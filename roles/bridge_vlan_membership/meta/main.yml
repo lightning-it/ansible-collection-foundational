@@ -1,0 +1,11 @@
+---
+galaxy_info:
+  role_name: bridge_vlan_membership
+  author: lit
+  description: "Ensure linux bridge VLAN filtering + VLAN membership (self + ports) for tagged trunks"
+  license: GPL-3.0-or-later
+  min_ansible_version: "2.14"
+  platforms:
+    - name: EL
+      versions: ["9"]
+dependencies: []

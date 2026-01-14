@@ -1,0 +1,15 @@
+---
+- name: RHEL9 install bootstrap via Redfish (Virtual Media ISO)
+  hosts: oob
+  gather_facts: false
+  roles:
+    - lit.foundational.oob_redfish_control
+  vars:
+    # Host an ISO reachable by the BMC (HTTP(S) is common if supported by your vendor).
+    oob_virtual_media_action: insert
+    oob_virtual_media_category: Systems
+    oob_virtual_media_image_url: "http://files.example.local/rhel-9.4.iso"
+
+    # Boot once from virtual CD and reboot
+    oob_boot_target: cd
+    oob_power_action: reboot
