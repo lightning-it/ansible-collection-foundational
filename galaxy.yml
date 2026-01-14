@@ -1,6 +1,6 @@
 namespace: lit
 name: foundational
-version: 1.4.0
+version: 1.5.0
 readme: README.md
 description: Foundational Ansible collection for ModuLix, providing base roles, helpers,
   and Terraform/Terragrunt runner building blocks for platform automation.

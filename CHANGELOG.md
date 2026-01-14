@@ -1,3 +1,9 @@
+## [1.5.0](https://github.com/lightning-it/ansible-collection-foundational/compare/v1.4.0...v1.5.0) (2026-01-14)
+
+### Features
+
+* ansible role redfish added ([#47](https://github.com/lightning-it/ansible-collection-foundational/issues/47)) ([f75b237](https://github.com/lightning-it/ansible-collection-foundational/commit/f75b2376a8ea5562fe59a56b39eb8a648918dba1))
+
 ## [1.4.0](https://github.com/lightning-it/ansible-collection-foundational/compare/v1.3.3...v1.4.0) (2026-01-12)
 
 ### Features
