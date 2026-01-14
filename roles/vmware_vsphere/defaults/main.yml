@@ -56,6 +56,8 @@ vmware_vsphere_vmware_guest_disk:
   - size_gb: 120
     type: thin
 vmware_vsphere_vmware_guest_cdrom: []
+vmware_vsphere_vmware_guest_customization: {}
+vmware_vsphere_vmware_guest_customization_spec: ""
 vmware_vsphere_stub_mode: false
 vmware_vsphere_module_defaults_vmware_group:
   hostname: "{{ vmware_vsphere_hostname }}"
