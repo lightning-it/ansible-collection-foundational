@@ -1,0 +1,11 @@
+---
+kubeplay_enabled: true
+kubeplay_apps: []
+
+# Map short app names to roles. Override or extend in inventory.
+kubeplay_app_map:
+  vault: lit.supplementary.vault
+  nexus: lit.supplementary.nexus
+
+# Fail when an app is missing both role and tasks.
+kubeplay_fail_on_unknown: true

@@ -1,0 +1,6 @@
+---
+- name: Create kubeplay demo marker
+  ansible.builtin.copy:
+    dest: /tmp/kubeplay-demo
+    content: "kubeplay demo\n"
+    mode: "0644"

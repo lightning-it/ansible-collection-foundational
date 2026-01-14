@@ -1,0 +1,76 @@
+---
+- name: Skip kubeplay when disabled
+  ansible.builtin.debug:
+    msg: "kubeplay is disabled (kubeplay_enabled=false)."
+  when: not kubeplay_enabled | bool
+
+- name: Normalize kubeplay app definitions
+  ansible.builtin.set_fact:
+    _kubeplay_apps: >-
+      {%- set apps = [] -%}
+      {%- for item in kubeplay_apps | default([]) -%}
+      {%- set is_string = item is string -%}
+      {%- set name = item if is_string else (item.name | default(item.app | default(item.role | default('')))) -%}
+      {%- set role = '' if is_string else (item.role | default('')) -%}
+      {%- set role = role if role | length > 0 else (kubeplay_app_map.get(name, '')) -%}
+      {%- set tasks = '' if is_string else (item.tasks | default('')) -%}
+      {%- set vars = {} if is_string else (item.vars | default({})) -%}
+      {%- set tags = [] if is_string else (item.tags | default([])) -%}
+      {%- set enabled = true if is_string else (item.enabled | default(true)) -%}
+      {%- set when_expr = true if is_string else (item.when | default(true)) -%}
+      {%- set _ = apps.append({
+        'name': name,
+        'role': role,
+        'tasks': tasks,
+        'vars': vars,
+        'tags': tags,
+        'enabled': enabled,
+        'when': when_expr
+      }) -%}
+      {%- endfor -%}
+      {{ apps }}
+  changed_when: false
+  when: kubeplay_enabled | bool
+
+- name: Validate kubeplay app definitions
+  ansible.builtin.assert:
+    that:
+      - item.name | length > 0
+      - (item.role | length > 0) or (item.tasks | length > 0)
+    fail_msg: >-
+      kubeplay app "{{ item.name | default('unnamed') }}" must define a role
+      or tasks (or be present in kubeplay_app_map).
+  loop: "{{ _kubeplay_apps }}"
+  loop_control:
+    label: "{{ item.name | default('unnamed') }}"
+  when:
+    - kubeplay_enabled | bool
+    - kubeplay_fail_on_unknown | bool
+    - item.enabled | bool
+
+- name: Run kubeplay app roles
+  ansible.builtin.include_role:
+    name: "{{ item.role }}"
+    apply:
+      tags: "{{ item.tags | default([]) }}"
+  vars: "{{ item.vars | default({}) }}"
+  loop: "{{ _kubeplay_apps }}"
+  loop_control:
+    label: "{{ item.name | default(item.role) }}"
+  when:
+    - kubeplay_enabled | bool
+    - item.enabled | bool
+    - item.when | default(true) | bool
+    - item.role | length > 0
+
+- name: Run kubeplay app tasks
+  ansible.builtin.include_tasks: "{{ item.tasks }}"
+  vars: "{{ item.vars | default({}) }}"
+  loop: "{{ _kubeplay_apps }}"
+  loop_control:
+    label: "{{ item.name | default(item.tasks) }}"
+  when:
+    - kubeplay_enabled | bool
+    - item.enabled | bool
+    - item.when | default(true) | bool
+    - item.tasks | length > 0

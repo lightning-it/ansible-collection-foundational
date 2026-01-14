@@ -1,0 +1,12 @@
+---
+- name: Converge kubeplay role
+  hosts: kubeplay
+  gather_facts: false
+
+  vars:
+    kubeplay_apps:
+      - name: demo
+        tasks: apps/demo.yml
+
+  roles:
+    - role: lit.foundational.kubeplay
