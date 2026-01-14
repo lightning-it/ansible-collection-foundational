@@ -1,0 +1,18 @@
+---
+# Bridge device name
+bridge_vlan_bridge: br-trunk
+
+# VLAN IDs to ensure (e.g. [191, 2501])
+bridge_vlan_ids: []
+
+# Bridge ports to apply VLAN membership to (e.g. [ens2f0, ens2f1])
+bridge_vlan_ports: []
+
+# Enable vlan_filtering on the linux bridge
+bridge_vlan_enable_filtering: true
+
+# Apply VLAN membership for host stack on bridge (self)
+bridge_vlan_apply_self: true
+
+# Apply VLAN membership on bridge ports (master)
+bridge_vlan_apply_ports: true

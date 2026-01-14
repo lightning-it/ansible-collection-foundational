@@ -1,0 +1,143 @@
+---
+- name: Validate inputs
+  ansible.builtin.assert:
+    that:
+      - bridge_vlan_bridge | length > 0
+      - bridge_vlan_ids | length > 0
+    fail_msg: "bridge_vlan_bridge and bridge_vlan_ids must be set (bridge_vlan_ids must not be empty)."
+
+- name: Normalize VLAN ID list
+  ansible.builtin.set_fact:
+    _bridge_vlan_ids_normalized: "{{ bridge_vlan_ids | map('string') | list }}"
+  changed_when: false
+
+- name: Check bridge exists
+  ansible.builtin.command: "ip link show {{ bridge_vlan_bridge }}"
+  register: _bridge_exists
+  changed_when: false
+
+- name: Read bridge details (vlan_filtering)
+  ansible.builtin.command: "ip -d link show {{ bridge_vlan_bridge }}"
+  register: _bridge_details
+  changed_when: false
+
+- name: Determine current vlan_filtering state
+  ansible.builtin.set_fact:
+    _bridge_vlan_filtering_enabled: "{{ (_bridge_details.stdout is search('vlan_filtering\\s+1')) }}"
+  changed_when: false
+
+- name: Enable linux bridge VLAN filtering (runtime)
+  ansible.builtin.command: "ip link set dev {{ bridge_vlan_bridge }} type bridge vlan_filtering 1"
+  when:
+    - bridge_vlan_enable_filtering | bool
+    - not _bridge_vlan_filtering_enabled | bool
+  changed_when: true
+
+# ---------------------------------------------------------------------------
+# VLAN membership for host stack (bridge self)
+# ---------------------------------------------------------------------------
+- name: Read bridge self VLAN membership
+  ansible.builtin.command: "bridge vlan show dev {{ bridge_vlan_bridge }}"
+  register: _bridge_vlan_self_show
+  changed_when: false
+  when: bridge_vlan_apply_self | bool
+
+- name: Determine bridge self VLAN IDs
+  ansible.builtin.set_fact:
+    _bridge_vlan_self_ids: >-
+      {{ _bridge_vlan_self_show.stdout_lines
+         | select('match', '^\\s*(?:\\S+\\s+)?\\d+')
+         | map('regex_search', '^\\s*(?:\\S+\\s+)?(\\d+)', '\\1')
+         | map('string')
+         | list }}
+  changed_when: false
+  when: bridge_vlan_apply_self | bool
+
+- name: Determine missing bridge self VLAN IDs
+  ansible.builtin.set_fact:
+    _bridge_vlan_self_missing: "{{ _bridge_vlan_ids_normalized | difference(_bridge_vlan_self_ids | default([])) }}"
+  changed_when: false
+  when: bridge_vlan_apply_self | bool
+
+- name: Ensure bridge self VLAN membership
+  ansible.builtin.command: "bridge vlan add dev {{ bridge_vlan_bridge }} vid {{ item }} self"
+  loop: "{{ _bridge_vlan_self_missing | default([]) }}"
+  register: _self_add
+  changed_when: _self_add.rc == 0
+  failed_when: >
+    _self_add.rc != 0 and
+    (
+      (_self_add.stderr | default('')) is not search('File exists|EEXIST|exists')
+      and
+      (_self_add.stdout | default('')) is not search('File exists|EEXIST|exists')
+    )
+  when:
+    - bridge_vlan_apply_self | bool
+    - (_bridge_vlan_self_missing | default([])) | length > 0
+
+# ---------------------------------------------------------------------------
+# VLAN membership on bridge ports
+# ---------------------------------------------------------------------------
+- name: Validate ports list when applying port VLANs
+  ansible.builtin.assert:
+    that:
+      - bridge_vlan_ports | length > 0
+    fail_msg: "bridge_vlan_ports must be provided when bridge_vlan_apply_ports=true."
+  when: bridge_vlan_apply_ports | bool
+
+- name: Read bridge port VLAN membership
+  ansible.builtin.command: "bridge vlan show dev {{ item }}"
+  loop: "{{ bridge_vlan_ports }}"
+  register: _bridge_vlan_port_show
+  changed_when: false
+  when: bridge_vlan_apply_ports | bool
+
+- name: Determine bridge port VLAN IDs
+  ansible.builtin.set_fact:
+    _bridge_vlan_port_ids: >-
+      {%- set ns = namespace(data={}) -%}
+      {%- for res in _bridge_vlan_port_show.results -%}
+      {%- set ids = res.stdout_lines
+          | select('match', '^\\s*(?:\\S+\\s+)?\\d+')
+          | map('regex_search', '^\\s*(?:\\S+\\s+)?(\\d+)', '\\1')
+          | map('string')
+          | list -%}
+      {%- set _ = ns.data.update({(res.item): ids}) -%}
+      {%- endfor -%}
+      {{ ns.data }}
+  changed_when: false
+  when: bridge_vlan_apply_ports | bool
+
+- name: Determine missing bridge port VLAN pairs
+  ansible.builtin.set_fact:
+    _bridge_vlan_port_missing: >-
+      {%- set ns = namespace(pairs=[]) -%}
+      {%- for port in bridge_vlan_ports -%}
+      {%- set present = _bridge_vlan_port_ids.get(port, []) -%}
+      {%- for vid in _bridge_vlan_ids_normalized -%}
+      {%- if vid not in present -%}
+      {%- set _ = ns.pairs.append([port, vid]) -%}
+      {%- endif -%}
+      {%- endfor -%}
+      {%- endfor -%}
+      {{ ns.pairs }}
+  changed_when: false
+  when: bridge_vlan_apply_ports | bool
+
+- name: Ensure bridge port VLAN membership (master)
+  ansible.builtin.command: "bridge vlan add dev {{ pair.0 }} vid {{ pair.1 }} master"
+  loop: "{{ _bridge_vlan_port_missing | default([]) }}"
+  loop_control:
+    loop_var: pair
+  register: _port_add
+  changed_when: _port_add.rc == 0
+  failed_when: >
+    _port_add.rc != 0 and
+    (
+      (_port_add.stderr | default('')) is not search('File exists|EEXIST|exists')
+      and
+      (_port_add.stdout | default('')) is not search('File exists|EEXIST|exists')
+    )
+  when:
+    - bridge_vlan_apply_ports | bool
+    - (_bridge_vlan_port_missing | default([])) | length > 0
