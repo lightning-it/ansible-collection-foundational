@@ -1,3 +1,9 @@
+## [1.7.0](https://github.com/lightning-it/ansible-collection-foundational/compare/v1.6.0...v1.7.0) (2026-01-15)
+
+### Features
+
+* add guest customization options for VMware vSphere role ([#50](https://github.com/lightning-it/ansible-collection-foundational/issues/50)) ([654ff07](https://github.com/lightning-it/ansible-collection-foundational/commit/654ff077a0e740a1089cedd75836a14f4a295e3f))
+
 ## [1.6.0](https://github.com/lightning-it/ansible-collection-foundational/compare/v1.5.0...v1.6.0) (2026-01-14)
 
 ### Features
