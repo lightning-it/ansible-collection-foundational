@@ -58,3 +58,18 @@
          | default(vmware_vsphere_vmware_guest_network | default('')) }}
   tags:
     - always
+
+- name: Normalize customization vars
+  ansible.builtin.set_fact:
+    vmware_vsphere_vmware_guest_customization: >-
+      {{
+        vmware_vsphere_vmware_guest_customization
+          | default(vmware_vsphere_customization | default({}, true), true)
+      }}
+    vmware_vsphere_vmware_guest_customization_spec: >-
+      {{
+        vmware_vsphere_vmware_guest_customization_spec
+          | default(vmware_vsphere_customization_spec | default('', true), true)
+      }}
+  tags:
+    - always

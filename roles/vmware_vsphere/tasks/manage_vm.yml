@@ -77,6 +77,19 @@
     folder: "{{ vmware_vsphere_folder_full_path | default(omit) }}"
     hardware: "{{ vmware_vsphere_vmware_guest_hardware | default(omit) }}"
     disk: "{{ vmware_vsphere_vmware_guest_disk | default(omit) }}"
+    customization: >-
+      {{
+        (
+          vmware_vsphere_vmware_guest_customization is mapping
+          and (vmware_vsphere_vmware_guest_customization | length > 0)
+        )
+        | ternary(vmware_vsphere_vmware_guest_customization, omit)
+      }}
+    customization_spec: >-
+      {{
+        (vmware_vsphere_vmware_guest_customization_spec | default('') | length > 0)
+        | ternary(vmware_vsphere_vmware_guest_customization_spec, omit)
+      }}
     networks: >-
       {{
         (
@@ -119,6 +132,19 @@
     template: "{{ vmware_vsphere_template | default(omit) }}"
     disk: "{{ vmware_vsphere_vmware_guest_disk | default(omit) }}"
     hardware: "{{ vmware_vsphere_vmware_guest_hardware | default(omit) }}"
+    customization: >-
+      {{
+        (
+          vmware_vsphere_vmware_guest_customization is mapping
+          and (vmware_vsphere_vmware_guest_customization | length > 0)
+        )
+        | ternary(vmware_vsphere_vmware_guest_customization, omit)
+      }}
+    customization_spec: >-
+      {{
+        (vmware_vsphere_vmware_guest_customization_spec | default('') | length > 0)
+        | ternary(vmware_vsphere_vmware_guest_customization_spec, omit)
+      }}
     networks: >-
       {{
         (
