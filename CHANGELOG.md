@@ -1,3 +1,13 @@
+## [1.9.0](https://github.com/lightning-it/ansible-collection-foundational/compare/v1.8.0...v1.9.0) (2026-01-16)
+
+### Features
+
+* add guest customization options for VMware vSphere role ([#51](https://github.com/lightning-it/ansible-collection-foundational/issues/51)) ([c1e4698](https://github.com/lightning-it/ansible-collection-foundational/commit/c1e4698e1c3619c09c29c1951231730c263f29bf)), closes [#52](https://github.com/lightning-it/ansible-collection-foundational/issues/52)
+
+### Bug Fixes
+
+* correct formatting and indentation in galaxy.yml ([#53](https://github.com/lightning-it/ansible-collection-foundational/issues/53)) ([1285a4b](https://github.com/lightning-it/ansible-collection-foundational/commit/1285a4bb3fb696adf3fd214b08df520a845c0336))
+
 ## [1.8.0](https://github.com/lightning-it/ansible-collection-foundational/compare/v1.7.0...v1.8.0) (2026-01-16)
 
 ### Features
