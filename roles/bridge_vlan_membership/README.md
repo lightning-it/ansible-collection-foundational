@@ -19,15 +19,15 @@ Ensures a linux bridge is VLAN-aware and that:
 
 ---
 
-## 3) In deinem Base-Playbook ersetzen
+## 3) Replace in your base playbook
 
-Diesen Inline-Block:
+This inline block:
 
 - `ip link set … vlan_filtering 1`
 - `bridge vlan add … self`
 - `bridge vlan add … master`
 
-ersetzt du durch **einen** Task:
+replace with a **single** task:
 
 ```yaml
 - name: Bridge VLAN membership (self + ports)

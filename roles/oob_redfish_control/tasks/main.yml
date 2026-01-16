@@ -5,7 +5,7 @@
       - oob_baseuri | length > 0
       - oob_user | length > 0
       - oob_password | length > 0
-    fail_msg: "oob_baseuri/oob_user/oob_password müssen gesetzt sein."
+    fail_msg: "oob_baseuri/oob_user/oob_password must be set."
 
 - name: Normalize baseuri input
   ansible.builtin.set_fact:
@@ -130,8 +130,14 @@
 - name: Require at least one action
   ansible.builtin.assert:
     that:
-      - (oob_power_action | length > 0) or (oob_boot_target | length > 0) or (oob_virtual_media_action | length > 0) or (oob_boot_disable_override | bool)
-    fail_msg: "Keine Aktion gesetzt. Setze oob_power_action oder oob_boot_target oder oob_virtual_media_action (oder oob_boot_disable_override=true)."
+      - >-
+        (oob_power_action | length > 0)
+        or (oob_boot_target | length > 0)
+        or (oob_virtual_media_action | length > 0)
+        or (oob_boot_disable_override | bool)
+    fail_msg: >-
+      No action set. Set oob_power_action, oob_boot_target, or
+      oob_virtual_media_action (or oob_boot_disable_override=true).
 
 - name: Power action (optional)
   ansible.builtin.include_tasks: power.yml

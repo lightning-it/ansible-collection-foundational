@@ -5,7 +5,7 @@
       - oob_baseuri | length > 0
       - oob_user | length > 0
       - oob_password | length > 0
-    fail_msg: "oob_baseuri/oob_user/oob_password müssen gesetzt sein."
+    fail_msg: "oob_baseuri/oob_user/oob_password must be set."
 
 - name: Normalize baseuri input
   ansible.builtin.set_fact:
@@ -72,7 +72,7 @@
 
 - name: Fail if no System entries were returned
   ansible.builtin.fail:
-    msg: "Keine Systems-Entries via Redfish erhalten. Prüfe Credentials/Redfish-Endpoint."
+    msg: "No System entries returned via Redfish. Check credentials/Redfish endpoint."
   when: _oob_system_entries | length == 0
 
 - name: Select primary system entry

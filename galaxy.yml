@@ -1,32 +1,34 @@
+---
 namespace: lit
 name: foundational
 version: 1.6.0
 readme: README.md
-description: Foundational Ansible collection for ModuLix, providing base roles, helpers,
+description: >-
+  Foundational Ansible collection for ModuLix, providing base roles, helpers,
   and Terraform/Terragrunt runner building blocks for platform automation.
 repository: https://github.com/lightning-it/ansible-collection-foundational
 authors:
-- Lightning IT
+  - Lightning IT
 license:
-- GPL-2.0-only
+  - GPL-3.0-only
 tags:
-- terraform
-- modulix
-- security
-- automation
+  - terraform
+  - modulix
+  - security
+  - automation
 dependencies:
-  community.general: '>=7.0.0'
-  ansible.posix: '>=1.5.0'
-  vmware.vmware: '>=2.6.0'
+  community.general: ">=7.0.0"
+  ansible.posix: ">=1.5.0"
+  vmware.vmware: ">=2.6.0"
 build_ignore:
-- node_modules
-- vagrant
-- .git
-- .github
-- .gitignore
-- .molecule
-- collections
-- ansible_collections
-- infra
-- '*.terraform*'
-- '*.tar.gz'
+  - node_modules
+  - vagrant
+  - .git
+  - .github
+  - .gitignore
+  - .molecule
+  - collections
+  - ansible_collections
+  - infra
+  - "*.terraform*"
+  - "*.tar.gz"

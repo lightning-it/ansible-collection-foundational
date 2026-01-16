@@ -2,7 +2,9 @@
 - name: Validate power action
   ansible.builtin.assert:
     that:
-      - (oob_power_action | lower) in ["on","off","force_off","reboot","graceful_shutdown","graceful_restart","force_restart"]
+      - >-
+        (oob_power_action | lower) in
+        ["on","off","force_off","reboot","graceful_shutdown","graceful_restart","force_restart"]
     fail_msg: "Unsupported oob_power_action='{{ oob_power_action }}'."
 
 - name: Map power action to Redfish command

@@ -49,11 +49,17 @@
     - item.enabled | bool
 
 - name: Run kubeplay app roles
-  ansible.builtin.include_role:
-    name: "{{ item.role }}"
-    apply:
-      tags: "{{ item.tags | default([]) }}"
-  vars: "{{ item.vars | default({}) }}"
+  block:
+    - name: Apply kubeplay app vars
+      ansible.builtin.set_fact: "{{ item.vars | default({}) }}"
+      changed_when: false
+      when: item.vars | default({}) | length > 0
+
+    - name: Include kubeplay app role
+      ansible.builtin.include_role:
+        name: "{{ item.role }}"
+        apply:
+          tags: "{{ item.tags | default([]) }}"
   loop: "{{ _kubeplay_apps }}"
   loop_control:
     label: "{{ item.name | default(item.role) }}"
@@ -64,8 +70,14 @@
     - item.role | length > 0
 
 - name: Run kubeplay app tasks
-  ansible.builtin.include_tasks: "{{ item.tasks }}"
-  vars: "{{ item.vars | default({}) }}"
+  block:
+    - name: Apply kubeplay app vars
+      ansible.builtin.set_fact: "{{ item.vars | default({}) }}"
+      changed_when: false
+      when: item.vars | default({}) | length > 0
+
+    - name: Include kubeplay app tasks
+      ansible.builtin.include_tasks: "{{ item.tasks }}"
   loop: "{{ _kubeplay_apps }}"
   loop_control:
     label: "{{ item.name | default(item.tasks) }}"
