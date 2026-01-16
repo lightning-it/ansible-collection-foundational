@@ -14,9 +14,9 @@ Inventory hosts = BMC endpoints (iDRAC/iLO/XCC/etc.):
 [oob:vars]
 ansible_connection=local
 ansible_python_interpreter=/usr/bin/python3
-oob_user=admin
-oob_password=secret
-oob_validate_certs=false
+oob_redfish_inventory_user=admin
+oob_redfish_inventory_password=secret
+oob_redfish_inventory_validate_certs=false
 ```
 
 Playbook:
@@ -29,5 +29,6 @@ Playbook:
 ```
 
 Outputs facts:
-- `oob_system_id`, `oob_manager_id`, `oob_chassis_id`
-- `oob_redfish` summary dict
+- `oob_redfish_inventory_system_id`, `oob_redfish_inventory_manager_id`,
+  `oob_redfish_inventory_chassis_id`
+- `oob_redfish_inventory_redfish` summary dict

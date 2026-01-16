@@ -1,14 +1,14 @@
 ---
 - name: Normalize virtual media image inputs
   ansible.builtin.set_fact:
-    _oob_vm_image_url_input: "{{ vars.get('oob_virtual_media_image_url', '') | string }}"
-    _oob_vm_base_url_input: "{{ vars.get('oob_virtual_media_base_url', '') | string }}"
-    _oob_vm_image_input: "{{ vars.get('oob_virtual_media_image', '') | string }}"
+    _oob_vm_image_url_input: "{{ vars.get('oob_redfish_control_virtual_media_image_url', '') | string }}"
+    _oob_vm_base_url_input: "{{ vars.get('oob_redfish_control_virtual_media_base_url', '') | string }}"
+    _oob_vm_image_input: "{{ vars.get('oob_redfish_control_virtual_media_image', '') | string }}"
   changed_when: false
 
 - name: Build virtual media image URL when base/image provided
   ansible.builtin.set_fact:
-    oob_virtual_media_image_url: >-
+    oob_redfish_control_virtual_media_image_url: >-
       {{
         (_oob_vm_image_url_input | length > 0)
         | ternary(
@@ -32,54 +32,80 @@
 - name: Validate virtual media action
   ansible.builtin.assert:
     that:
-      - (oob_virtual_media_action | lower) in ["insert","eject"]
-      - oob_virtual_media_image_url | length > 0
-      - (oob_virtual_media_category | lower) in ["systems","manager"]
-    fail_msg: "Setze oob_virtual_media_action=insert|eject, oob_virtual_media_image_url und oob_virtual_media_category=Systems|Manager."
+      - (oob_redfish_control_virtual_media_action | lower) in ["insert","eject"]
+      - oob_redfish_control_virtual_media_image_url | length > 0
+      - (oob_redfish_control_virtual_media_category | lower) in ["systems","manager"]
+    fail_msg: >-
+      Set oob_redfish_control_virtual_media_action=insert|eject, oob_redfish_control_virtual_media_image_url,
+      and oob_redfish_control_virtual_media_category=Systems|Manager.
 
 - name: Map virtual media action to Redfish command
   ansible.builtin.set_fact:
-    _oob_vm_command: "{{ ((oob_virtual_media_action | lower) == 'insert') | ternary('VirtualMediaInsert','VirtualMediaEject') }}"
+    _oob_vm_command: >-
+      {{
+        ((oob_redfish_control_virtual_media_action | lower) == 'insert')
+        | ternary('VirtualMediaInsert', 'VirtualMediaEject')
+      }}
 
 - name: Determine resource_id for virtual media
   ansible.builtin.set_fact:
-    _oob_vm_resource_id: "{{ ((oob_virtual_media_category | lower) == 'manager') | ternary(oob_manager_id, oob_system_id) }}"
+    _oob_vm_resource_id: >-
+      {{
+        ((oob_redfish_control_virtual_media_category | lower) == 'manager')
+        | ternary(oob_redfish_control_manager_id, oob_redfish_control_system_id)
+      }}
 
 - name: Eject existing virtual media before insert
   community.general.redfish_command:
-    category: "{{ oob_virtual_media_category }}"
+    category: "{{ oob_redfish_control_virtual_media_category }}"
     command: VirtualMediaEject
     resource_id: "{{ _oob_vm_resource_id }}"
     baseuri: "{{ _oob_baseuri_effective }}"
-    username: "{{ oob_user }}"
-    password: "{{ oob_password }}"
-    timeout: "{{ oob_timeout }}"
-    validate_certs: "{{ oob_validate_certs }}"
-    ca_path: "{{ (oob_ca_path | length > 0) | ternary(oob_ca_path, omit) }}"
+    username: "{{ oob_redfish_control_user }}"
+    password: "{{ oob_redfish_control_password }}"
+    timeout: "{{ oob_redfish_control_timeout }}"
+    validate_certs: "{{ oob_redfish_control_validate_certs }}"
+    ca_path: "{{ (oob_redfish_control_ca_path | length > 0) | ternary(oob_redfish_control_ca_path, omit) }}"
   register: _rf_vm_eject
-  no_log: "{{ oob_no_log }}"
+  no_log: "{{ oob_redfish_control_no_log }}"
   failed_when: false
-  when: (oob_virtual_media_action | lower) == 'insert'
+  when: (oob_redfish_control_virtual_media_action | lower) == 'insert'
 
 - name: Execute virtual media action
   community.general.redfish_command:
-    category: "{{ oob_virtual_media_category }}"
+    category: "{{ oob_redfish_control_virtual_media_category }}"
     command: "{{ _oob_vm_command }}"
     resource_id: "{{ _oob_vm_resource_id }}"
     baseuri: "{{ _oob_baseuri_effective }}"
-    username: "{{ oob_user }}"
-    password: "{{ oob_password }}"
-    timeout: "{{ oob_timeout }}"
-    validate_certs: "{{ oob_validate_certs }}"
-    ca_path: "{{ (oob_ca_path | length > 0) | ternary(oob_ca_path, omit) }}"
+    username: "{{ oob_redfish_control_user }}"
+    password: "{{ oob_redfish_control_password }}"
+    timeout: "{{ oob_redfish_control_timeout }}"
+    validate_certs: "{{ oob_redfish_control_validate_certs }}"
+    ca_path: "{{ (oob_redfish_control_ca_path | length > 0) | ternary(oob_redfish_control_ca_path, omit) }}"
     virtual_media:
-      image_url: "{{ oob_virtual_media_image_url }}"
-      media_types: "{{ oob_virtual_media_media_types }}"
-      write_protected: "{{ oob_virtual_media_write_protected | bool }}"
-      inserted: "{{ oob_virtual_media_inserted | bool }}"
-      username: "{{ (oob_virtual_media_username | length > 0) | ternary(oob_virtual_media_username, omit) }}"
-      password: "{{ (oob_virtual_media_password | length > 0) | ternary(oob_virtual_media_password, omit) }}"
-      transfer_protocol_type: "{{ (oob_virtual_media_transfer_protocol_type | length > 0) | ternary(oob_virtual_media_transfer_protocol_type, omit) }}"
-      transfer_method: "{{ (oob_virtual_media_transfer_method | length > 0) | ternary(oob_virtual_media_transfer_method, omit) }}"
+      image_url: "{{ oob_redfish_control_virtual_media_image_url }}"
+      media_types: "{{ oob_redfish_control_virtual_media_media_types }}"
+      write_protected: "{{ oob_redfish_control_virtual_media_write_protected | bool }}"
+      inserted: "{{ oob_redfish_control_virtual_media_inserted | bool }}"
+      username: >-
+        {{
+          (oob_redfish_control_virtual_media_username | length > 0)
+          | ternary(oob_redfish_control_virtual_media_username, omit)
+        }}
+      password: >-
+        {{
+          (oob_redfish_control_virtual_media_password | length > 0)
+          | ternary(oob_redfish_control_virtual_media_password, omit)
+        }}
+      transfer_protocol_type: >-
+        {{
+          (oob_redfish_control_virtual_media_transfer_protocol_type | length > 0)
+          | ternary(oob_redfish_control_virtual_media_transfer_protocol_type, omit)
+        }}
+      transfer_method: >-
+        {{
+          (oob_redfish_control_virtual_media_transfer_method | length > 0)
+          | ternary(oob_redfish_control_virtual_media_transfer_method, omit)
+        }}
   register: _rf_vm
-  no_log: "{{ oob_no_log }}"
+  no_log: "{{ oob_redfish_control_no_log }}"
