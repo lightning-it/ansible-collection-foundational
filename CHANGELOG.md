@@ -1,3 +1,9 @@
+## [1.8.0](https://github.com/lightning-it/ansible-collection-foundational/compare/v1.7.0...v1.8.0) (2026-01-16)
+
+### Features
+
+* add optional firewalld zone and connection state for VLAN autog… ([#52](https://github.com/lightning-it/ansible-collection-foundational/issues/52)) ([623be11](https://github.com/lightning-it/ansible-collection-foundational/commit/623be11429917f859653f8dea123dd6723c43ec0))
+
 ## [1.7.0](https://github.com/lightning-it/ansible-collection-foundational/compare/v1.6.0...v1.7.0) (2026-01-15)
 
 ### Features
