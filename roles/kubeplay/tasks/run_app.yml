@@ -1,0 +1,16 @@
+---
+- name: Apply kubeplay app vars
+  ansible.builtin.set_fact: "{{ kubeplay_app.vars | default({}) }}"
+  changed_when: false
+  when: kubeplay_app.vars | default({}) | length > 0
+
+- name: Include kubeplay app role
+  ansible.builtin.include_role:
+    name: "{{ kubeplay_app.role }}"
+    apply:
+      tags: "{{ kubeplay_app.tags | default([]) }}"
+  when: kubeplay_app.role | length > 0
+
+- name: Include kubeplay app tasks
+  ansible.builtin.include_tasks: "{{ kubeplay_app.tasks }}"
+  when: kubeplay_app.tasks | length > 0

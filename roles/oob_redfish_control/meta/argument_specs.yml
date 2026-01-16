@@ -3,15 +3,39 @@ argument_specs:
   main:
     short_description: Perform Redfish actions (power/boot/virtual media).
     options:
-      oob_baseuri: { type: str, required: false }
-      oob_user: { type: str, required: true }
-      oob_password: { type: str, required: true }
-      oob_validate_certs: { type: bool, default: false }
-      oob_ca_path: { type: str, required: false }
-      oob_timeout: { type: int, default: 60 }
-      oob_no_log: { type: bool, default: true }
-      oob_debug: { type: bool, default: false }
+      oob_redfish_control_baseuri: {type: str, required: false}
+      oob_redfish_control_user: {type: str, required: true}
+      oob_redfish_control_password: {type: str, required: true}
+      oob_redfish_control_validate_certs: {type: bool, default: false}
+      oob_redfish_control_ca_path: {type: str, required: false}
+      oob_redfish_control_timeout: {type: int, default: 60}
+      oob_redfish_control_no_log: {type: bool, default: true}
+      oob_redfish_control_debug: {type: bool, default: false}
 
-      oob_power_action: { type: str, required: false }
-      oob_boot_target: { type: str, required: false }
-      oob_virtual_media_action: { type: str, required: false }
+      oob_redfish_control_power_action: {type: str, required: false}
+      oob_redfish_control_power_wait: {type: bool, default: false}
+      oob_redfish_control_power_wait_timeout: {type: int, default: 120}
+
+      oob_redfish_control_boot_target: {type: str, required: false}
+      oob_redfish_control_boot_override_mode: {type: str, default: "UEFI"}
+      oob_redfish_control_boot_persistent: {type: bool, default: false}
+      oob_redfish_control_boot_next: {type: str, required: false}
+      oob_redfish_control_uefi_target: {type: str, required: false}
+      oob_redfish_control_boot_disable_override: {type: bool, default: false}
+
+      oob_redfish_control_virtual_media_action: {type: str, required: false}
+      oob_redfish_control_virtual_media_category: {type: str, default: "Systems"}
+      oob_redfish_control_virtual_media_image_url: {type: str, required: false}
+      oob_redfish_control_virtual_media_base_url: {type: str, required: false}
+      oob_redfish_control_virtual_media_image: {type: str, required: false}
+      oob_redfish_control_virtual_media_media_types: {type: list, elements: str}
+      oob_redfish_control_virtual_media_username: {type: str, required: false}
+      oob_redfish_control_virtual_media_password: {type: str, required: false}
+      oob_redfish_control_virtual_media_transfer_protocol_type: {type: str, required: false}
+      oob_redfish_control_virtual_media_transfer_method: {type: str, required: false}
+      oob_redfish_control_virtual_media_write_protected: {type: bool, default: true}
+      oob_redfish_control_virtual_media_inserted: {type: bool, default: true}
+
+      oob_redfish_control_system_id: {type: str, default: "auto"}
+      oob_redfish_control_manager_id: {type: str, default: "auto"}
+      oob_redfish_control_chassis_id: {type: str, default: "auto"}

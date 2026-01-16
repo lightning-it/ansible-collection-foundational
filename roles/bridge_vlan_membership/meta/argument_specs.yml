@@ -3,23 +3,23 @@ argument_specs:
   main:
     short_description: Ensure VLAN filtering and VLAN membership on a linux bridge.
     options:
-      bridge_vlan_bridge:
+      bridge_vlan_membership_bridge:
         type: str
         default: "br-trunk"
-      bridge_vlan_ids:
+      bridge_vlan_membership_ids:
         type: list
         elements: int
         default: []
-      bridge_vlan_ports:
+      bridge_vlan_membership_ports:
         type: list
         elements: str
         default: []
-      bridge_vlan_enable_filtering:
+      bridge_vlan_membership_enable_filtering:
         type: bool
         default: true
-      bridge_vlan_apply_self:
+      bridge_vlan_membership_apply_self:
         type: bool
         default: true
-      bridge_vlan_apply_ports:
+      bridge_vlan_membership_apply_ports:
         type: bool
         default: true

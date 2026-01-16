@@ -13,38 +13,42 @@
           'biossetup': 'BiosSetup',
           'uefitarget': 'UefiTarget',
           'uefibootnext': 'UefiBootNext'
-        }.get(oob_boot_target | lower, oob_boot_target)
+        }.get(oob_redfish_control_boot_target | lower, oob_redfish_control_boot_target)
       }}
 
 - name: Validate boot target requirements
   ansible.builtin.assert:
     that:
       - _oob_bootdevice | length > 0
-      - (_oob_bootdevice != 'UefiTarget') or (oob_uefi_target | length > 0)
-      - (_oob_bootdevice != 'UefiBootNext') or (oob_boot_next | length > 0)
+      - (_oob_bootdevice != 'UefiTarget') or (oob_redfish_control_uefi_target | length > 0)
+      - (_oob_bootdevice != 'UefiBootNext') or (oob_redfish_control_boot_next | length > 0)
     fail_msg: >
       Boot target requires extra vars:
-      UefiTarget => oob_uefi_target,
-      UefiBootNext => oob_boot_next.
+      UefiTarget => oob_redfish_control_uefi_target,
+      UefiBootNext => oob_redfish_control_boot_next.
 
 - name: Pick boot command (one-time vs persistent)
   ansible.builtin.set_fact:
-    _oob_boot_command: "{{ (oob_boot_persistent | bool) | ternary('EnableContinuousBootOverride','SetOneTimeBoot') }}"
+    _oob_boot_command: >-
+      {{
+        (oob_redfish_control_boot_persistent | bool)
+        | ternary('EnableContinuousBootOverride', 'SetOneTimeBoot')
+      }}
 
 - name: Set boot override
   community.general.redfish_command:
     category: Systems
     command: "{{ _oob_boot_command }}"
-    resource_id: "{{ oob_system_id }}"
+    resource_id: "{{ oob_redfish_control_system_id }}"
     bootdevice: "{{ _oob_bootdevice }}"
-    boot_override_mode: "{{ oob_boot_override_mode }}"
-    boot_next: "{{ (oob_boot_next | length > 0) | ternary(oob_boot_next, omit) }}"
-    uefi_target: "{{ (oob_uefi_target | length > 0) | ternary(oob_uefi_target, omit) }}"
+    boot_override_mode: "{{ oob_redfish_control_boot_override_mode }}"
+    boot_next: "{{ (oob_redfish_control_boot_next | length > 0) | ternary(oob_redfish_control_boot_next, omit) }}"
+    uefi_target: "{{ (oob_redfish_control_uefi_target | length > 0) | ternary(oob_redfish_control_uefi_target, omit) }}"
     baseuri: "{{ _oob_baseuri_effective }}"
-    username: "{{ oob_user }}"
-    password: "{{ oob_password }}"
-    timeout: "{{ oob_timeout }}"
-    validate_certs: "{{ oob_validate_certs }}"
-    ca_path: "{{ (oob_ca_path | length > 0) | ternary(oob_ca_path, omit) }}"
+    username: "{{ oob_redfish_control_user }}"
+    password: "{{ oob_redfish_control_password }}"
+    timeout: "{{ oob_redfish_control_timeout }}"
+    validate_certs: "{{ oob_redfish_control_validate_certs }}"
+    ca_path: "{{ (oob_redfish_control_ca_path | length > 0) | ternary(oob_redfish_control_ca_path, omit) }}"
   register: _rf_boot
-  no_log: "{{ oob_no_log }}"
+  no_log: "{{ oob_redfish_control_no_log }}"

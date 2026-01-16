@@ -48,29 +48,14 @@
     - kubeplay_fail_on_unknown | bool
     - item.enabled | bool
 
-- name: Run kubeplay app roles
-  ansible.builtin.include_role:
-    name: "{{ item.role }}"
-    apply:
-      tags: "{{ item.tags | default([]) }}"
-  vars: "{{ item.vars | default({}) }}"
+- name: Run kubeplay apps
+  ansible.builtin.include_tasks: run_app.yml
   loop: "{{ _kubeplay_apps }}"
   loop_control:
-    label: "{{ item.name | default(item.role) }}"
+    label: "{{ item.name | default(item.role | default(item.tasks)) }}"
+  vars:
+    kubeplay_app: "{{ item }}"
   when:
     - kubeplay_enabled | bool
     - item.enabled | bool
     - item.when | default(true) | bool
-    - item.role | length > 0
-
-- name: Run kubeplay app tasks
-  ansible.builtin.include_tasks: "{{ item.tasks }}"
-  vars: "{{ item.vars | default({}) }}"
-  loop: "{{ _kubeplay_apps }}"
-  loop_control:
-    label: "{{ item.name | default(item.tasks) }}"
-  when:
-    - kubeplay_enabled | bool
-    - item.enabled | bool
-    - item.when | default(true) | bool
-    - item.tasks | length > 0

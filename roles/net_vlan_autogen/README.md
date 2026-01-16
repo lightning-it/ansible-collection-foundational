@@ -46,11 +46,13 @@ network configuration itself.
       ipv4: 192.0.2.10/24   # optional if dhcp4: true
       gw4: 192.0.2.1        # optional
       dns: [1.1.1.1]        # optional
+      zone: public          # optional (firewalld zone)
     - role: mgmt
       iface: ens34
       ipv4: 10.10.30.1/24
       gw4: 10.10.30.254     # optional
       dns: [1.1.1.1]        # optional
+      zone: mgmt            # optional (firewalld zone)
     - role: trunk
       iface: ens36
       vlans:
@@ -69,6 +71,8 @@ network configuration itself.
   for the management connection.
 - `net_vlan_autogen_trunk_connection_name` (string, default: `"trunk-parent"`):
   name for the trunk parent connection (VLANs refer to this).
+- `net_vlan_autogen_connection_state` (string, default: `"up"`): state for the
+  uplink + management connections (`present` or `up`).
 - `net_vlan_autogen_trunk_parent_state` (string, default: `"present"`): state
   for the trunk parent connection (`present` or `up`).
 - `net_trunk_parent_state` (string, optional): override trunk parent state for
