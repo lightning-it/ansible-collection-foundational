@@ -1,40 +1,43 @@
 ---
-oob_baseuri: "{{ inventory_hostname }}"
-oob_user: ""
-oob_password: ""
+oob_redfish_control_baseuri: "{{ vars.get('oob_baseuri', inventory_hostname) }}"
+oob_redfish_control_user: "{{ vars.get('oob_user', '') }}"
+oob_redfish_control_password: "{{ vars.get('oob_password', '') }}"
 
-oob_validate_certs: false
-oob_ca_path: ""
-oob_timeout: 60
+oob_redfish_control_validate_certs: "{{ vars.get('oob_validate_certs', false) | bool }}"
+oob_redfish_control_ca_path: "{{ vars.get('oob_ca_path', '') }}"
+oob_redfish_control_timeout: "{{ vars.get('oob_timeout', 60) | int }}"
 
 # Security / logging
-oob_no_log: true
-oob_debug: false
+oob_redfish_control_no_log: "{{ vars.get('oob_no_log', true) | bool }}"
+oob_redfish_control_debug: "{{ vars.get('oob_debug', false) | bool }}"
 
 # Actions (set what you need; role executes the provided ones)
-oob_power_action: ""              # on|off|reboot|graceful_shutdown|graceful_restart|force_restart|force_off
-oob_power_wait: false
-oob_power_wait_timeout: 120
+oob_redfish_control_power_action: "{{ vars.get('oob_power_action', '') }}"
+oob_redfish_control_power_wait: "{{ vars.get('oob_power_wait', false) | bool }}"
+oob_redfish_control_power_wait_timeout: "{{ vars.get('oob_power_wait_timeout', 120) | int }}"
 
-oob_boot_target: ""               # pxe|cd|usb|hdd|bios|UefiTarget|UefiBootNext (you can pass native values too)
-oob_boot_override_mode: "UEFI"    # UEFI|Legacy
-oob_boot_persistent: false        # true => EnableContinuousBootOverride
-oob_boot_next: ""                 # used when boot target is UefiBootNext
-oob_uefi_target: ""               # used when boot target is UefiTarget
-oob_boot_disable_override: false  # runs DisableBootOverride
+oob_redfish_control_boot_target: "{{ vars.get('oob_boot_target', '') }}"
+oob_redfish_control_boot_override_mode: "{{ vars.get('oob_boot_override_mode', 'UEFI') }}"
+oob_redfish_control_boot_persistent: "{{ vars.get('oob_boot_persistent', false) | bool }}"
+oob_redfish_control_boot_next: "{{ vars.get('oob_boot_next', '') }}"
+oob_redfish_control_uefi_target: "{{ vars.get('oob_uefi_target', '') }}"
+oob_redfish_control_boot_disable_override: "{{ vars.get('oob_boot_disable_override', false) | bool }}"
 
-oob_virtual_media_action: ""      # insert|eject
-oob_virtual_media_category: "Systems"   # Systems|Manager
-oob_virtual_media_image_url: ""         # required for insert/eject
-oob_virtual_media_media_types: ["CD", "DVD"]  # typical ISO
-oob_virtual_media_username: ""
-oob_virtual_media_password: ""
-oob_virtual_media_transfer_protocol_type: ""
-oob_virtual_media_transfer_method: ""
-oob_virtual_media_write_protected: true
-oob_virtual_media_inserted: true
+oob_redfish_control_virtual_media_action: "{{ vars.get('oob_virtual_media_action', '') }}"
+oob_redfish_control_virtual_media_category: "{{ vars.get('oob_virtual_media_category', 'Systems') }}"
+oob_redfish_control_virtual_media_image_url: "{{ vars.get('oob_virtual_media_image_url', '') }}"
+oob_redfish_control_virtual_media_base_url: "{{ vars.get('oob_virtual_media_base_url', '') }}"
+oob_redfish_control_virtual_media_image: "{{ vars.get('oob_virtual_media_image', '') }}"
+oob_redfish_control_virtual_media_media_types: "{{ vars.get('oob_virtual_media_media_types', ['CD', 'DVD']) }}"
+oob_redfish_control_virtual_media_username: "{{ vars.get('oob_virtual_media_username', '') }}"
+oob_redfish_control_virtual_media_password: "{{ vars.get('oob_virtual_media_password', '') }}"
+oob_redfish_control_virtual_media_transfer_protocol_type: >-
+  "{{ vars.get('oob_virtual_media_transfer_protocol_type', '') }}"
+oob_redfish_control_virtual_media_transfer_method: "{{ vars.get('oob_virtual_media_transfer_method', '') }}"
+oob_redfish_control_virtual_media_write_protected: "{{ vars.get('oob_virtual_media_write_protected', true) | bool }}"
+oob_redfish_control_virtual_media_inserted: "{{ vars.get('oob_virtual_media_inserted', true) | bool }}"
 
 # IDs (usually set by oob_redfish_inventory; if "auto"/undefined, control role will include inventory role)
-oob_system_id: "auto"
-oob_manager_id: "auto"
-oob_chassis_id: "auto"
+oob_redfish_control_system_id: "{{ vars.get('oob_system_id', 'auto') }}"
+oob_redfish_control_manager_id: "{{ vars.get('oob_manager_id', 'auto') }}"
+oob_redfish_control_chassis_id: "{{ vars.get('oob_chassis_id', 'auto') }}"

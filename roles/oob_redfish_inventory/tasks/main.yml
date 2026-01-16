@@ -2,14 +2,14 @@
 - name: Assert required inputs
   ansible.builtin.assert:
     that:
-      - oob_baseuri | length > 0
-      - oob_user | length > 0
-      - oob_password | length > 0
-    fail_msg: "oob_baseuri/oob_user/oob_password must be set."
+      - oob_redfish_inventory_baseuri | length > 0
+      - oob_redfish_inventory_user | length > 0
+      - oob_redfish_inventory_password | length > 0
+    fail_msg: "oob_redfish_inventory_baseuri/oob_redfish_inventory_user/oob_redfish_inventory_password must be set."
 
 - name: Normalize baseuri input
   ansible.builtin.set_fact:
-    _oob_baseuri_input: "{{ vars.get('oob_baseuri', inventory_hostname) | string }}"
+    _oob_baseuri_input: "{{ vars.get('oob_redfish_inventory_baseuri', inventory_hostname) | string }}"
   changed_when: false
 
 - name: Normalize baseuri (strip scheme/path)
@@ -34,27 +34,27 @@
     category: Service
     command: CheckAvailability
     baseuri: "{{ _oob_baseuri_effective }}"
-    username: "{{ oob_user }}"
-    password: "{{ oob_password }}"
-    timeout: "{{ oob_timeout }}"
-    validate_certs: "{{ oob_validate_certs }}"
-    ca_path: "{{ (oob_ca_path | length > 0) | ternary(oob_ca_path, omit) }}"
+    username: "{{ oob_redfish_inventory_user }}"
+    password: "{{ oob_redfish_inventory_password }}"
+    timeout: "{{ oob_redfish_inventory_timeout }}"
+    validate_certs: "{{ oob_redfish_inventory_validate_certs }}"
+    ca_path: "{{ (oob_redfish_inventory_ca_path | length > 0) | ternary(oob_redfish_inventory_ca_path, omit) }}"
   register: _rf_avail
-  no_log: "{{ oob_no_log }}"
-  when: oob_check_availability | bool
+  no_log: "{{ oob_redfish_inventory_no_log }}"
+  when: oob_redfish_inventory_check_availability | bool
 
 - name: Get System Inventory (for System Id discovery)
   community.general.redfish_info:
     category: Systems
     command: GetSystemInventory
     baseuri: "{{ _oob_baseuri_effective }}"
-    username: "{{ oob_user }}"
-    password: "{{ oob_password }}"
-    timeout: "{{ oob_timeout }}"
-    validate_certs: "{{ oob_validate_certs }}"
-    ca_path: "{{ (oob_ca_path | length > 0) | ternary(oob_ca_path, omit) }}"
+    username: "{{ oob_redfish_inventory_user }}"
+    password: "{{ oob_redfish_inventory_password }}"
+    timeout: "{{ oob_redfish_inventory_timeout }}"
+    validate_certs: "{{ oob_redfish_inventory_validate_certs }}"
+    ca_path: "{{ (oob_redfish_inventory_ca_path | length > 0) | ternary(oob_redfish_inventory_ca_path, omit) }}"
   register: _rf_sys
-  no_log: "{{ oob_no_log }}"
+  no_log: "{{ oob_redfish_inventory_no_log }}"
 
 - name: Extract System entries (generic)
   ansible.builtin.set_fact:
@@ -113,12 +113,18 @@
       }}
   changed_when: false
 
-- name: Set oob_system_id (auto unless overridden)
+- name: Set oob_redfish_inventory_system_id (auto unless overridden)
   ansible.builtin.set_fact:
-    oob_system_id: >-
+    oob_redfish_inventory_system_id: >-
       {{
-        (oob_system_id if (oob_system_id is defined and oob_system_id != 'auto')
-        else _oob_system_entry_id)
+        (
+          oob_redfish_inventory_system_id
+          if (
+            oob_redfish_inventory_system_id is defined
+            and oob_redfish_inventory_system_id != 'auto'
+          )
+          else _oob_system_entry_id
+        )
       }}
 
 - name: Get Manager Inventory (for Manager Id discovery)
@@ -126,13 +132,13 @@
     category: Manager
     command: GetManagerInventory
     baseuri: "{{ _oob_baseuri_effective }}"
-    username: "{{ oob_user }}"
-    password: "{{ oob_password }}"
-    timeout: "{{ oob_timeout }}"
-    validate_certs: "{{ oob_validate_certs }}"
-    ca_path: "{{ (oob_ca_path | length > 0) | ternary(oob_ca_path, omit) }}"
+    username: "{{ oob_redfish_inventory_user }}"
+    password: "{{ oob_redfish_inventory_password }}"
+    timeout: "{{ oob_redfish_inventory_timeout }}"
+    validate_certs: "{{ oob_redfish_inventory_validate_certs }}"
+    ca_path: "{{ (oob_redfish_inventory_ca_path | length > 0) | ternary(oob_redfish_inventory_ca_path, omit) }}"
   register: _rf_mgr
-  no_log: "{{ oob_no_log }}"
+  no_log: "{{ oob_redfish_inventory_no_log }}"
 
 - name: Extract Manager entries (generic)
   ansible.builtin.set_fact:
@@ -186,12 +192,18 @@
       }}
   changed_when: false
 
-- name: Set oob_manager_id (auto unless overridden)
+- name: Set oob_redfish_inventory_manager_id (auto unless overridden)
   ansible.builtin.set_fact:
-    oob_manager_id: >-
+    oob_redfish_inventory_manager_id: >-
       {{
-        (oob_manager_id if (oob_manager_id is defined and oob_manager_id != 'auto')
-        else _oob_manager_entry_id)
+        (
+          oob_redfish_inventory_manager_id
+          if (
+            oob_redfish_inventory_manager_id is defined
+            and oob_redfish_inventory_manager_id != 'auto'
+          )
+          else _oob_manager_entry_id
+        )
       }}
 
 - name: Get Chassis Inventory (for Chassis Id discovery)
@@ -199,13 +211,13 @@
     category: Chassis
     command: GetChassisInventory
     baseuri: "{{ _oob_baseuri_effective }}"
-    username: "{{ oob_user }}"
-    password: "{{ oob_password }}"
-    timeout: "{{ oob_timeout }}"
-    validate_certs: "{{ oob_validate_certs }}"
-    ca_path: "{{ (oob_ca_path | length > 0) | ternary(oob_ca_path, omit) }}"
+    username: "{{ oob_redfish_inventory_user }}"
+    password: "{{ oob_redfish_inventory_password }}"
+    timeout: "{{ oob_redfish_inventory_timeout }}"
+    validate_certs: "{{ oob_redfish_inventory_validate_certs }}"
+    ca_path: "{{ (oob_redfish_inventory_ca_path | length > 0) | ternary(oob_redfish_inventory_ca_path, omit) }}"
   register: _rf_chs
-  no_log: "{{ oob_no_log }}"
+  no_log: "{{ oob_redfish_inventory_no_log }}"
 
 - name: Extract Chassis entries (generic)
   ansible.builtin.set_fact:
@@ -241,29 +253,35 @@
       }}
   changed_when: false
 
-- name: Set oob_chassis_id (auto unless overridden)
+- name: Set oob_redfish_inventory_chassis_id (auto unless overridden)
   ansible.builtin.set_fact:
-    oob_chassis_id: >-
+    oob_redfish_inventory_chassis_id: >-
       {{
-        (oob_chassis_id if (oob_chassis_id is defined and oob_chassis_id != 'auto')
-        else _oob_chassis_entry_id)
+        (
+          oob_redfish_inventory_chassis_id
+          if (
+            oob_redfish_inventory_chassis_id is defined
+            and oob_redfish_inventory_chassis_id != 'auto'
+          )
+          else _oob_chassis_entry_id
+        )
       }}
 
 - name: Expose a small summary fact bundle
   ansible.builtin.set_fact:
-    oob_redfish:
+    oob_redfish_inventory_redfish:
       baseuri: "{{ _oob_baseuri_effective }}"
-      system_id: "{{ oob_system_id }}"
-      manager_id: "{{ oob_manager_id }}"
-      chassis_id: "{{ oob_chassis_id }}"
+      system_id: "{{ oob_redfish_inventory_system_id }}"
+      manager_id: "{{ oob_redfish_inventory_manager_id }}"
+      chassis_id: "{{ oob_redfish_inventory_chassis_id }}"
       system_entry: "{{ _oob_system_entry | default({}, true) }}"
-  no_log: "{{ oob_no_log }}"
+  no_log: "{{ oob_redfish_inventory_no_log }}"
 
 - name: Debug summary
   ansible.builtin.debug:
     msg:
       baseuri: "{{ _oob_baseuri_effective }}"
-      system_id: "{{ oob_system_id }}"
-      manager_id: "{{ oob_manager_id }}"
-      chassis_id: "{{ oob_chassis_id }}"
-  when: oob_debug | bool
+      system_id: "{{ oob_redfish_inventory_system_id }}"
+      manager_id: "{{ oob_redfish_inventory_manager_id }}"
+      chassis_id: "{{ oob_redfish_inventory_chassis_id }}"
+  when: oob_redfish_inventory_debug | bool

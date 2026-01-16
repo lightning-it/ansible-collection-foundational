@@ -2,14 +2,14 @@
 - name: Assert required inputs
   ansible.builtin.assert:
     that:
-      - oob_baseuri | length > 0
-      - oob_user | length > 0
-      - oob_password | length > 0
-    fail_msg: "oob_baseuri/oob_user/oob_password must be set."
+      - oob_redfish_control_baseuri | length > 0
+      - oob_redfish_control_user | length > 0
+      - oob_redfish_control_password | length > 0
+    fail_msg: "oob_redfish_control_baseuri/oob_redfish_control_user/oob_redfish_control_password must be set."
 
 - name: Normalize baseuri input
   ansible.builtin.set_fact:
-    _oob_baseuri_input: "{{ vars.get('oob_baseuri', inventory_hostname) | string }}"
+    _oob_baseuri_input: "{{ vars.get('oob_redfish_control_baseuri', inventory_hostname) | string }}"
   changed_when: false
 
 - name: Normalize baseuri (strip scheme/path)
@@ -31,42 +31,50 @@
 
 - name: Normalize Redfish auth inputs
   ansible.builtin.set_fact:
-    _oob_user_input: "{{ vars.get('oob_user', '') | string }}"
-    _oob_password_input: "{{ vars.get('oob_password', '') | string }}"
+    _oob_user_input: "{{ vars.get('oob_redfish_control_user', '') | string }}"
+    _oob_password_input: "{{ vars.get('oob_redfish_control_password', '') | string }}"
   changed_when: false
 
 - name: Guard against recursive Redfish auth templates
   ansible.builtin.set_fact:
-    oob_user: "{{ ((_oob_user_input | regex_search('\\{\\{')) is not none) | ternary('', _oob_user_input) }}"
-    oob_password: "{{ ((_oob_password_input | regex_search('\\{\\{')) is not none) | ternary('', _oob_password_input) }}"
+    oob_redfish_control_user: >-
+      {{
+        ((_oob_user_input | regex_search('\\{\\{')) is not none)
+        | ternary('', _oob_user_input)
+      }}
+    oob_redfish_control_password: >-
+      {{
+        ((_oob_password_input | regex_search('\\{\\{')) is not none)
+        | ternary('', _oob_password_input)
+      }}
   changed_when: false
 
 - name: Normalize Redfish connection inputs
   ansible.builtin.set_fact:
-    _oob_validate_certs_input: "{{ vars.get('oob_validate_certs', false) }}"
-    _oob_no_log_input: "{{ vars.get('oob_no_log', true) }}"
-    _oob_timeout_input: "{{ vars.get('oob_timeout', 60) }}"
-    _oob_ca_path_input: "{{ vars.get('oob_ca_path', '') | string }}"
+    _oob_validate_certs_input: "{{ vars.get('oob_redfish_control_validate_certs', false) }}"
+    _oob_no_log_input: "{{ vars.get('oob_redfish_control_no_log', true) }}"
+    _oob_timeout_input: "{{ vars.get('oob_redfish_control_timeout', 60) }}"
+    _oob_ca_path_input: "{{ vars.get('oob_redfish_control_ca_path', '') | string }}"
   changed_when: false
 
 - name: Guard against recursive Redfish connection templates
   ansible.builtin.set_fact:
-    oob_validate_certs: >-
+    oob_redfish_control_validate_certs: >-
       {{
         ((_oob_validate_certs_input | string | regex_search('\\{\\{')) is not none)
         | ternary(false, (_oob_validate_certs_input | bool))
       }}
-    oob_no_log: >-
+    oob_redfish_control_no_log: >-
       {{
         ((_oob_no_log_input | string | regex_search('\\{\\{')) is not none)
         | ternary(true, (_oob_no_log_input | bool))
       }}
-    oob_timeout: >-
+    oob_redfish_control_timeout: >-
       {{
         ((_oob_timeout_input | string | regex_search('\\{\\{')) is not none)
         | ternary(60, (_oob_timeout_input | int))
       }}
-    oob_ca_path: >-
+    oob_redfish_control_ca_path: >-
       {{
         ((_oob_ca_path_input | regex_search('\\{\\{')) is not none)
         | ternary('', _oob_ca_path_input)
@@ -75,34 +83,34 @@
 
 - name: Cache effective Redfish auth values
   ansible.builtin.set_fact:
-    _oob_user_effective: "{{ oob_user }}"
-    _oob_password_effective: "{{ oob_password }}"
-    _oob_validate_certs_effective: "{{ oob_validate_certs }}"
-    _oob_no_log_effective: "{{ oob_no_log }}"
-    _oob_timeout_effective: "{{ oob_timeout }}"
-    _oob_ca_path_effective: "{{ oob_ca_path }}"
+    _oob_user_effective: "{{ oob_redfish_control_user }}"
+    _oob_password_effective: "{{ oob_redfish_control_password }}"
+    _oob_validate_certs_effective: "{{ oob_redfish_control_validate_certs }}"
+    _oob_no_log_effective: "{{ oob_redfish_control_no_log }}"
+    _oob_timeout_effective: "{{ oob_redfish_control_timeout }}"
+    _oob_ca_path_effective: "{{ oob_redfish_control_ca_path }}"
   changed_when: false
 
 - name: Normalize Redfish ID inputs
   ansible.builtin.set_fact:
-    _oob_system_id_input: "{{ vars.get('oob_system_id', 'auto') | string }}"
-    _oob_manager_id_input: "{{ vars.get('oob_manager_id', 'auto') | string }}"
-    _oob_chassis_id_input: "{{ vars.get('oob_chassis_id', 'auto') | string }}"
+    _oob_system_id_input: "{{ vars.get('oob_redfish_control_system_id', 'auto') | string }}"
+    _oob_manager_id_input: "{{ vars.get('oob_redfish_control_manager_id', 'auto') | string }}"
+    _oob_chassis_id_input: "{{ vars.get('oob_redfish_control_chassis_id', 'auto') | string }}"
   changed_when: false
 
 - name: Guard against recursive Redfish ID templates
   ansible.builtin.set_fact:
-    oob_system_id: >-
+    oob_redfish_control_system_id: >-
       {{
         ((_oob_system_id_input | regex_search('\\{\\{')) is not none)
         | ternary('auto', _oob_system_id_input)
       }}
-    oob_manager_id: >-
+    oob_redfish_control_manager_id: >-
       {{
         ((_oob_manager_id_input | regex_search('\\{\\{')) is not none)
         | ternary('auto', _oob_manager_id_input)
       }}
-    oob_chassis_id: >-
+    oob_redfish_control_chassis_id: >-
       {{
         ((_oob_chassis_id_input | regex_search('\\{\\{')) is not none)
         | ternary('auto', _oob_chassis_id_input)
@@ -114,43 +122,61 @@
   ansible.builtin.include_role:
     name: lit.foundational.oob_redfish_inventory
   vars:
-    oob_baseuri: "{{ _oob_baseuri_effective }}"
-    oob_user: "{{ _oob_user_effective }}"
-    oob_password: "{{ _oob_password_effective }}"
-    oob_validate_certs: "{{ _oob_validate_certs_effective }}"
-    oob_ca_path: "{{ _oob_ca_path_effective }}"
-    oob_timeout: "{{ _oob_timeout_effective }}"
-    oob_no_log: "{{ _oob_no_log_effective }}"
-    oob_debug: false
+    oob_redfish_inventory_baseuri: "{{ _oob_baseuri_effective }}"
+    oob_redfish_inventory_user: "{{ _oob_user_effective }}"
+    oob_redfish_inventory_password: "{{ _oob_password_effective }}"
+    oob_redfish_inventory_validate_certs: "{{ _oob_validate_certs_effective }}"
+    oob_redfish_inventory_ca_path: "{{ _oob_ca_path_effective }}"
+    oob_redfish_inventory_timeout: "{{ _oob_timeout_effective }}"
+    oob_redfish_inventory_no_log: "{{ _oob_no_log_effective }}"
+    oob_redfish_inventory_debug: false
   when: >
-    (oob_system_id is not defined) or (oob_system_id == 'auto') or
-    (oob_manager_id is not defined) or (oob_manager_id == 'auto') or
-    (oob_chassis_id is not defined) or (oob_chassis_id == 'auto')
+    (oob_redfish_control_system_id is not defined) or (oob_redfish_control_system_id == 'auto') or
+    (oob_redfish_control_manager_id is not defined) or (oob_redfish_control_manager_id == 'auto') or
+    (oob_redfish_control_chassis_id is not defined) or (oob_redfish_control_chassis_id == 'auto')
+
+- name: Sync Redfish IDs from inventory role
+  ansible.builtin.set_fact:
+    oob_redfish_control_system_id: >-
+      {{
+        oob_redfish_inventory_system_id | default(oob_redfish_control_system_id)
+      }}
+    oob_redfish_control_manager_id: >-
+      {{
+        oob_redfish_inventory_manager_id | default(oob_redfish_control_manager_id)
+      }}
+    oob_redfish_control_chassis_id: >-
+      {{
+        oob_redfish_inventory_chassis_id | default(oob_redfish_control_chassis_id)
+      }}
+  changed_when: false
+  when:
+    - oob_redfish_inventory_system_id is defined
 
 - name: Require at least one action
   ansible.builtin.assert:
     that:
       - >-
-        (oob_power_action | length > 0)
-        or (oob_boot_target | length > 0)
-        or (oob_virtual_media_action | length > 0)
-        or (oob_boot_disable_override | bool)
+        (oob_redfish_control_power_action | length > 0)
+        or (oob_redfish_control_boot_target | length > 0)
+        or (oob_redfish_control_virtual_media_action | length > 0)
+        or (oob_redfish_control_boot_disable_override | bool)
     fail_msg: >-
-      No action set. Set oob_power_action, oob_boot_target, or
-      oob_virtual_media_action (or oob_boot_disable_override=true).
+      No action set. Set oob_redfish_control_power_action, oob_redfish_control_boot_target, or
+      oob_redfish_control_virtual_media_action (or oob_redfish_control_boot_disable_override=true).
 
 - name: Power action (optional)
   ansible.builtin.include_tasks: power.yml
-  when: oob_power_action | length > 0
+  when: oob_redfish_control_power_action | length > 0
 
 - name: Boot override disable (optional)
   ansible.builtin.include_tasks: boot_disable.yml
-  when: oob_boot_disable_override | bool
+  when: oob_redfish_control_boot_disable_override | bool
 
 - name: Boot override set (optional)
   ansible.builtin.include_tasks: boot.yml
-  when: oob_boot_target | length > 0
+  when: oob_redfish_control_boot_target | length > 0
 
 - name: Virtual media (optional)
   ansible.builtin.include_tasks: virtual_media.yml
-  when: oob_virtual_media_action | length > 0
+  when: oob_redfish_control_virtual_media_action | length > 0

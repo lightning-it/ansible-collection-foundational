@@ -3,9 +3,9 @@
   ansible.builtin.assert:
     that:
       - >-
-        (oob_power_action | lower) in
+        (oob_redfish_control_power_action | lower) in
         ["on","off","force_off","reboot","graceful_shutdown","graceful_restart","force_restart"]
-    fail_msg: "Unsupported oob_power_action='{{ oob_power_action }}'."
+    fail_msg: "Unsupported oob_redfish_control_power_action='{{ oob_redfish_control_power_action }}'."
 
 - name: Map power action to Redfish command
   ansible.builtin.set_fact:
@@ -19,24 +19,24 @@
           'graceful_shutdown': 'PowerGracefulShutdown',
           'graceful_restart': 'PowerGracefulRestart',
           'force_restart': 'PowerForceRestart'
-        }[oob_power_action | lower]
+        }[oob_redfish_control_power_action | lower]
       }}
 
 - name: Execute power command
   community.general.redfish_command:
     category: Systems
     command: "{{ _oob_power_command }}"
-    resource_id: "{{ oob_system_id }}"
+    resource_id: "{{ oob_redfish_control_system_id }}"
     baseuri: "{{ _oob_baseuri_effective }}"
-    username: "{{ oob_user }}"
-    password: "{{ oob_password }}"
-    timeout: "{{ oob_timeout }}"
-    validate_certs: "{{ oob_validate_certs }}"
-    ca_path: "{{ (oob_ca_path | length > 0) | ternary(oob_ca_path, omit) }}"
-    wait: "{{ oob_power_wait | bool }}"
-    wait_timeout: "{{ oob_power_wait_timeout }}"
+    username: "{{ oob_redfish_control_user }}"
+    password: "{{ oob_redfish_control_password }}"
+    timeout: "{{ oob_redfish_control_timeout }}"
+    validate_certs: "{{ oob_redfish_control_validate_certs }}"
+    ca_path: "{{ (oob_redfish_control_ca_path | length > 0) | ternary(oob_redfish_control_ca_path, omit) }}"
+    wait: "{{ oob_redfish_control_power_wait | bool }}"
+    wait_timeout: "{{ oob_redfish_control_power_wait_timeout }}"
   register: _rf_power
-  no_log: "{{ oob_no_log }}"
+  no_log: "{{ oob_redfish_control_no_log }}"
   failed_when: >-
     (_rf_power is failed) and
     (
@@ -47,20 +47,20 @@
   community.general.redfish_command:
     category: Systems
     command: PowerOn
-    resource_id: "{{ oob_system_id }}"
+    resource_id: "{{ oob_redfish_control_system_id }}"
     baseuri: "{{ _oob_baseuri_effective }}"
-    username: "{{ oob_user }}"
-    password: "{{ oob_password }}"
-    timeout: "{{ oob_timeout }}"
-    validate_certs: "{{ oob_validate_certs }}"
-    ca_path: "{{ (oob_ca_path | length > 0) | ternary(oob_ca_path, omit) }}"
+    username: "{{ oob_redfish_control_user }}"
+    password: "{{ oob_redfish_control_password }}"
+    timeout: "{{ oob_redfish_control_timeout }}"
+    validate_certs: "{{ oob_redfish_control_validate_certs }}"
+    ca_path: "{{ (oob_redfish_control_ca_path | length > 0) | ternary(oob_redfish_control_ca_path, omit) }}"
   register: _rf_power_on
-  no_log: "{{ oob_no_log }}"
+  no_log: "{{ oob_redfish_control_no_log }}"
   when:
-    - (oob_power_action | lower) in ["reboot", "graceful_restart", "force_restart"]
+    - (oob_redfish_control_power_action | lower) in ["reboot", "graceful_restart", "force_restart"]
     - (_rf_power.msg | default('') | regex_search('already powered off', ignorecase=True)) is not none
 
 - name: Debug power result
   ansible.builtin.debug:
     var: _rf_power.msg
-  when: oob_debug | bool
+  when: oob_redfish_control_debug | bool

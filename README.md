@@ -17,7 +17,7 @@ It provides generic building blocks and orchestration helpers for consistent, re
 - `lit.foundational.oob_redfish_inventory`  
   Vendor-neutral Redfish discovery (read-only):
   - discovers Redfish resource IDs (`System`, `Manager`, `Chassis`),
-  - exposes a small `oob_redfish` summary dict for downstream tasks.
+  - exposes a small `oob_redfish_inventory_redfish` summary dict for downstream tasks.
 
 - `lit.foundational.oob_redfish_control`  
   Vendor-neutral Redfish control actions:
@@ -70,9 +70,12 @@ ilo01   ansible_host=10.0.0.11
 ansible_connection=local
 ansible_python_interpreter=/usr/bin/python3
 
-oob_user=admin
-oob_password=secret
-oob_validate_certs=false
+oob_redfish_inventory_user=admin
+oob_redfish_inventory_password=secret
+oob_redfish_inventory_validate_certs=false
+oob_redfish_control_user=admin
+oob_redfish_control_password=secret
+oob_redfish_control_validate_certs=false
 ```
 
 #### Example: one-time PXE boot + reboot
@@ -85,8 +88,8 @@ oob_validate_certs=false
     - lit.foundational.oob_redfish_inventory
     - lit.foundational.oob_redfish_control
   vars:
-    oob_boot_target: pxe
-    oob_power_action: reboot
+    oob_redfish_control_boot_target: pxe
+    oob_redfish_control_power_action: reboot
 ```
 
 #### Example: mount ISO via VirtualMedia + boot CD + reboot
@@ -98,12 +101,12 @@ oob_validate_certs=false
   roles:
     - lit.foundational.oob_redfish_control
   vars:
-    oob_virtual_media_action: insert
-    oob_virtual_media_category: Systems
-    oob_virtual_media_image_url: "http://files.example.local/rhel-9.4.iso"
+    oob_redfish_control_virtual_media_action: insert
+    oob_redfish_control_virtual_media_category: Systems
+    oob_redfish_control_virtual_media_image_url: "http://files.example.local/rhel-9.4.iso"
 
-    oob_boot_target: cd
-    oob_power_action: reboot
+    oob_redfish_control_boot_target: cd
+    oob_redfish_control_power_action: reboot
 ```
 
 > Note: In a “real” unattended install, Redfish usually only does **boot selection + reboot**.  

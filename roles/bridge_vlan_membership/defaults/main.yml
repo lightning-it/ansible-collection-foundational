@@ -1,18 +1,18 @@
 ---
 # Bridge device name
-bridge_vlan_bridge: br-trunk
+bridge_vlan_membership_bridge: "{{ vars.get('bridge_vlan_bridge', 'br-trunk') }}"
 
 # VLAN IDs to ensure (e.g. [191, 2501])
-bridge_vlan_ids: []
+bridge_vlan_membership_ids: "{{ vars.get('bridge_vlan_ids', []) }}"
 
 # Bridge ports to apply VLAN membership to (e.g. [ens2f0, ens2f1])
-bridge_vlan_ports: []
+bridge_vlan_membership_ports: "{{ vars.get('bridge_vlan_ports', []) }}"
 
 # Enable vlan_filtering on the linux bridge
-bridge_vlan_enable_filtering: true
+bridge_vlan_membership_enable_filtering: "{{ vars.get('bridge_vlan_enable_filtering', true) | bool }}"
 
 # Apply VLAN membership for host stack on bridge (self)
-bridge_vlan_apply_self: true
+bridge_vlan_membership_apply_self: "{{ vars.get('bridge_vlan_apply_self', true) | bool }}"
 
 # Apply VLAN membership on bridge ports (master)
-bridge_vlan_apply_ports: true
+bridge_vlan_membership_apply_ports: "{{ vars.get('bridge_vlan_apply_ports', true) | bool }}"

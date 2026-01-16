@@ -3,12 +3,12 @@
   community.general.redfish_command:
     category: Systems
     command: DisableBootOverride
-    resource_id: "{{ oob_system_id }}"
+    resource_id: "{{ oob_redfish_control_system_id }}"
     baseuri: "{{ _oob_baseuri_effective }}"
-    username: "{{ oob_user }}"
-    password: "{{ oob_password }}"
-    timeout: "{{ oob_timeout }}"
-    validate_certs: "{{ oob_validate_certs }}"
-    ca_path: "{{ (oob_ca_path | length > 0) | ternary(oob_ca_path, omit) }}"
+    username: "{{ oob_redfish_control_user }}"
+    password: "{{ oob_redfish_control_password }}"
+    timeout: "{{ oob_redfish_control_timeout }}"
+    validate_certs: "{{ oob_redfish_control_validate_certs }}"
+    ca_path: "{{ (oob_redfish_control_ca_path | length > 0) | ternary(oob_redfish_control_ca_path, omit) }}"
   register: _rf_boot_disable
-  no_log: "{{ oob_no_log }}"
+  no_log: "{{ oob_redfish_control_no_log }}"
