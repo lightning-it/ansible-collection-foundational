@@ -133,11 +133,13 @@
     _net_autogen_wan_ip_cidr: "{{ _net_iface_uplink.ipv4 | default('', true) }}"
     _net_autogen_wan_gateway4: "{{ _net_iface_uplink.gw4 | default('', true) }}"
     _net_autogen_wan_dns: "{{ _net_iface_uplink.dns | default([], true) }}"
+    _net_autogen_wan_zone: "{{ _net_iface_uplink.zone | default('', true) }}"
 
     # MGMT config (only meaningful if mgmt exists)
     _net_autogen_admin_ip_cidr: "{{ _net_iface_mgmt.ipv4 | default('', true) }}"
     _net_autogen_admin_gateway4: "{{ _net_iface_mgmt.gw4 | default('', true) }}"
     _net_autogen_admin_dns: "{{ _net_iface_mgmt.dns | default([], true) }}"
+    _net_autogen_admin_zone: "{{ _net_iface_mgmt.zone | default('', true) }}"
   changed_when: false
   tags: [always]
 
@@ -282,9 +284,13 @@
                     'type': 'ethernet',
                     'interface_name': _net_autogen_wan_iface,
                     'autoconnect': true,
-                    'state': 'up',
+                    'state': net_vlan_autogen_connection_state,
                     'ip': _net_autogen_wan_ip
                   }
+                  | combine(
+                      (_net_autogen_wan_zone | default('') | length > 0)
+                        | ternary({ 'zone': _net_autogen_wan_zone }, {})
+                    )
                 ],
                 []
               )
@@ -299,7 +305,7 @@
                     'type': 'ethernet',
                     'interface_name': _net_autogen_admin_iface,
                     'autoconnect': true,
-                    'state': 'up',
+                    'state': net_vlan_autogen_connection_state,
                     'ip': (
                       { 'address': [ _net_autogen_admin_ip_cidr ] }
                       | combine(
@@ -312,6 +318,10 @@
                         )
                     )
                   }
+                  | combine(
+                      (_net_autogen_admin_zone | default('') | length > 0)
+                        | ternary({ 'zone': _net_autogen_admin_zone }, {})
+                    )
                 ],
                 []
               )

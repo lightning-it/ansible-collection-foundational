@@ -6,4 +6,5 @@ net_vlan_autogen_wan_connection_name: "wan"
 net_vlan_autogen_admin_connection_name: "admin"
 net_vlan_autogen_trunk_connection_name: "trunk-parent"
 
+net_vlan_autogen_connection_state: "up"
 net_vlan_autogen_trunk_parent_state: "present"
