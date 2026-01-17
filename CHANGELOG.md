@@ -1,3 +1,9 @@
+## [1.10.0](https://github.com/lightning-it/ansible-collection-foundational/compare/v1.9.0...v1.10.0) (2026-01-17)
+
+### Features
+
+* enhance guest network customization by integrating nic_setting_… ([#54](https://github.com/lightning-it/ansible-collection-foundational/issues/54)) ([f27f65e](https://github.com/lightning-it/ansible-collection-foundational/commit/f27f65efe7c6ab5b4efbf808cadb06a48553eb5e))
+
 ## [1.9.0](https://github.com/lightning-it/ansible-collection-foundational/compare/v1.8.0...v1.9.0) (2026-01-16)
 
 ### Features
