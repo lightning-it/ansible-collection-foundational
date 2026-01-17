@@ -60,16 +60,80 @@
     - always
 
 - name: Normalize customization vars
-  ansible.builtin.set_fact:
-    vmware_vsphere_vmware_guest_customization: >-
+  vars:
+    _vmware_vsphere_customization_raw: >-
       {{
         vmware_vsphere_vmware_guest_customization
           | default(vmware_vsphere_customization | default({}, true), true)
+      }}
+  ansible.builtin.set_fact:
+    vmware_vsphere_vmware_guest_customization: >-
+      {{
+        (
+          _vmware_vsphere_customization_raw
+            if _vmware_vsphere_customization_raw is mapping
+            else {}
+        )
+        | dict2items
+        | rejectattr('key', 'equalto', 'nic_setting_map')
+        | items2dict
       }}
     vmware_vsphere_vmware_guest_customization_spec: >-
       {{
         vmware_vsphere_vmware_guest_customization_spec
           | default(vmware_vsphere_customization_spec | default('', true), true)
       }}
+    vmware_vsphere_vmware_guest_nic_setting_map: >-
+      {{
+        (_vmware_vsphere_customization_raw.nic_setting_map | default([], true))
+        if _vmware_vsphere_customization_raw is mapping
+        else []
+      }}
+  tags:
+    - always
+
+- name: Validate nic_setting_map length against networks
+  ansible.builtin.assert:
+    that:
+      - >-
+          (vmware_vsphere_vmware_guest_nic_setting_map | length)
+          <= (vmware_vsphere_vmware_guest_networks | length)
+    fail_msg: >-
+      nic_setting_map has {{ vmware_vsphere_vmware_guest_nic_setting_map | length }}
+      entries but only {{ vmware_vsphere_vmware_guest_networks | length }} network(s)
+      are defined. Add network entries or remove extra nic_setting_map items.
+  when: (vmware_vsphere_vmware_guest_nic_setting_map | length) > 0
+  tags:
+    - always
+
+- name: Apply nic_setting_map to vmware_guest networks
+  ansible.builtin.set_fact:
+    vmware_vsphere_vmware_guest_networks: >-
+      {%- set nets = vmware_vsphere_vmware_guest_networks | default([]) -%}
+      {%- set maps = vmware_vsphere_vmware_guest_nic_setting_map | default([]) -%}
+      {%- set updated = [] -%}
+      {%- set max_index = [nets | length, maps | length] | min -%}
+      {%- for idx in range(max_index) -%}
+        {%- set net = nets[idx] -%}
+        {%- set nic = maps[idx] -%}
+        {%- set merged = net -%}
+        {%- if nic.ip is defined and (nic.ip | string | length > 0) -%}
+          {%- set merged = merged | combine({'ip': nic.ip}, recursive=True) -%}
+        {%- endif -%}
+        {%- if nic.subnet_mask is defined and (nic.subnet_mask | string | length > 0) -%}
+          {%- set merged = merged | combine({'netmask': nic.subnet_mask}, recursive=True) -%}
+        {%- endif -%}
+        {%- if nic.gateway is defined and (nic.gateway | string | length > 0) -%}
+          {%- set merged = merged | combine({'gateway': nic.gateway}, recursive=True) -%}
+        {%- endif -%}
+        {%- set _ = updated.append(merged) -%}
+      {%- endfor -%}
+      {%- if nets | length > max_index -%}
+        {%- for net in nets[max_index:] -%}
+          {%- set _ = updated.append(net) -%}
+        {%- endfor -%}
+      {%- endif -%}
+      {{ updated }}
+  when: (vmware_vsphere_vmware_guest_nic_setting_map | length) > 0
   tags:
     - always
