@@ -90,15 +90,6 @@
         (vmware_vsphere_vmware_guest_customization_spec | default('') | length > 0)
         | ternary(vmware_vsphere_vmware_guest_customization_spec, omit)
       }}
-    networks: >-
-      {{
-        (
-          vmware_vsphere_vmware_guest_networks
-            if vmware_vsphere_vmware_guest_networks is sequence
-            else [vmware_vsphere_vmware_guest_networks]
-        )
-        | default(omit)
-      }}
   when:
     - not vmware_vsphere_destroy | bool
     - vmware_vsphere_vm_exists | default(false) | bool
@@ -118,11 +109,11 @@
 
     # Placement (one of them must be set)
     esxi_hostname: >-
-      {{ (vmware_vsphere_vmware_guest_esxi_hostname | default('') | length > 0)
+      {{ (vmware_vsphere_vmware_guest_esxi_hostname | default('omit') | length > 0)
          | ternary(vmware_vsphere_vmware_guest_esxi_hostname, omit) }}
-    cluster: >-
-      {{ (vmware_vsphere_vmware_guest_cluster | default('') | length > 0)
-         | ternary(vmware_vsphere_vmware_guest_cluster, omit) }}
+    # cluster: >-
+    #   {{ (vmware_vsphere_vmware_guest_cluster | default('omit') | length > 0)
+    #      | ternary(vmware_vsphere_vmware_guest_cluster, omit) }}
 
     # Inventory/placement context
     datacenter: "{{ vmware_vsphere_datacenter | default(omit) }}"
@@ -144,15 +135,6 @@
       {{
         (vmware_vsphere_vmware_guest_customization_spec | default('') | length > 0)
         | ternary(vmware_vsphere_vmware_guest_customization_spec, omit)
-      }}
-    networks: >-
-      {{
-        (
-          vmware_vsphere_vmware_guest_networks
-            if vmware_vsphere_vmware_guest_networks is sequence
-            else [vmware_vsphere_vmware_guest_networks]
-        )
-        | default(omit)
       }}
   when:
     - not vmware_vsphere_destroy | bool
@@ -177,25 +159,24 @@
     - manage_vm
     - create_vm
 
+# - name: Remove VM(s) from vCenter
+  # module_defaults:
+    # group/vmware: "{{ vmware_vsphere_module_defaults_vmware_group }}"
+    # community.vmware.vmware_guest: "{{ vmware_vsphere_module_defaults_vmware_guest }}"
+  # delegate_to: "{{ vmware_vsphere_delegate_to }}"
+  # community.vmware.vmware_guest:
+    # name: "{{ item }}"
+    # state: absent
+    # force: true
 
-- name: Remove VM(s) from vCenter
-  module_defaults:
-    group/vmware: "{{ vmware_vsphere_module_defaults_vmware_group }}"
-    community.vmware.vmware_guest: "{{ vmware_vsphere_module_defaults_vmware_guest }}"
-  delegate_to: "{{ vmware_vsphere_delegate_to }}"
-  community.vmware.vmware_guest:
-    name: "{{ item }}"
-    state: absent
-    force: true
-
-    # Optional context (safe)
-    datacenter: "{{ vmware_vsphere_datacenter | default(omit) }}"
-    folder: "{{ vmware_vsphere_folder_full_path | default(omit) }}"
-  loop: "{{ vmware_hosts | default([inventory_hostname]) }}"
-  loop_control:
-    label: "{{ item }}"
-  when: vmware_vsphere_destroy | bool
-  tags:
-    - manage_vm
-    - destroy_vm
-    - destroy_all
+    # # Optional context (safe)
+    # datacenter: "{{ vmware_vsphere_datacenter | default(omit) }}"
+    # folder: "{{ vmware_vsphere_folder_full_path | default(omit) }}"
+  # loop: "{{ vmware_hosts | default([inventory_hostname]) }}"
+  # loop_control:
+    # label: "{{ item }}"
+  # when: vmware_vsphere_destroy | default(false) | bool
+  # tags:
+    # - manage_vm
+    # - destroy_vm
+    # - destroy_all

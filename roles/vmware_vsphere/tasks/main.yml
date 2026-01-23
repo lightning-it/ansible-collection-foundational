@@ -27,8 +27,8 @@
 
 # Folder management is host-specific (folder_name can differ per VM),
 # so do not use run_once. Delegate behavior is handled by module_defaults.
-- name: Manage VM folder
-  ansible.builtin.include_tasks: manage_folder.yml
+- name: Create VM folder
+  ansible.builtin.include_tasks: create_folder.yml
   tags:
     - manage_folder
 
@@ -37,3 +37,10 @@
   ansible.builtin.include_tasks: manage_vm.yml
   tags:
     - manage_vm
+
+# Folder management is host-specific (folder_name can differ per VM),
+# so do not use run_once. Delegate behavior is handled by module_defaults.
+- name: Delete VM folder
+  ansible.builtin.include_tasks: delete_folder.yml
+  tags:
+    - manage_folder
