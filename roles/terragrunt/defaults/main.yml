@@ -6,3 +6,7 @@ terragrunt_template: terragrunt.hcl.j2
 terragrunt_http_username: ""
 terragrunt_http_password: ""
 terragrunt_plan_file: ""
+terragrunt_vault_token: ""
+terragrunt_vault_addr: ""
+terragrunt_delegate_to: localhost
+terragrunt_workdir: ""

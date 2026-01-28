@@ -8,15 +8,29 @@
   ansible.builtin.set_fact:
     terragrunt_action: >-
       {{ '-destroy' if terragrunt_destroy | bool else '' }}
+    terragrunt_root_dir: >-
+      {{ terragrunt_workdir | default(role_path ~ '/environments', true) }}
+    terragrunt_env_dir: >-
+      {{ (terragrunt_workdir | default(role_path ~ '/environments', true)) ~ '/' ~ cluster_id }}
   tags: always
+
+- name: Ensure terragrunt root directory exists
+  ansible.builtin.file:
+    path: "{{ terragrunt_root_dir }}"
+    state: directory
+    mode: '0700'
+  delegate_to: "{{ terragrunt_delegate_to }}"
+  become: false
+  changed_when: false
+  tags: terragrunt_validate
 
 - name: Create terragrunt environment
   ansible.builtin.file:
-    path: "{{ role_path }}/environments/{{ cluster_id }}"
+    path: "{{ terragrunt_env_dir }}"
     state: directory
     recurse: true
     mode: '0700'
-  delegate_to: localhost
+  delegate_to: "{{ terragrunt_delegate_to }}"
   become: false
   changed_when: false
   tags: terragrunt_validate
@@ -24,9 +38,9 @@
 - name: Create empty environments/root.hcl
   ansible.builtin.copy:
     content: ''
-    dest: "{{ role_path }}/environments/root.hcl"
+    dest: "{{ terragrunt_root_dir }}/root.hcl"
     mode: '0600'
-  delegate_to: localhost
+  delegate_to: "{{ terragrunt_delegate_to }}"
   become: false
   changed_when: false
   tags: terragrunt_validate
@@ -34,9 +48,9 @@
 - name: Generate dynamic terragrunt for current cluster
   ansible.builtin.template:
     src: "{{ terragrunt_template }}"
-    dest: "{{ role_path }}/environments/{{ cluster_id }}/terragrunt.hcl"
+    dest: "{{ terragrunt_env_dir }}/terragrunt.hcl"
     mode: '0600'
-  delegate_to: localhost
+  delegate_to: "{{ terragrunt_delegate_to }}"
   become: false
   changed_when: false
   tags: terragrunt_validate
@@ -45,10 +59,12 @@
   environment:
     TF_HTTP_USERNAME: "{{ terragrunt_http_username }}"
     TF_HTTP_PASSWORD: "{{ terragrunt_http_password }}"
+    VAULT_TOKEN: "{{ terragrunt_vault_token | default(omit, true) }}"
+    VAULT_ADDR: "{{ terragrunt_vault_addr | default(omit, true) }}"
   ansible.builtin.command: terragrunt init --source-update
   args:
-    chdir: "{{ role_path }}/environments/{{ cluster_id }}"
-  delegate_to: localhost
+    chdir: "{{ terragrunt_env_dir }}"
+  delegate_to: "{{ terragrunt_delegate_to }}"
   register: terragrunt_init
   changed_when: false
   run_once: true
@@ -59,10 +75,12 @@
   environment:
     TF_HTTP_USERNAME: "{{ terragrunt_http_username }}"
     TF_HTTP_PASSWORD: "{{ terragrunt_http_password }}"
+    VAULT_TOKEN: "{{ terragrunt_vault_token | default(omit, true) }}"
+    VAULT_ADDR: "{{ terragrunt_vault_addr | default(omit, true) }}"
   ansible.builtin.command: "terragrunt validate"
   args:
-    chdir: "{{ role_path }}/environments/{{ cluster_id }}"
-  delegate_to: localhost
+    chdir: "{{ terragrunt_env_dir }}"
+  delegate_to: "{{ terragrunt_delegate_to }}"
   register: terragrunt_validate
   changed_when: false
   run_once: true
@@ -73,12 +91,14 @@
   environment:
     TF_HTTP_USERNAME: "{{ terragrunt_http_username }}"
     TF_HTTP_PASSWORD: "{{ terragrunt_http_password }}"
+    VAULT_TOKEN: "{{ terragrunt_vault_token | default(omit, true) }}"
+    VAULT_ADDR: "{{ terragrunt_vault_addr | default(omit, true) }}"
   ansible.builtin.command: >-
     terragrunt run -- fmt -list=true -write=false -diff=true
     -check=true -recursive
   args:
-    chdir: "{{ role_path }}/environments/{{ cluster_id }}"
-  delegate_to: localhost
+    chdir: "{{ terragrunt_env_dir }}"
+  delegate_to: "{{ terragrunt_delegate_to }}"
   register: terragrunt_fmt
   changed_when: false
   run_once: true
@@ -89,12 +109,14 @@
   environment:
     TF_HTTP_USERNAME: "{{ terragrunt_http_username }}"
     TF_HTTP_PASSWORD: "{{ terragrunt_http_password }}"
+    VAULT_TOKEN: "{{ terragrunt_vault_token | default(omit, true) }}"
+    VAULT_ADDR: "{{ terragrunt_vault_addr | default(omit, true) }}"
   ansible.builtin.command: >-
     terragrunt plan {{ terragrunt_action }}
-    -no-color -out={{ terragrunt_plan_file | default('/tmp/tf_plan') }}
+    -no-color -out={{ terragrunt_plan_file | default('/tmp/tf_plan', true) }}
   args:
-    chdir: "{{ role_path }}/environments/{{ cluster_id }}"
-  delegate_to: localhost
+    chdir: "{{ terragrunt_env_dir }}"
+  delegate_to: "{{ terragrunt_delegate_to }}"
   register: terragrunt_plan
   vars:
     terragrunt_no_change_pattern: >-
@@ -107,7 +129,7 @@
 - name: Show plan
   ansible.builtin.debug:
     msg: "{{ terragrunt_plan.stdout_lines }}"
-  delegate_to: localhost
+  delegate_to: "{{ terragrunt_delegate_to }}"
   run_once: true
   become: false
   tags: terragrunt_plan
@@ -130,26 +152,28 @@
   environment:
     TF_HTTP_USERNAME: "{{ terragrunt_http_username }}"
     TF_HTTP_PASSWORD: "{{ terragrunt_http_password }}"
+    VAULT_TOKEN: "{{ terragrunt_vault_token | default(omit, true) }}"
+    VAULT_ADDR: "{{ terragrunt_vault_addr | default(omit, true) }}"
   ansible.builtin.command: >-
     terragrunt apply -input=false -auto-approve
-    {{ terragrunt_action }} {{ terragrunt_plan_file | default('/tmp/tf_plan') }}
+    {{ terragrunt_action }} {{ terragrunt_plan_file | default('/tmp/tf_plan', true) }}
   args:
-    chdir: "{{ role_path }}/environments/{{ cluster_id }}"
-  delegate_to: localhost
+    chdir: "{{ terragrunt_env_dir }}"
+  delegate_to: "{{ terragrunt_delegate_to }}"
   register: terragrunt_apply
   changed_when: false
   when:
-    - confirm_apply.user_input is defined
-    - (confirm_apply.user_input | bool) or terragrunt_skip_confirmation
+    - terragrunt_skip_confirmation | bool
+      or (confirm_apply.user_input is defined and (confirm_apply.user_input | bool))
   run_once: true
   become: false
   tags: terragrunt_apply
 
 - name: Cleanup terragrunt environment
   ansible.builtin.file:
-    path: "{{ role_path }}/environments/{{ cluster_id }}"
+    path: "{{ terragrunt_env_dir }}"
     state: absent
-  delegate_to: localhost
+  delegate_to: "{{ terragrunt_delegate_to }}"
   become: false
   changed_when: false
   tags: terragrunt_validate
