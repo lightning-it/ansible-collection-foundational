@@ -14,6 +14,12 @@ It provides generic building blocks and orchestration helpers for consistent, re
   - runs `terragrunt init`, `terragrunt plan`, and `terragrunt apply`
     with optional confirmation and auth support.
 
+- `lit.foundational.terraform_state_migrate`  
+  Migrates local Terraform state files to an S3-compatible backend:
+  - scans a local root for `*.tfstate*`,
+  - uploads to S3/MinIO via `aws s3 cp`,
+  - supports optional key prefix and region.
+
 - `lit.foundational.oob_redfish_inventory`  
   Vendor-neutral Redfish discovery (read-only):
   - discovers Redfish resource IDs (`System`, `Manager`, `Chassis`),
