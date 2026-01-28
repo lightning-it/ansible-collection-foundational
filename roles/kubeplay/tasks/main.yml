@@ -4,6 +4,19 @@
     msg: "kubeplay is disabled (kubeplay_enabled=false)."
   when: not kubeplay_enabled | bool
 
+- name: Seed kubeplay apps from single action
+  ansible.builtin.set_fact:
+    kubeplay_apps:
+      - name: "{{ kubeplay_app_name | default('kubeplay_action') }}"
+        tasks: apps/podman_kube_play.yml
+        vars:
+          kubeplay_action: "{{ kubeplay_action }}"
+          kubeplay_pod_name: "{{ kubeplay_pod_name }}"
+          kubeplay_pod_manifest_path: "{{ kubeplay_pod_manifest_path | default('') }}"
+  when:
+    - kubeplay_action is defined
+    - (kubeplay_apps | default([])) | length == 0
+
 - name: Normalize kubeplay app definitions
   ansible.builtin.set_fact:
     _kubeplay_apps: >-

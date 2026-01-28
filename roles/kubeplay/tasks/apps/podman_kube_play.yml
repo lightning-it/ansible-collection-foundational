@@ -1,0 +1,43 @@
+---
+- name: Validate kubeplay action
+  ansible.builtin.assert:
+    that:
+      - kubeplay_action is defined
+      - kubeplay_action in ['recreate', 'run', 'restart', 'remove']
+    fail_msg: "kubeplay_action must be one of: recreate, run, restart, remove."
+
+- name: Validate kubeplay pod name
+  ansible.builtin.assert:
+    that:
+      - kubeplay_pod_name is defined
+      - kubeplay_pod_name | length > 0
+    fail_msg: "kubeplay_pod_name must be set."
+
+- name: Validate kubeplay manifest path
+  ansible.builtin.assert:
+    that:
+      - kubeplay_pod_manifest_path is defined
+      - kubeplay_pod_manifest_path | length > 0
+    fail_msg: "kubeplay_pod_manifest_path must be set for action '{{ kubeplay_action }}'."
+  when: kubeplay_action in ['recreate', 'run']
+
+- name: Remove pod before kube play
+  ansible.builtin.command: "podman pod rm -f {{ kubeplay_pod_name }}"
+  register: kubeplay_pod_remove
+  failed_when: kubeplay_pod_remove.rc not in [0, 125]
+  changed_when: "'deleted' in kubeplay_pod_remove.stdout"
+  when: kubeplay_action in ['recreate', 'remove']
+
+- name: Run podman kube play
+  ansible.builtin.command: "podman kube play {{ kubeplay_pod_manifest_path }}"
+  register: kubeplay_pod_start
+  changed_when: >-
+    'created' in kubeplay_pod_start.stdout or 'configured' in kubeplay_pod_start.stdout
+  when: kubeplay_action in ['recreate', 'run']
+
+- name: Restart pod
+  ansible.builtin.command: "podman pod restart {{ kubeplay_pod_name }}"
+  register: kubeplay_pod_restart
+  changed_when: kubeplay_pod_restart.rc == 0
+  failed_when: kubeplay_pod_restart.rc != 0
+  when: kubeplay_action == 'restart'
