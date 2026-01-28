@@ -1,0 +1,17 @@
+---
+galaxy_info:
+  role_name: terraform_state_migrate
+  author: Rene Osorio
+  company: Lightning IT
+  description: Migrate local Terraform state files to an S3-compatible backend.
+  license: GPL-3.0-only
+  min_ansible_version: "2.18"
+  platforms:
+    - name: EL
+      versions: ["all"]
+  galaxy_tags:
+    - terraform
+    - s3
+    - migration
+
+dependencies: []
