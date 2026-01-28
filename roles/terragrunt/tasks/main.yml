@@ -141,7 +141,7 @@
   become: false
   vars:
     terragrunt_no_change_pattern: >-
-      No objects need to be destroyed|Infrastructure matches the configuration
+      No objects need to be destroyed|infrastructure matches the configuration
   when:
     - terragrunt_plan.stdout is defined
     - not terragrunt_plan.stdout | regex_search(terragrunt_no_change_pattern)
