@@ -3,3 +3,12 @@ dependency:
   name: galaxy
   options:
     requirements-file: "${MOLECULE_PROJECT_DIRECTORY}/collections/requirements.yml"
+
+provisioner:
+  name: ansible
+  env:
+    ANSIBLE_COLLECTIONS_PATH: >-
+      {{ lookup('env','ANSIBLE_COLLECTIONS_PATHS')
+         | default(lookup('env','ANSIBLE_COLLECTIONS_PATH'), true) }}:
+      {{ lookup('env','HOME') }}/.ansible/collections:
+      {{ molecule_project_directory }}/collections
