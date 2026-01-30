@@ -11,7 +11,7 @@
     terragrunt_root_dir: >-
       {{ terragrunt_workdir | default(role_path ~ '/environments', true) }}
     terragrunt_env_dir: >-
-      {{ (terragrunt_workdir | default(role_path ~ '/environments', true)) ~ '/' ~ cluster_id }}
+      {{ (terragrunt_workdir | default(role_path ~ '/environments', true)) ~ '/' ~ inventory_hostname }}
   tags: always
 
 - name: Ensure terragrunt root directory exists
