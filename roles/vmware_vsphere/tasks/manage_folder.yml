@@ -34,4 +34,6 @@
     datacenter: "{{ vmware_vsphere_datacenter }}"
     absolute_path: "{{ vmware_vsphere_folder_full_path }}"
     state: absent
-  when: vmware_vsphere_destroy | bool
+  when:
+    - vmware_vsphere_destroy | bool
+    - vmware_vsphere_destroy_folder | default(false) | bool

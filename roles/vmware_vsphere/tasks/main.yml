@@ -27,13 +27,30 @@
 
 # Folder management is host-specific (folder_name can differ per VM),
 # so do not use run_once. Delegate behavior is handled by module_defaults.
-- name: Manage VM folder
+#
+# Destroy path must remove/power-off VMs before deleting the folder to
+# avoid "folder contains powered on VM" failures.
+- name: Manage VM(s) (destroy)
+  ansible.builtin.include_tasks: manage_vm.yml
+  when: vmware_vsphere_destroy | bool
+  tags:
+    - manage_vm
+
+- name: Manage VM folder (destroy)
   ansible.builtin.include_tasks: manage_folder.yml
+  when: vmware_vsphere_destroy | bool
+  tags:
+    - manage_folder
+
+- name: Manage VM folder (create)
+  ansible.builtin.include_tasks: manage_folder.yml
+  when: not vmware_vsphere_destroy | bool
   tags:
     - manage_folder
 
 # VM management (create/destroy). Keep separate tags for convenience.
-- name: Manage VM(s)
+- name: Manage VM(s) (create)
   ansible.builtin.include_tasks: manage_vm.yml
+  when: not vmware_vsphere_destroy | bool
   tags:
     - manage_vm

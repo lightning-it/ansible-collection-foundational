@@ -187,7 +187,7 @@ See also:
 ## Local checks
 
 This repository uses **pre-commit** and a shared devtools container
-(`wunder-devtools-ee`) to keep linting and runtime tests consistent between
+(`ee-wunder-devtools-ubi9`) to keep linting and runtime tests consistent between
 local development and CI.
 
 ### 1) Install pre-commit
@@ -205,7 +205,7 @@ pre-commit run --all-files
 
 This will, among other things:
 
-- run `yamllint` inside the `wunder-devtools-ee` container,
+- run `yamllint` inside the `ee-wunder-devtools-ubi9` container,
 - run `ansible-lint` inside the devtools container (after building/installing
   the collection),
 - run all non-`*_heavy` Molecule scenarios inside the devtools container,
