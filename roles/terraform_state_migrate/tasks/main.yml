@@ -1,0 +1,54 @@
+---
+- name: Validate terraform_state_migrate inputs
+  ansible.builtin.assert:
+    that:
+      - terraform_state_migrate_local_root | length > 0
+      - terraform_state_migrate_s3_endpoint | length > 0
+      - terraform_state_migrate_s3_bucket | length > 0
+      - terraform_state_migrate_s3_access_key | length > 0
+      - terraform_state_migrate_s3_secret_key | length > 0
+    fail_msg: >-
+      terraform_state_migrate requires local_root, s3_endpoint, s3_bucket,
+      s3_access_key, and s3_secret_key.
+
+- name: Find local Terraform state files
+  ansible.builtin.find:
+    paths: "{{ terraform_state_migrate_local_root }}"
+    patterns: "{{ terraform_state_migrate_globs }}"
+    recurse: "{{ terraform_state_migrate_recurse | bool }}"
+    file_type: file
+  register: terraform_state_migrate_files
+  changed_when: false
+  tags:
+    - tfstate
+    - tfstate_migrate
+
+- name: Skip migration when no tfstate files are present
+  ansible.builtin.debug:
+    msg: "No Terraform state files found under {{ terraform_state_migrate_local_root }}."
+  when: terraform_state_migrate_files.matched | int == 0
+  tags:
+    - tfstate
+    - tfstate_migrate
+
+- name: Normalize S3 key prefix
+  ansible.builtin.set_fact:
+    terraform_state_migrate_prefix: >-
+      {{
+        (
+          terraform_state_migrate_s3_key_prefix | default('', true)
+        )
+        | regex_replace('^/+', '')
+        | regex_replace('/+$', '')
+      }}
+  when: terraform_state_migrate_files.matched | int > 0
+
+- name: Upload Terraform state files to S3 backend
+  ansible.builtin.include_tasks: upload_one.yml
+  loop: "{{ terraform_state_migrate_files.files }}"
+  loop_control:
+    loop_var: terraform_state_migrate_file
+  when: terraform_state_migrate_files.matched | int > 0
+  tags:
+    - tfstate
+    - tfstate_migrate

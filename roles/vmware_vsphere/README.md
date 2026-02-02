@@ -29,6 +29,7 @@ Creates or destroys vSphere folders and virtual machines required for agent-base
           domain: example.com
           dns_servers: [1.1.1.1]
         vmware_vsphere_destroy: false
+        vmware_vsphere_destroy_folder: false
 ```
 
 ## Variables
@@ -38,7 +39,7 @@ Creates or destroys vSphere folders and virtual machines required for agent-base
 - `vmware_vsphere_vmware_guest_customization` (alias: `vmware_vsphere_customization`) and `vmware_vsphere_vmware_guest_customization_spec` (alias: `vmware_vsphere_customization_spec`) pass guest customization to vCenter for IP/DNS/hostname configuration.
 - If `nic_setting_map` is present in the customization block, the role maps it onto `vmware_vsphere_vmware_guest_networks` and removes it before calling `vmware_guest` (module does not accept `nic_setting_map`).
 - `vmware_vsphere_username`, `vmware_vsphere_password` can be supplied directly or pulled from Vault using `vmware_vsphere_vmware_username_lookup` / `vmware_vsphere_vmware_password_lookup`. These lookup vars default to empty strings (and are normalized in `tasks/assets.yaml`); set them to a valid Vault path to enable lookups. The role will fail early if neither direct values nor lookup paths are provided.
-- Set `vmware_vsphere_destroy: true` to remove VMs/folders instead of creating them; additional tags (`create_vms`, `destroy_all`, etc.) gate individual task files.
+- Set `vmware_vsphere_destroy: true` to remove VMs instead of creating them. Folder deletion is skipped by default for safety; set `vmware_vsphere_destroy_folder: true` if you want the folder removed once it is empty. Additional tags (`create_vms`, `destroy_all`, etc.) gate individual task files.
 
 ### Required inputs
 

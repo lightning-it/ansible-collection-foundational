@@ -14,6 +14,12 @@ It provides generic building blocks and orchestration helpers for consistent, re
   - runs `terragrunt init`, `terragrunt plan`, and `terragrunt apply`
     with optional confirmation and auth support.
 
+- `lit.foundational.terraform_state_migrate`  
+  Migrates local Terraform state files to an S3-compatible backend:
+  - scans a local root for `*.tfstate*`,
+  - uploads to S3/MinIO via `aws s3 cp`,
+  - supports optional key prefix and region.
+
 - `lit.foundational.oob_redfish_inventory`  
   Vendor-neutral Redfish discovery (read-only):
   - discovers Redfish resource IDs (`System`, `Manager`, `Chassis`),
@@ -181,7 +187,7 @@ See also:
 ## Local checks
 
 This repository uses **pre-commit** and a shared devtools container
-(`wunder-devtools-ee`) to keep linting and runtime tests consistent between
+(`ee-wunder-devtools-ubi9`) to keep linting and runtime tests consistent between
 local development and CI.
 
 ### 1) Install pre-commit
@@ -199,7 +205,7 @@ pre-commit run --all-files
 
 This will, among other things:
 
-- run `yamllint` inside the `wunder-devtools-ee` container,
+- run `yamllint` inside the `ee-wunder-devtools-ubi9` container,
 - run `ansible-lint` inside the devtools container (after building/installing
   the collection),
 - run all non-`*_heavy` Molecule scenarios inside the devtools container,

@@ -177,6 +177,60 @@
     - manage_vm
     - create_vm
 
+- name: Check if VM(s) exist before destroy
+  module_defaults:
+    group/vmware: "{{ vmware_vsphere_module_defaults_vmware_group }}"
+  delegate_to: "{{ vmware_vsphere_delegate_to }}"
+  community.vmware.vmware_guest_info:
+    datacenter: "{{ vmware_vsphere_datacenter }}"
+    name: "{{ item }}"
+    folder: "{{ vmware_vsphere_folder_full_path | default(omit) }}"
+  loop: "{{ vmware_hosts | default([inventory_hostname]) }}"
+  loop_control:
+    label: "{{ item }}"
+  register: vmware_vsphere_destroy_vm_info
+  failed_when: false  # treat not-found as non-fatal
+  changed_when: false
+  when: vmware_vsphere_destroy | bool
+  tags:
+    - manage_vm
+    - destroy_vm
+    - destroy_all
+
+- name: Build VM destroy list from existing VMs
+  ansible.builtin.set_fact:
+    vmware_vsphere_destroy_vm_names: >-
+      {{
+        (vmware_vsphere_destroy_vm_info.results | default([]))
+          | selectattr('instance', 'defined')
+          | map(attribute='item')
+          | list
+      }}
+  when: vmware_vsphere_destroy | bool
+  tags:
+    - manage_vm
+    - destroy_vm
+    - destroy_all
+
+- name: Power off VM(s) before destroy
+  module_defaults:
+    group/vmware: "{{ vmware_vsphere_module_defaults_vmware_group }}"
+  delegate_to: "{{ vmware_vsphere_delegate_to }}"
+  community.vmware.vmware_guest_powerstate:
+    name: "{{ item }}"
+    datacenter: "{{ vmware_vsphere_datacenter | default(omit) }}"
+    folder: "{{ vmware_vsphere_folder_full_path | default(omit) }}"
+    state: powered-off
+  loop: "{{ vmware_vsphere_destroy_vm_names | default([]) }}"
+  loop_control:
+    label: "{{ item }}"
+  when:
+    - vmware_vsphere_destroy | bool
+    - (vmware_vsphere_destroy_vm_names | default([]) | length) > 0
+  tags:
+    - manage_vm
+    - destroy_vm
+    - destroy_all
 
 - name: Remove VM(s) from vCenter
   module_defaults:
@@ -191,7 +245,7 @@
     # Optional context (safe)
     datacenter: "{{ vmware_vsphere_datacenter | default(omit) }}"
     folder: "{{ vmware_vsphere_folder_full_path | default(omit) }}"
-  loop: "{{ vmware_hosts | default([inventory_hostname]) }}"
+  loop: "{{ vmware_vsphere_destroy_vm_names | default(vmware_hosts | default([inventory_hostname])) }}"
   loop_control:
     label: "{{ item }}"
   when: vmware_vsphere_destroy | bool

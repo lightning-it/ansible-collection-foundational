@@ -39,6 +39,7 @@ vmware_vsphere_folder_full_path: >-
   }}
 vmware_vsphere_folder_type: vm
 vmware_vsphere_destroy: false
+vmware_vsphere_destroy_folder: false
 vmware_vsphere_guest_force: false
 vmware_vsphere_hardware_version: 15
 vmware_vsphere_guest_id: ""
