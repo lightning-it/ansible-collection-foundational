@@ -1,3 +1,13 @@
+## [1.11.0](https://github.com/lightning-it/ansible-collection-foundational/compare/v1.10.0...v1.11.0) (2026-02-02)
+
+### Features
+
+* ansible role terraform state migrate added ([#59](https://github.com/lightning-it/ansible-collection-foundational/issues/59)) ([edbffee](https://github.com/lightning-it/ansible-collection-foundational/commit/edbffeebc2ff87847a1d222b45569ee2c2e7017c))
+
+### Bug Fixes
+
+* refactore kubeplay terragrunt ([#56](https://github.com/lightning-it/ansible-collection-foundational/issues/56)) ([c8d30a2](https://github.com/lightning-it/ansible-collection-foundational/commit/c8d30a2c93915a0e7c4fd0f825779b350f3700ba))
+
 ## [1.10.0](https://github.com/lightning-it/ansible-collection-foundational/compare/v1.9.0...v1.10.0) (2026-01-17)
 
 ### Features
