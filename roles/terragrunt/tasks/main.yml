@@ -71,6 +71,80 @@
   become: false
   tags: terragrunt_validate
 
+- name: Validate terragrunt import definitions
+  ansible.builtin.assert:
+    that:
+      - item.address is defined
+      - item.address | trim | length > 0
+      - item.id is defined
+      - (item.id | string) | trim | length > 0
+    quiet: true
+  loop: "{{ terragrunt_imports | default([], true) }}"
+  loop_control:
+    label: "{{ item.address | default('') }}"
+  delegate_to: "{{ terragrunt_delegate_to }}"
+  run_once: true
+  become: false
+  when: terragrunt_imports | default([], true) | length > 0
+  tags: terragrunt_plan
+
+- name: Terragrunt state show (pre-import check)
+  environment:
+    TF_HTTP_USERNAME: "{{ terragrunt_http_username }}"
+    TF_HTTP_PASSWORD: "{{ terragrunt_http_password }}"
+    VAULT_TOKEN: "{{ terragrunt_vault_token | default(omit, true) }}"
+    VAULT_ADDR: "{{ terragrunt_vault_addr | default(omit, true) }}"
+  ansible.builtin.command:
+    argv:
+      - terragrunt
+      - state
+      - show
+      - "{{ item.address }}"
+  args:
+    chdir: "{{ terragrunt_env_dir }}"
+  delegate_to: "{{ terragrunt_delegate_to }}"
+  register: terragrunt_state_show
+  failed_when: false
+  changed_when: false
+  run_once: true
+  become: false
+  when: terragrunt_imports | default([], true) | length > 0
+  loop: "{{ terragrunt_imports | default([], true) }}"
+  loop_control:
+    label: "{{ item.address }}"
+  tags: terragrunt_plan
+
+- name: Terragrunt import resources missing from state
+  environment:
+    TF_HTTP_USERNAME: "{{ terragrunt_http_username }}"
+    TF_HTTP_PASSWORD: "{{ terragrunt_http_password }}"
+    VAULT_TOKEN: "{{ terragrunt_vault_token | default(omit, true) }}"
+    VAULT_ADDR: "{{ terragrunt_vault_addr | default(omit, true) }}"
+  ansible.builtin.command:
+    argv:
+      - terragrunt
+      - import
+      - -input=false
+      - "{{ item.address }}"
+      - "{{ item.id }}"
+  args:
+    chdir: "{{ terragrunt_env_dir }}"
+  delegate_to: "{{ terragrunt_delegate_to }}"
+  register: terragrunt_import
+  failed_when: terragrunt_import_strict | bool and terragrunt_import.rc != 0
+  changed_when: false
+  run_once: true
+  become: false
+  when:
+    - terragrunt_imports | default([], true) | length > 0
+    - terragrunt_state_show is defined
+    - terragrunt_state_show.results[terragrunt_import_index].rc | default(1) != 0
+  loop: "{{ terragrunt_imports | default([], true) }}"
+  loop_control:
+    index_var: terragrunt_import_index
+    label: "{{ item.address }}"
+  tags: terragrunt_plan
+
 - name: Terragrunt validate
   environment:
     TF_HTTP_USERNAME: "{{ terragrunt_http_username }}"
