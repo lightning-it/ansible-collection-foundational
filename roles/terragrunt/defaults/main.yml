@@ -10,3 +10,8 @@ terragrunt_vault_token: ""
 terragrunt_vault_addr: ""
 terragrunt_delegate_to: localhost
 terragrunt_workdir: ""
+
+# Optional pre-step to reconcile state when resources already exist (e.g. after a failed run where tfstate was lost).
+# List of dicts: { address: "vault_mount.secret[\"stage-2c\"]", id: "stage-2c" }
+terragrunt_imports: []
+terragrunt_import_strict: false
