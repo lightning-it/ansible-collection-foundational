@@ -1,3 +1,9 @@
+## [1.12.0](https://github.com/lightning-it/ansible-collection-foundational/compare/v1.11.0...v1.12.0) (2026-02-09)
+
+### Features
+
+* add terragrunt import validation and state management tasks ([#64](https://github.com/lightning-it/ansible-collection-foundational/issues/64)) ([b20758a](https://github.com/lightning-it/ansible-collection-foundational/commit/b20758a48a4a127fb4c49959396109d92e123fd0))
+
 ## [1.11.0](https://github.com/lightning-it/ansible-collection-foundational/compare/v1.10.0...v1.11.0) (2026-02-02)
 
 ### Features
