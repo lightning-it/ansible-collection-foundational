@@ -1,3 +1,9 @@
+## [1.13.0](https://github.com/lightning-it/ansible-collection-foundational/compare/v1.12.0...v1.13.0) (2026-02-14)
+
+### Features
+
+* implement Vault token management for terragrunt tasks ([#66](https://github.com/lightning-it/ansible-collection-foundational/issues/66)) ([54540f3](https://github.com/lightning-it/ansible-collection-foundational/commit/54540f30f573908a6ce8e693cb8ba8477995427e))
+
 ## [1.12.0](https://github.com/lightning-it/ansible-collection-foundational/compare/v1.11.0...v1.12.0) (2026-02-09)
 
 ### Features
