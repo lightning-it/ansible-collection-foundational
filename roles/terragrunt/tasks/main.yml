@@ -55,6 +55,132 @@
   changed_when: false
   tags: terragrunt_validate
 
+- name: Preflight Vault token for terragrunt
+  when:
+    - terragrunt_vault_token_preflight | bool
+    - terragrunt_vault_addr | default('', true) | trim | length > 0
+    - terragrunt_vault_token | default('', true) | trim | length > 0
+  tags:
+    - terragrunt_validate
+    - terragrunt_plan
+    - terragrunt_apply
+  block:
+    - name: Lookup Vault token via lookup-self
+      ansible.builtin.uri:
+        url: "{{ terragrunt_vault_addr | trim }}/v1/auth/token/lookup-self"
+        method: GET
+        validate_certs: "{{ terragrunt_vault_validate_certs | bool }}"
+        headers:
+          X-Vault-Token: "{{ terragrunt_vault_token }}"
+      register: terragrunt_vault_token_lookup
+      failed_when: false
+      changed_when: false
+      delegate_to: "{{ terragrunt_delegate_to }}"
+      become: false
+      run_once: true
+      no_log: true
+
+    - name: Fail when Vault token is invalid for configured address
+      ansible.builtin.fail:
+        msg: >-
+          VAULT_TOKEN lookup-self failed for {{ terragrunt_vault_addr }} (status
+          {{ terragrunt_vault_token_lookup.status | default(0) }}).
+          {{
+            terragrunt_vault_token_lookup.msg
+              | default('Ensure the token belongs to this Vault instance and TLS/DNS are correct.', true)
+          }}
+      when: terragrunt_vault_token_lookup.status | default(0) | int != 200
+
+    - name: Record Vault token TTL and renewability
+      ansible.builtin.set_fact:
+        terragrunt_vault_token_ttl_seconds: >-
+          {{
+            terragrunt_vault_token_lookup.json.data.ttl
+              | default(0)
+              | int
+          }}
+        terragrunt_vault_token_renewable: >-
+          {{
+            terragrunt_vault_token_lookup.json.data.renewable
+              | default(false)
+              | bool
+          }}
+      changed_when: false
+      run_once: true
+      no_log: true
+
+    - name: Renew Vault token when TTL is low and token is renewable
+      ansible.builtin.uri:
+        url: "{{ terragrunt_vault_addr | trim }}/v1/auth/token/renew-self"
+        method: POST
+        validate_certs: "{{ terragrunt_vault_validate_certs | bool }}"
+        headers:
+          X-Vault-Token: "{{ terragrunt_vault_token }}"
+        body_format: json
+        body:
+          increment: "{{ terragrunt_vault_token_renew_increment }}"
+      register: terragrunt_vault_token_renew
+      failed_when: false
+      changed_when: false
+      delegate_to: "{{ terragrunt_delegate_to }}"
+      become: false
+      run_once: true
+      no_log: true
+      when:
+        - terragrunt_vault_token_renew_if_low_ttl | bool
+        - terragrunt_vault_token_renewable | bool
+        - terragrunt_vault_token_ttl_seconds | int > 0
+        - terragrunt_vault_token_ttl_seconds | int < (terragrunt_vault_token_min_ttl_seconds | int)
+
+    - name: Re-check Vault token via lookup-self after renewal
+      ansible.builtin.uri:
+        url: "{{ terragrunt_vault_addr | trim }}/v1/auth/token/lookup-self"
+        method: GET
+        validate_certs: "{{ terragrunt_vault_validate_certs | bool }}"
+        headers:
+          X-Vault-Token: "{{ terragrunt_vault_token }}"
+      register: terragrunt_vault_token_lookup_after_renew
+      failed_when: false
+      changed_when: false
+      delegate_to: "{{ terragrunt_delegate_to }}"
+      become: false
+      run_once: true
+      no_log: true
+      when:
+        - terragrunt_vault_token_renew is defined
+        - terragrunt_vault_token_renew.status | default(0) | int in [200, 204]
+
+    - name: Refresh Vault token TTL facts after renewal
+      ansible.builtin.set_fact:
+        terragrunt_vault_token_ttl_seconds: >-
+          {{
+            (
+              terragrunt_vault_token_lookup_after_renew.json.data.ttl
+                | default(terragrunt_vault_token_ttl_seconds | default(0))
+            ) | int
+          }}
+        terragrunt_vault_token_renewable: >-
+          {{
+            terragrunt_vault_token_lookup_after_renew.json.data.renewable
+              | default(terragrunt_vault_token_renewable | default(false))
+              | bool
+          }}
+      changed_when: false
+      run_once: true
+      no_log: true
+      when: terragrunt_vault_token_lookup_after_renew is defined
+
+    - name: Fail when Vault token TTL is too low for terragrunt apply
+      ansible.builtin.fail:
+        msg: >-
+          VAULT_TOKEN TTL is {{ terragrunt_vault_token_ttl_seconds }}s, below required
+          {{ terragrunt_vault_token_min_ttl_seconds }}s for terragrunt apply.
+          Provide a longer-lived/admin token for bootstrap, or increase token TTL.
+      when:
+        - terragrunt_vault_token_fail_on_low_ttl | bool
+        - terragrunt_vault_token_ttl_seconds | int > 0
+        - terragrunt_vault_token_ttl_seconds | int < (terragrunt_vault_token_min_ttl_seconds | int)
+
 - name: Terragrunt init
   environment:
     TF_HTTP_USERNAME: "{{ terragrunt_http_username }}"
@@ -187,18 +313,38 @@
     VAULT_ADDR: "{{ terragrunt_vault_addr | default(omit, true) }}"
   ansible.builtin.command: >-
     terragrunt plan {{ terragrunt_action }}
-    -no-color -out={{ terragrunt_plan_file | default('/tmp/tf_plan', true) }}
+    -no-color
+    {{ '-detailed-exitcode' if (terragrunt_use_detailed_exitcode | bool) else '' }}
+    -out={{ terragrunt_plan_file | default('/tmp/tf_plan', true) }}
   args:
     chdir: "{{ terragrunt_env_dir }}"
   delegate_to: "{{ terragrunt_delegate_to }}"
   register: terragrunt_plan
-  vars:
-    terragrunt_no_change_pattern: >-
-      No objects need to be destroyed|Infrastructure matches the configuration
+  failed_when: >-
+    (
+      (terragrunt_use_detailed_exitcode | bool)
+      and (terragrunt_plan.rc | default(1) not in [0, 2])
+    )
+    or
+    (
+      not (terragrunt_use_detailed_exitcode | bool)
+      and (terragrunt_plan.rc | default(1) != 0)
+    )
   changed_when: false
   run_once: true
   become: false
   tags: terragrunt_plan
+
+- name: Determine terragrunt plan change status
+  ansible.builtin.set_fact:
+    terragrunt_plan_has_changes: "{{ (terragrunt_plan.rc | default(0) | int) == 2 }}"
+  changed_when: false
+  run_once: true
+  become: false
+  when: terragrunt_use_detailed_exitcode | bool
+  tags:
+    - terragrunt_plan
+    - terragrunt_apply
 
 - name: Show plan
   ansible.builtin.debug:
@@ -213,12 +359,8 @@
     prompt: "Are you sure you want to apply the changes? (yes/no)"
   register: confirm_apply
   become: false
-  vars:
-    terragrunt_no_change_pattern: >-
-      No objects need to be destroyed|infrastructure matches the configuration
   when:
-    - terragrunt_plan.stdout is defined
-    - not terragrunt_plan.stdout | regex_search(terragrunt_no_change_pattern)
+    - (terragrunt_plan_has_changes | default(true) | bool)
     - not terragrunt_skip_confirmation
   tags: terragrunt_apply
 
@@ -237,6 +379,7 @@
   register: terragrunt_apply
   changed_when: false
   when:
+    - (terragrunt_plan_has_changes | default(true) | bool)
     - terragrunt_skip_confirmation | bool
       or (confirm_apply.user_input is defined and (confirm_apply.user_input | bool))
   run_once: true
