@@ -1,3 +1,9 @@
+## [1.14.0](https://github.com/lightning-it/ansible-collection-foundational/compare/v1.13.0...v1.14.0) (2026-02-16)
+
+### Features
+
+* enhance folder deletion logic to handle existing VMs and provide informative messages ([#67](https://github.com/lightning-it/ansible-collection-foundational/issues/67)) ([f81a19b](https://github.com/lightning-it/ansible-collection-foundational/commit/f81a19bba335cccb97e76b9e71642534d08a4e58))
+
 ## [1.13.0](https://github.com/lightning-it/ansible-collection-foundational/compare/v1.12.0...v1.13.0) (2026-02-14)
 
 ### Features
