@@ -18,7 +18,7 @@ tags:
 dependencies:
   community.general: '>=7.0.0'
   ansible.posix: '>=1.5.0'
-  vmware.vmware: '>=2.6.0'
+  vmware.vmware: '>=2.7.0'
 build_ignore:
   - node_modules
   - vagrant
