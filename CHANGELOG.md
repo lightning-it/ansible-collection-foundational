@@ -1,3 +1,9 @@
+## [1.15.0](https://github.com/lightning-it/ansible-collection-foundational/compare/v1.14.0...v1.15.0) (2026-02-21)
+
+### Features
+
+* add regex managers for Ansible Galaxy collection dependencies in galaxy.yml ([#69](https://github.com/lightning-it/ansible-collection-foundational/issues/69)) ([9a89839](https://github.com/lightning-it/ansible-collection-foundational/commit/9a89839215a01df53852060178102306a564af39))
+
 ## [1.14.0](https://github.com/lightning-it/ansible-collection-foundational/compare/v1.13.0...v1.14.0) (2026-02-16)
 
 ### Features
