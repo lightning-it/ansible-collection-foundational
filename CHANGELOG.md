@@ -1,3 +1,9 @@
+## [1.15.2](https://github.com/lightning-it/ansible-collection-foundational/compare/v1.15.1...v1.15.2) (2026-02-23)
+
+### Bug Fixes
+
+* sync shared assets from lightning-it/shared-assets ([#81](https://github.com/lightning-it/ansible-collection-foundational/issues/81)) ([f0e9adc](https://github.com/lightning-it/ansible-collection-foundational/commit/f0e9adc3d5c5ddc373039bfb1a69f3b288d24da0))
+
 ## [1.15.1](https://github.com/lightning-it/ansible-collection-foundational/compare/v1.15.0...v1.15.1) (2026-02-23)
 
 ### Bug Fixes
