@@ -235,7 +235,7 @@ This hook calls `scripts/devtools-collection-prepare.sh` and
    ansible-playbook -i localhost, playbooks/example.yml
    ```
 
-   with `ANSIBLE_COLLECTIONS_PATHS=/tmp/wunder/collections`.
+   with `ANSIBLE_COLLECTIONS_PATH=/tmp/wunder/collections`.
 
 Use this smoke test whenever you want to verify that the collection is:
 

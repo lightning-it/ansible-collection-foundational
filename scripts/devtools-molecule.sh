@@ -91,9 +91,9 @@ bash scripts/wunder-devtools-ee.sh bash -lc '
     exit 1
   fi
 
-  # Keep both env var spellings for compatibility across ansible-core versions.
+  # ansible-compat requires ANSIBLE_COLLECTIONS_PATH (not *_PATHS).
   export ANSIBLE_COLLECTIONS_PATH="${COLLECTIONS_DIR}:/tmp/wunder/.ansible/collections:/usr/share/ansible/collections"
-  export ANSIBLE_COLLECTIONS_PATHS="${ANSIBLE_COLLECTIONS_PATH}"
+  unset ANSIBLE_COLLECTIONS_PATHS
 
   # -------------------------------------------------------------
   # 2) Install declared dependencies into the SAME per-run dir
