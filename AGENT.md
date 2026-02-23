@@ -27,15 +27,29 @@ If generic guidance conflicts with repository behavior, you MUST prefer reposito
 
 ## 2. Repository Baseline (This Repo)
 
-1. `galaxy.yml` currently uses:
-   1. `namespace: lit`
-   2. `name: supplementary`
-   3. `license: GPL-3.0-only`
-   4. tag set including `modulix`
-2. Linting uses 120-character YAML line length:
+1. Repository identity values (namespace, name, license, tags, dependencies) MUST be read from `galaxy.yml`.
+2. Do not copy identity metadata from another collection repository.
+3. Linting uses 120-character YAML line length:
    1. `.yamllint` max line length 120
    2. `ansible-lint.yml` YAML max line length 120
-3. Pre-commit runs devtools-based hooks for `yamllint`, `ansible-lint`, and Molecule light scenarios.
+4. Pre-commit runs devtools-based hooks for `yamllint`, `ansible-lint`, and Molecule light scenarios.
+
+## 2.1 Collection Dependency Management (Mandatory)
+
+1. Collection dependency source of truth is `galaxy.yml` `dependencies`.
+2. When role code starts using modules/plugins from another collection, you MUST add that collection to
+   `galaxy.yml` immediately.
+3. Collection dependency versions MUST be maintained in `galaxy.yml`; do not duplicate version ownership in
+   `collections/requirements.yml`.
+4. `galaxy.yml` dependencies MUST stay installable in the repository's default public CI/runtime path.
+5. Entitlement-gated dependencies (for example Red Hat Automation Hub-only collections) MUST NOT be declared in
+   collection `galaxy.yml`; manage them in consumer/workspace overlay requirements instead.
+6. If `collections/requirements.yml` exists, it is an overlay input only (workspace/runtime packaging). It MUST
+   NOT become the canonical source of versions for dependencies already declared in `galaxy.yml`.
+7. Renovate in collection repos SHOULD track `galaxy.yml` dependencies only; requirements-file managers SHOULD be
+   limited to documented overlay-only exceptions.
+8. If dependency update policy differs per dependency (for example lifecycle-managed collections), encode that as
+   targeted Renovate `packageRules` while keeping version ownership in `galaxy.yml`.
 
 ## 3. Role Variable Naming and Mapping Rules
 
@@ -341,6 +355,25 @@ scripts/devtools-molecule.sh minio-config-basic
 ```
 
 3. Keep light scenarios runnable in devtools and pre-commit without external infrastructure.
+
+### 8.4 Required Basic Scenario Coverage Per Role (Mandatory)
+
+1. Every role under `roles/` MUST have a corresponding light Molecule scenario that validates the role.
+2. Required naming for new role scenarios: `<role-name-with-dashes>-basic`.
+3. If an existing role uses a legacy scenario name, do not rename it automatically, but you MUST ensure a
+   working light scenario exists for that role.
+4. Missing scenario coverage for any role is a blocker for completion.
+5. Stub scenarios are allowed only when runtime dependencies are unavailable, but the scenario MUST still run
+   through Molecule test sequence successfully.
+
+### 8.5 Scenario Quality Gate (Mandatory)
+
+For each new or changed role, and for any newly added scenario:
+
+1. Run the role scenario directly with `scripts/devtools-molecule.sh <scenario>`.
+2. The scenario MUST pass converge, idempotence, and verify (no failed tasks).
+3. `ansible-lint` MUST pass with zero fatal violations for the repository and changed scenario files.
+4. You MUST fix lint issues in scenario files (for example var naming or FQCN issues) instead of suppressing them.
 
 ## 9. Collection Packaging and `build_ignore`
 
