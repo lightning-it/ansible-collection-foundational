@@ -1,3 +1,9 @@
+## [1.15.1](https://github.com/lightning-it/ansible-collection-foundational/compare/v1.15.0...v1.15.1) (2026-02-23)
+
+### Bug Fixes
+
+* add community.docker dependency to requirements and gala… ([#80](https://github.com/lightning-it/ansible-collection-foundational/issues/80)) ([e755258](https://github.com/lightning-it/ansible-collection-foundational/commit/e7552582decaff00c5a312308ce7ccceb6bac8af))
+
 ## [1.15.0](https://github.com/lightning-it/ansible-collection-foundational/compare/v1.14.0...v1.15.0) (2026-02-21)
 
 ### Features
