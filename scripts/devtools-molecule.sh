@@ -91,9 +91,7 @@ bash scripts/wunder-devtools-ee.sh bash -lc '
     exit 1
   fi
 
-  # ansible-compat requires ANSIBLE_COLLECTIONS_PATH (not *_PATHS).
-  export ANSIBLE_COLLECTIONS_PATH="${COLLECTIONS_DIR}:/tmp/wunder/.ansible/collections:/usr/share/ansible/collections"
-  unset ANSIBLE_COLLECTIONS_PATHS
+  export ANSIBLE_COLLECTIONS_PATH="${COLLECTIONS_DIR}:/usr/share/ansible/collections"
 
   # -------------------------------------------------------------
   # 2) Install declared dependencies into the SAME per-run dir
@@ -124,10 +122,6 @@ PY
     if [ -n "$dep_spec" ]; then
       echo "Installing dependency ${dep_spec} into ${COLLECTIONS_DIR}..."
       ansible-galaxy collection install "$dep_spec" -p "${COLLECTIONS_DIR}" --force
-
-      # Also install into the default user path because Molecule/ansible-compat
-      # can still resolve collections from ~/.ansible/collections first.
-      ansible-galaxy collection install "$dep_spec" -p "/tmp/wunder/.ansible/collections" --force
     fi
   done
 
