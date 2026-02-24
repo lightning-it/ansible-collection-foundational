@@ -1,3 +1,9 @@
+## [1.15.3](https://github.com/lightning-it/ansible-collection-foundational/compare/v1.15.2...v1.15.3) (2026-02-24)
+
+### Bug Fixes
+
+* update community.general version constraints for compatibility ([#84](https://github.com/lightning-it/ansible-collection-foundational/issues/84)) ([22e43e5](https://github.com/lightning-it/ansible-collection-foundational/commit/22e43e5895ad0b6a9cefa007fee6204031374f58))
+
 ## [1.15.2](https://github.com/lightning-it/ansible-collection-foundational/compare/v1.15.1...v1.15.2) (2026-02-23)
 
 ### Bug Fixes
