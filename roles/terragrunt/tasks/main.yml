@@ -194,8 +194,8 @@
   register: terragrunt_plan
   vars:
     terragrunt_no_change_pattern: >-
-      No objects need to be destroyed|Infrastructure matches the configuration
-  changed_when: false
+      No objects need to be destroyed|infrastructure matches the configuration
+  changed_when: not terragrunt_plan.stdout | regex_search(terragrunt_no_change_pattern)
   run_once: true
   become: false
   tags: terragrunt_plan
