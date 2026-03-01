@@ -1,3 +1,9 @@
+## [1.16.0](https://github.com/lightning-it/ansible-collection-foundational/compare/v1.15.4...v1.16.0) (2026-03-01)
+
+### Features
+
+* enhance VLAN membership tasks with JSON output and static route merging ([#89](https://github.com/lightning-it/ansible-collection-foundational/issues/89)) ([533ad4d](https://github.com/lightning-it/ansible-collection-foundational/commit/533ad4dc0d27d10decd2a4ea1e7160af282d6b25))
+
 ## [1.15.4](https://github.com/lightning-it/ansible-collection-foundational/compare/v1.15.3...v1.15.4) (2026-02-24)
 
 ### Bug Fixes
