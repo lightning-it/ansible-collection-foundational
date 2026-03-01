@@ -39,7 +39,7 @@
 # VLAN membership for host stack (bridge self)
 # ---------------------------------------------------------------------------
 - name: Read bridge self VLAN membership
-  ansible.builtin.command: "bridge vlan show dev {{ bridge_vlan_membership_bridge }}"
+  ansible.builtin.command: "bridge -j vlan show dev {{ bridge_vlan_membership_bridge }}"
   register: _bridge_vlan_membership_self_show
   changed_when: false
   when: bridge_vlan_membership_apply_self | bool
@@ -47,10 +47,12 @@
 - name: Determine bridge self VLAN IDs
   ansible.builtin.set_fact:
     _bridge_vlan_membership_self_ids: >-
-      {{ _bridge_vlan_membership_self_show.stdout_lines
-         | select('match', '^\\s*(?:\\S+\\s+)?\\d+')
-         | map('regex_search', '^\\s*(?:\\S+\\s+)?(\\d+)', '\\1')
+      {{ (_bridge_vlan_membership_self_show.stdout | default('[]') | from_json)
+         | map(attribute='vlans')
+         | flatten
+         | map(attribute='vlan')
          | map('string')
+         | unique
          | list }}
   changed_when: false
   when: bridge_vlan_membership_apply_self | bool
@@ -92,7 +94,7 @@
   when: bridge_vlan_membership_apply_ports | bool
 
 - name: Read bridge port VLAN membership
-  ansible.builtin.command: "bridge vlan show dev {{ item }}"
+  ansible.builtin.command: "bridge -j vlan show dev {{ item }}"
   loop: "{{ bridge_vlan_membership_ports }}"
   register: _bridge_vlan_membership_port_show
   changed_when: false
@@ -103,10 +105,12 @@
     _bridge_vlan_membership_port_ids: >-
       {%- set ns = namespace(data={}) -%}
       {%- for res in _bridge_vlan_membership_port_show.results -%}
-      {%- set ids = res.stdout_lines
-          | select('match', '^\\s*(?:\\S+\\s+)?\\d+')
-          | map('regex_search', '^\\s*(?:\\S+\\s+)?(\\d+)', '\\1')
+      {%- set ids = (res.stdout | default('[]') | from_json)
+          | map(attribute='vlans')
+          | flatten
+          | map(attribute='vlan')
           | map('string')
+          | unique
           | list -%}
       {%- set _ = ns.data.update({(res.item): ids}) -%}
       {%- endfor -%}
