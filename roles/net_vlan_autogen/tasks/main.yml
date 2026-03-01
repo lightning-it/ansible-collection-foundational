@@ -23,6 +23,14 @@
 # Output facts:
 # - network_connections (unless already defined or overwrite enabled)
 # - net_lan_ifaces (VLAN subinterfaces, may be empty)
+#
+# Optional inventory variable:
+# - net_connection_routes:
+#     <connection_name>:
+#       - network: 195.201.190.192
+#         prefix: 32
+#         gateway: 10.50.1.10
+#         metric: 10   # optional
 # ---------------------------------------------------------------------------
 
 - name: Initialize net_ifaces input model
@@ -346,6 +354,27 @@
 
         + (_net_vlan_network_connections | default([]))
       }}
+  changed_when: false
+  tags: [always]
+
+- name: Merge optional static routes into generated network_connections
+  ansible.builtin.set_fact:
+    _net_autogen_network_connections: |-
+      {%- set route_map = net_connection_routes | default({}, true) -%}
+      {%- set out = [] -%}
+      {%- for c in (_net_autogen_network_connections | default([])) -%}
+      {%- set cname = c.name | default('') -%}
+      {%- set extra_routes = route_map.get(cname, []) -%}
+      {%- if extra_routes | length > 0 -%}
+      {%- set ip_cfg = c.ip | default({}) -%}
+      {%- set merged_routes = (ip_cfg.route | default([])) + extra_routes -%}
+      {%- set merged_ip = ip_cfg | combine({'route': merged_routes}, recursive=True) -%}
+      {%- set _ = out.append(c | combine({'ip': merged_ip}, recursive=True)) -%}
+      {%- else -%}
+      {%- set _ = out.append(c) -%}
+      {%- endif -%}
+      {%- endfor -%}
+      {{ out }}
   changed_when: false
   tags: [always]
 
