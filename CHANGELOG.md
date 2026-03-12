@@ -1,3 +1,9 @@
+## [1.17.0](https://github.com/lightning-it/ansible-collection-foundational/compare/v1.16.0...v1.17.0) (2026-03-12)
+
+### Features
+
+* add persistence for bridge VLAN membership with systemd unit and script ([#92](https://github.com/lightning-it/ansible-collection-foundational/issues/92)) ([c82df2c](https://github.com/lightning-it/ansible-collection-foundational/commit/c82df2c6e8c575d737d6a1d066cb60b11b475fe1))
+
 ## [1.16.0](https://github.com/lightning-it/ansible-collection-foundational/compare/v1.15.4...v1.16.0) (2026-03-01)
 
 ### Features
