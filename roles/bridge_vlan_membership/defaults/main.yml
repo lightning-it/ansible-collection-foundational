@@ -16,3 +16,6 @@ bridge_vlan_membership_apply_self: "{{ vars.get('bridge_vlan_apply_self', true) 
 
 # Apply VLAN membership on bridge ports (master)
 bridge_vlan_membership_apply_ports: "{{ vars.get('bridge_vlan_apply_ports', true) | bool }}"
+
+# Persist bridge VLAN membership across reboot with a dedicated systemd unit
+bridge_vlan_membership_persist: "{{ vars.get('bridge_vlan_persist', true) | bool }}"

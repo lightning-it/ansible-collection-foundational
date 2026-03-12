@@ -23,3 +23,6 @@ argument_specs:
       bridge_vlan_membership_apply_ports:
         type: bool
         default: true
+      bridge_vlan_membership_persist:
+        type: bool
+        default: true
