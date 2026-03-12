@@ -4,6 +4,7 @@ Ensures a linux bridge is VLAN-aware and that:
 - the host stack is a member of VLANs on the bridge (`self`)
 - the bridge ports accept the VLANs (`master`)
 - optionally enables `vlan_filtering=1` runtime
+- persists the bridge VLAN membership across reboot with a dedicated systemd unit
 
 ## Example
 
