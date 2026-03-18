@@ -1,3 +1,9 @@
+## [1.17.1](https://github.com/lightning-it/ansible-collection-foundational/compare/v1.17.0...v1.17.1) (2026-03-18)
+
+### Bug Fixes
+
+* update devtools containe version ([#94](https://github.com/lightning-it/ansible-collection-foundational/issues/94)) ([79cd4d5](https://github.com/lightning-it/ansible-collection-foundational/commit/79cd4d5626b6fdfdd0f22a73c5de00e34abf78e5))
+
 ## [1.17.0](https://github.com/lightning-it/ansible-collection-foundational/compare/v1.16.0...v1.17.0) (2026-03-12)
 
 ### Features
