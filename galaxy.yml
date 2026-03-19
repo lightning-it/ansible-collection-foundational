@@ -20,7 +20,7 @@ dependencies:
   ansible.posix: '>=2.1.0'
   community.docker: '*'
   community.vmware: '5.10.0'
-  vmware.vmware: '>=2.7.0'
+  vmware.vmware: '>=2.8.0'
 build_ignore:
   - node_modules
   - vagrant
