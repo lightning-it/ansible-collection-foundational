@@ -313,6 +313,7 @@
     VAULT_ADDR: "{{ terragrunt_vault_addr | default(omit, true) }}"
   ansible.builtin.command: >-
     terragrunt plan {{ terragrunt_action }}
+    {{ terragrunt_args }}
     -no-color
     {{ '-detailed-exitcode' if (terragrunt_use_detailed_exitcode | bool) else '' }}
     -out={{ terragrunt_plan_file | default('/tmp/tf_plan', true) }}
