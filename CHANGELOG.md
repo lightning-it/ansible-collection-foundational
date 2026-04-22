@@ -1,3 +1,9 @@
+## [1.17.2](https://github.com/lightning-it/ansible-collection-foundational/compare/v1.17.1...v1.17.2) (2026-04-22)
+
+### Bug Fixes
+
+* introduce new terragrunt_args ([8d3a22e](https://github.com/lightning-it/ansible-collection-foundational/commit/8d3a22ef2163f9957217ec1a2c509bb11aa24a18))
+
 ## [1.17.1](https://github.com/lightning-it/ansible-collection-foundational/compare/v1.17.0...v1.17.1) (2026-03-18)
 
 ### Bug Fixes
