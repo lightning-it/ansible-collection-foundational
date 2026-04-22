@@ -2,6 +2,7 @@
 terragrunt_destroy: false
 terragrunt_skip_confirmation: false
 terragrunt_source: ""
+terragrunt_args: ""
 terragrunt_template: terragrunt.hcl.j2
 terragrunt_http_username: ""
 terragrunt_http_password: ""
