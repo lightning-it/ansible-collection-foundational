@@ -65,6 +65,70 @@
     - manage_vm
     - create_vm
 
+- name: Check vSphere template before clone
+  module_defaults:
+    group/vmware: "{{ vmware_vsphere_module_defaults_vmware_group }}"
+  delegate_to: "{{ vmware_vsphere_delegate_to }}"
+  community.vmware.vmware_guest_info:
+    datacenter: "{{ vmware_vsphere_datacenter }}"
+    name: "{{ vmware_vsphere_template }}"
+    schema: vsphere
+    properties:
+      - config.template
+      - config.guestId
+      - config.guestFullName
+      - guest.guestId
+      - guest.guestFullName
+      - guest.toolsRunningStatus
+  register: vmware_vsphere_template_info
+  failed_when: false
+  changed_when: false
+  when:
+    - not vmware_vsphere_destroy | bool
+    - not vmware_vsphere_vm_exists | default(false) | bool
+    - vmware_vsphere_validate_template | bool
+    - vmware_vsphere_template | default('', true) | length > 0
+  tags:
+    - manage_vm
+    - create_vm
+
+- name: Validate vSphere template before clone
+  vars:
+    _vmware_vsphere_template_instance: "{{ vmware_vsphere_template_info.instance | default({}) }}"
+    _vmware_vsphere_template_config: "{{ _vmware_vsphere_template_instance.config | default({}) }}"
+    _vmware_vsphere_template_guest: "{{ _vmware_vsphere_template_instance.guest | default({}) }}"
+  ansible.builtin.assert:
+    that:
+      - _vmware_vsphere_template_instance | length > 0
+      - _vmware_vsphere_template_config.template | default(false) | bool
+      - >-
+          (vmware_vsphere_guest_id | default('', true) | length == 0)
+          or (_vmware_vsphere_template_config.guestId | default('') == vmware_vsphere_guest_id)
+    fail_msg: >-
+      Invalid vSphere template '{{ vmware_vsphere_template }}' for
+      '{{ vmware_vsphere_vm_name | default(inventory_hostname) }}'.
+      Expected an existing template with guest_id='{{ vmware_vsphere_guest_id | default('') }}'.
+      Found: template={{ _vmware_vsphere_template_config.template | default('unknown') }},
+      config_guest_id={{ _vmware_vsphere_template_config.guestId | default('unknown') }},
+      config_guest_full_name={{ _vmware_vsphere_template_config.guestFullName | default('unknown') }},
+      tools_guest_id={{ _vmware_vsphere_template_guest.guestId | default('unknown') }},
+      tools_guest_full_name={{ _vmware_vsphere_template_guest.guestFullName | default('unknown') }},
+      tools_status={{ _vmware_vsphere_template_guest.toolsRunningStatus | default('unknown') }},
+      module_msg={{ vmware_vsphere_template_info.msg | default('') | trim }}.
+    success_msg: >-
+      vSphere template '{{ vmware_vsphere_template }}' is usable:
+      guest_id={{ _vmware_vsphere_template_config.guestId | default('unknown') }},
+      guest_full_name={{ _vmware_vsphere_template_config.guestFullName | default('unknown') }},
+      tools_guest_full_name={{ _vmware_vsphere_template_guest.guestFullName | default('unknown') }}.
+  when:
+    - not vmware_vsphere_destroy | bool
+    - not vmware_vsphere_vm_exists | default(false) | bool
+    - vmware_vsphere_validate_template | bool
+    - vmware_vsphere_template | default('', true) | length > 0
+  tags:
+    - manage_vm
+    - create_vm
+
 - name: Reconfigure existing VM (hardware/networks)
   module_defaults:
     group/vmware: "{{ vmware_vsphere_module_defaults_vmware_group }}"
