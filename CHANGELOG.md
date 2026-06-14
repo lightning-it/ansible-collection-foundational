@@ -1,3 +1,9 @@
+## [1.18.0](https://github.com/lightning-it/ansible-collection-foundational/compare/v1.17.2...v1.18.0) (2026-06-14)
+
+### Features
+
+* add template validation for vSphere cloning process ([#110](https://github.com/lightning-it/ansible-collection-foundational/issues/110)) ([cb17228](https://github.com/lightning-it/ansible-collection-foundational/commit/cb17228747e8a8e585b9b3629939a5aadd58d59f))
+
 ## [1.17.2](https://github.com/lightning-it/ansible-collection-foundational/compare/v1.17.1...v1.17.2) (2026-04-22)
 
 ### Bug Fixes
