@@ -29,7 +29,7 @@ No.
 
 ## License
 
-BSD
+MIT
 
 ## Author Information
 

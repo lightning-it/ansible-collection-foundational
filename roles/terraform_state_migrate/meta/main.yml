@@ -4,7 +4,7 @@ galaxy_info:
   author: Rene Osorio
   company: Lightning IT
   description: Migrate local Terraform state files to an S3-compatible backend.
-  license: GPL-3.0-only
+  license: MIT
   min_ansible_version: "2.18"
   platforms:
     - name: EL

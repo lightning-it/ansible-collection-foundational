@@ -5,7 +5,7 @@ galaxy_info:
   author: Lightning IT
   description: Manage vSphere folders and VMs for agent-based installs.
   company: Lightning IT
-  license: GPL-2.0-only
+  license: MIT
   min_ansible_version: "2.15"
   platforms:
     - name: EL
