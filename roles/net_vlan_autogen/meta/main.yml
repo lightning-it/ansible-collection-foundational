@@ -5,7 +5,7 @@ galaxy_info:
   author: René Osorio
   description: Generate NetworkManager network_connections + VLAN interface list from net_vlan_configs (facts only).
   company: Lightning IT
-  license: GPL-3.0-only
+  license: MIT
   min_ansible_version: "2.18"
 
   platforms:
