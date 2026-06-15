@@ -1,3 +1,9 @@
+## [1.18.1](https://github.com/lightning-it/ansible-collection-foundational/compare/v1.18.0...v1.18.1) (2026-06-15)
+
+### Bug Fixes
+
+* update license from GPL to MIT across multiple files ([#115](https://github.com/lightning-it/ansible-collection-foundational/issues/115)) ([91fca97](https://github.com/lightning-it/ansible-collection-foundational/commit/91fca97c73923a4b938f357599aaa74a24384bd0))
+
 ## [1.18.0](https://github.com/lightning-it/ansible-collection-foundational/compare/v1.17.2...v1.18.0) (2026-06-14)
 
 ### Features
