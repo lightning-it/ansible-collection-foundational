@@ -1,3 +1,9 @@
+## [1.19.0](https://github.com/lightning-it/ansible-collection-foundational/compare/v1.18.1...v1.19.0) (2026-06-16)
+
+### Features
+
+* add ansible_remote_tmp role with bootstrap and validation tasks ([#119](https://github.com/lightning-it/ansible-collection-foundational/issues/119)) ([447dd13](https://github.com/lightning-it/ansible-collection-foundational/commit/447dd13491b0c66fade42acdc1bc076f2187e14c))
+
 ## [1.18.1](https://github.com/lightning-it/ansible-collection-foundational/compare/v1.18.0...v1.18.1) (2026-06-15)
 
 ### Bug Fixes
