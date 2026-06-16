@@ -1,3 +1,9 @@
+## [1.20.0](https://github.com/lightning-it/ansible-collection-foundational/compare/v1.19.0...v1.20.0) (2026-06-16)
+
+### Features
+
+* add validation for ansible_remote_tmp users and skip option; enhance vmware_vsphere IP validation ([#121](https://github.com/lightning-it/ansible-collection-foundational/issues/121)) ([08c9e15](https://github.com/lightning-it/ansible-collection-foundational/commit/08c9e1587682673f1bd84bb9273c573a54789a70))
+
 ## [1.19.0](https://github.com/lightning-it/ansible-collection-foundational/compare/v1.18.1...v1.19.0) (2026-06-16)
 
 ### Features
