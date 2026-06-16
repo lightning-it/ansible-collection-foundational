@@ -78,6 +78,10 @@
       # folder
       - vmware_vsphere_folder_full_path | default('') | length > 0
       - vmware_vsphere_folder_name | default('') | length > 0
+      - vmware_vsphere_wait_for_ip is boolean
+      - vmware_vsphere_wait_for_ip_timeout is number
+      - vmware_vsphere_wait_for_ip_timeout | int > 0
+      - vmware_vsphere_validate_configured_ips is boolean
     fail_msg: >-
       Missing required variables for VM create (host={{ inventory_hostname }}).
 

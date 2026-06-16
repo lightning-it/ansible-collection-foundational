@@ -5,6 +5,8 @@ vmware_vsphere_delegate_to: localhost
 # Behaviour defaults
 vmware_vsphere_power_on: true
 vmware_vsphere_wait_for_ip: true
+vmware_vsphere_wait_for_ip_timeout: 900
+vmware_vsphere_validate_configured_ips: true
 vmware_vsphere_guest_ip_family: ipv4
 vmware_vsphere_nic_type: vmxnet3
 vmware_vsphere_disk_thin_provisioned: true
