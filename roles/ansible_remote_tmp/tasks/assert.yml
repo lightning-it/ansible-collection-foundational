@@ -12,6 +12,7 @@
       - ansible_remote_tmp_mode | string | trim | length > 0
       - ansible_remote_tmp_validate_users is sequence
       - ansible_remote_tmp_validate_users is not string
+      - ansible_remote_tmp_validate_skip_missing_users is boolean
     fail_msg: >-
       Invalid configuration for lit.foundational.ansible_remote_tmp.
       Set ansible_remote_tmp_path to an absolute managed-host path.

@@ -35,6 +35,43 @@
     mode: "{{ ansible_remote_tmp_mode }}"
   become: true
 
+- name: Check configured validation users
+  ansible.builtin.command:
+    argv:
+      - getent
+      - passwd
+      - "{{ ansible_remote_tmp_validate_user }}"
+  register: ansible_remote_tmp_validate_user_checks
+  changed_when: false
+  failed_when: false
+  loop: "{{ ansible_remote_tmp_validate_users | reject('equalto', '') | list }}"
+  loop_control:
+    loop_var: ansible_remote_tmp_validate_user
+    label: "{{ ansible_remote_tmp_validate_user }}"
+
+- name: Fail when validation users are missing in strict mode
+  ansible.builtin.assert:
+    that:
+      - >-
+        (
+          ansible_remote_tmp_validate_user_checks.results
+          | default([])
+          | selectattr('rc', 'ne', 0)
+          | list
+          | length
+        ) == 0
+    fail_msg: >-
+      One or more ansible_remote_tmp_validate_users do not exist on the managed
+      host: {{
+        ansible_remote_tmp_validate_user_checks.results
+        | default([])
+        | selectattr('rc', 'ne', 0)
+        | map(attribute='ansible_remote_tmp_validate_user')
+        | join(', ')
+      }}.
+  when:
+    - not (ansible_remote_tmp_validate_skip_missing_users | bool)
+
 - name: Validate configured users can write to Ansible remote tmp
   ansible.builtin.command:
     argv:
@@ -49,7 +86,14 @@
   become: true
   become_user: "{{ ansible_remote_tmp_validate_user }}"
   changed_when: false
-  loop: "{{ ansible_remote_tmp_validate_users | reject('equalto', '') | list }}"
+  loop: >-
+    {{
+      ansible_remote_tmp_validate_user_checks.results
+      | default([])
+      | selectattr('rc', 'eq', 0)
+      | map(attribute='ansible_remote_tmp_validate_user')
+      | list
+    }}
   loop_control:
     loop_var: ansible_remote_tmp_validate_user
     label: "{{ ansible_remote_tmp_validate_user }}"

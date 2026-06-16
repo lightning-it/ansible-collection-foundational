@@ -29,6 +29,9 @@ the final state with normal Ansible modules.
   bootstrap before normal modules.
 - `ansible_remote_tmp_validate_users` (list, default: `[]`): Optional users
   that must be able to create temp directories there.
+- `ansible_remote_tmp_validate_skip_missing_users` (bool, default: `true`):
+  Skip validation users that do not exist yet. Set to `false` when every listed
+  user must already exist.
 
 ## Example
 

@@ -12,3 +12,4 @@ ansible_remote_tmp_mode: "1777"
 # ansible_remote_tmp that would otherwise prevent file/assert/setup tasks.
 ansible_remote_tmp_bootstrap_raw: true
 ansible_remote_tmp_validate_users: []
+ansible_remote_tmp_validate_skip_missing_users: true
