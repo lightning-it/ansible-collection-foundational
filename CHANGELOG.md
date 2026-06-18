@@ -1,3 +1,9 @@
+## [1.21.0](https://github.com/lightning-it/ansible-collection-foundational/compare/v1.20.0...v1.21.0) (2026-06-18)
+
+### Features
+
+* implement vmware_vsphere_guest_bootstrap role with configuration and tasks for guest management ([#125](https://github.com/lightning-it/ansible-collection-foundational/issues/125)) ([c8e4a0c](https://github.com/lightning-it/ansible-collection-foundational/commit/c8e4a0c5acd7793ce40af1d7f51d785914f81cce))
+
 ## [1.20.0](https://github.com/lightning-it/ansible-collection-foundational/compare/v1.19.0...v1.20.0) (2026-06-16)
 
 ### Features
