@@ -1,0 +1,29 @@
+---
+- name: Ensure VMware guest bootstrap variables are valid
+  ansible.builtin.assert:
+    that:
+      - vmware_vsphere_guest_bootstrap_enabled is boolean
+      - vmware_vsphere_guest_bootstrap_hostname | default('', true) | length > 0
+      - vmware_vsphere_guest_bootstrap_username | default('', true) | length > 0
+      - vmware_vsphere_guest_bootstrap_password | default('', true) | length > 0
+      - vmware_vsphere_guest_bootstrap_datacenter | default('', true) | length > 0
+      - vmware_vsphere_guest_bootstrap_vm_name | default('', true) | length > 0
+      - vmware_vsphere_guest_bootstrap_guest_username | default('', true) | length > 0
+      - vmware_vsphere_guest_bootstrap_guest_password | default('', true) | length > 0
+      - vmware_vsphere_guest_bootstrap_guest_script_path | default('', true) | length > 0
+      - vmware_vsphere_guest_bootstrap_tools_timeout is number
+      - vmware_vsphere_guest_bootstrap_shell_timeout is number
+      - vmware_vsphere_guest_bootstrap_shutdown_timeout is number
+      - vmware_vsphere_guest_bootstrap_users_accounts is sequence
+      - vmware_vsphere_guest_bootstrap_users_accounts is not string
+      - vmware_vsphere_guest_bootstrap_convert_template_to_vm is boolean
+      - vmware_vsphere_guest_bootstrap_power_on is boolean
+      - vmware_vsphere_guest_bootstrap_power_off is boolean
+      - vmware_vsphere_guest_bootstrap_mark_as_template is boolean
+      - vmware_vsphere_guest_bootstrap_disable_password_auth is boolean
+      - vmware_vsphere_guest_bootstrap_disable_root_login is boolean
+      - vmware_vsphere_guest_bootstrap_clean_machine_id is boolean
+      - vmware_vsphere_guest_bootstrap_clean_cloud_init is boolean
+      - vmware_vsphere_guest_bootstrap_clean_ssh_host_keys is boolean
+    fail_msg: "Invalid vmware_vsphere_guest_bootstrap role input."
+  no_log: true

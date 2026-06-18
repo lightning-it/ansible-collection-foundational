@@ -240,10 +240,67 @@
     state: powered-on
   when:
     - not vmware_vsphere_destroy | bool
+    - not vmware_vsphere_is_template | bool
     - vmware_vsphere_power_on | default(true) | bool
   tags:
     - manage_vm
     - create_vm
+
+- name: Ask guest OS to shut down before template conversion
+  module_defaults:
+    group/vmware: "{{ vmware_vsphere_module_defaults_vmware_group }}"
+  delegate_to: "{{ vmware_vsphere_delegate_to }}"
+  community.vmware.vmware_guest_powerstate:
+    name: "{{ vmware_vsphere_vm_name | default(inventory_hostname) }}"
+    datacenter: "{{ vmware_vsphere_datacenter | default(omit) }}"
+    folder: "{{ vmware_vsphere_folder_full_path | default(omit) }}"
+    state: shutdown-guest
+    state_change_timeout: "{{ vmware_vsphere_template_shutdown_timeout | int }}"
+  register: vmware_vsphere_template_shutdown_result
+  failed_when: false
+  when:
+    - not vmware_vsphere_destroy | bool
+    - vmware_vsphere_is_template | bool
+  tags:
+    - manage_vm
+    - create_vm
+    - template
+
+- name: Ensure VM is powered off before template conversion
+  module_defaults:
+    group/vmware: "{{ vmware_vsphere_module_defaults_vmware_group }}"
+  delegate_to: "{{ vmware_vsphere_delegate_to }}"
+  community.vmware.vmware_guest_powerstate:
+    name: "{{ vmware_vsphere_vm_name | default(inventory_hostname) }}"
+    datacenter: "{{ vmware_vsphere_datacenter | default(omit) }}"
+    folder: "{{ vmware_vsphere_folder_full_path | default(omit) }}"
+    state: powered-off
+  when:
+    - not vmware_vsphere_destroy | bool
+    - vmware_vsphere_is_template | bool
+  tags:
+    - manage_vm
+    - create_vm
+    - template
+
+- name: Mark VM as vSphere template
+  module_defaults:
+    group/vmware: "{{ vmware_vsphere_module_defaults_vmware_group }}"
+    community.vmware.vmware_guest: "{{ vmware_vsphere_module_defaults_vmware_guest }}"
+  delegate_to: "{{ vmware_vsphere_delegate_to }}"
+  community.vmware.vmware_guest:
+    name: "{{ vmware_vsphere_vm_name | default(inventory_hostname) }}"
+    state: present
+    datacenter: "{{ vmware_vsphere_datacenter | default(omit) }}"
+    folder: "{{ vmware_vsphere_folder_full_path | default(omit) }}"
+    is_template: true
+  when:
+    - not vmware_vsphere_destroy | bool
+    - vmware_vsphere_is_template | bool
+  tags:
+    - manage_vm
+    - create_vm
+    - template
 
 - name: Build expected configured guest IP list
   ansible.builtin.set_fact:
@@ -263,6 +320,7 @@
       }}
   when:
     - not vmware_vsphere_destroy | bool
+    - not vmware_vsphere_is_template | bool
     - vmware_vsphere_validate_configured_ips | bool
   tags:
     - manage_vm
@@ -286,6 +344,7 @@
   register: vmware_vsphere_guest_ip_info
   when:
     - not vmware_vsphere_destroy | bool
+    - not vmware_vsphere_is_template | bool
     - vmware_vsphere_validate_configured_ips | bool
     - vmware_vsphere_expected_guest_ips | default([]) | length > 0
   tags:
@@ -313,6 +372,7 @@
       }}
   when:
     - not vmware_vsphere_destroy | bool
+    - not vmware_vsphere_is_template | bool
     - vmware_vsphere_validate_configured_ips | bool
     - vmware_vsphere_expected_guest_ips | default([]) | length > 0
   tags:
@@ -335,6 +395,7 @@
       normally need open-vm-tools, cloud-init and perl installed.
   when:
     - not vmware_vsphere_destroy | bool
+    - not vmware_vsphere_is_template | bool
     - vmware_vsphere_validate_configured_ips | bool
     - vmware_vsphere_expected_guest_ips | default([]) | length > 0
   tags:

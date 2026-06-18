@@ -1,0 +1,42 @@
+---
+vmware_vsphere_guest_bootstrap_enabled: true
+
+vmware_vsphere_guest_bootstrap_delegate_to: "{{ vmware_vsphere_delegate_to | default('localhost') }}"
+vmware_vsphere_guest_bootstrap_hostname: >-
+  {{
+    vmware_vsphere_hostname
+      | default(vcenter_hostname | default('', true), true)
+      | default('', true)
+  }}
+vmware_vsphere_guest_bootstrap_username: "{{ vmware_vsphere_username | default('', true) }}"
+vmware_vsphere_guest_bootstrap_password: "{{ vmware_vsphere_password | default('', true) }}"
+vmware_vsphere_guest_bootstrap_validate_certs: "{{ vmware_vsphere_validate_certs | default(true) }}"
+vmware_vsphere_guest_bootstrap_datacenter: "{{ vmware_vsphere_datacenter | default('', true) }}"
+vmware_vsphere_guest_bootstrap_folder: "{{ vmware_vsphere_folder_full_path | default('', true) }}"
+vmware_vsphere_guest_bootstrap_cluster: >-
+  {{
+    vmware_vsphere_vmware_guest_cluster
+      | default(vmware_vsphere_cluster | default('', true), true)
+      | default('', true)
+  }}
+vmware_vsphere_guest_bootstrap_vm_name: "{{ vmware_vsphere_vm_name | default(inventory_hostname) }}"
+
+vmware_vsphere_guest_bootstrap_guest_username: "{{ linux_bootstrap_user | default('root', true) }}"
+vmware_vsphere_guest_bootstrap_guest_password: "{{ linux_bootstrap_password | default('', true) }}"
+vmware_vsphere_guest_bootstrap_guest_script_path: /tmp/lit-vsphere-guest-bootstrap.sh
+vmware_vsphere_guest_bootstrap_tools_timeout: 600
+vmware_vsphere_guest_bootstrap_shell_timeout: 600
+
+vmware_vsphere_guest_bootstrap_convert_template_to_vm: true
+vmware_vsphere_guest_bootstrap_power_on: true
+vmware_vsphere_guest_bootstrap_power_off: true
+vmware_vsphere_guest_bootstrap_mark_as_template: true
+vmware_vsphere_guest_bootstrap_shutdown_timeout: 300
+
+vmware_vsphere_guest_bootstrap_users_accounts: "{{ users_accounts | default([]) }}"
+vmware_vsphere_guest_bootstrap_sshd_dropin_path: /etc/ssh/sshd_config.d/10-lit-template-bootstrap.conf
+vmware_vsphere_guest_bootstrap_disable_password_auth: true
+vmware_vsphere_guest_bootstrap_disable_root_login: true
+vmware_vsphere_guest_bootstrap_clean_machine_id: true
+vmware_vsphere_guest_bootstrap_clean_cloud_init: true
+vmware_vsphere_guest_bootstrap_clean_ssh_host_keys: true

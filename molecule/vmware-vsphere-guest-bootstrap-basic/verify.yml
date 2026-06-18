@@ -1,0 +1,12 @@
+---
+- name: Verify vmware_vsphere_guest_bootstrap disabled path
+  hosts: vmware_vsphere_guest_bootstrap
+  gather_facts: false
+  vars:
+    vmware_vsphere_guest_bootstrap_enabled: false
+  tasks:
+    - name: Assert role disabled variable set
+      ansible.builtin.assert:
+        that:
+          - not vmware_vsphere_guest_bootstrap_enabled | bool
+        fail_msg: "vmware_vsphere_guest_bootstrap_enabled was not false"

@@ -1,0 +1,17 @@
+---
+- name: Converge vmware_vsphere_guest_bootstrap role (disabled)
+  hosts: vmware_vsphere_guest_bootstrap
+  gather_facts: false
+  vars:
+    ansible_connection: local
+    vmware_vsphere_guest_bootstrap_enabled: false
+    vmware_vsphere_guest_bootstrap_hostname: vcenter.example.com
+    vmware_vsphere_guest_bootstrap_username: administrator@example.com
+    vmware_vsphere_guest_bootstrap_password: example-password
+    vmware_vsphere_guest_bootstrap_datacenter: dc1
+    vmware_vsphere_guest_bootstrap_vm_name: template-example
+    vmware_vsphere_guest_bootstrap_guest_username: root
+    vmware_vsphere_guest_bootstrap_guest_password: install
+
+  roles:
+    - role: lit.foundational.vmware_vsphere_guest_bootstrap

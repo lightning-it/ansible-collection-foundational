@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+admin_group="wheel"
+ssh_service="sshd"
+if [ -r /etc/os-release ]; then
+  . /etc/os-release
+  case "${ID:-}" in
+    ubuntu|debian)
+      admin_group="sudo"
+      ssh_service="ssh"
+      ;;
+  esac
+fi
+
+if ! getent group "${admin_group}" >/dev/null 2>&1; then
+  groupadd "${admin_group}"
+fi
+
+install -d -m 0755 /etc/ssh/sshd_config.d
+cat > {{ vmware_vsphere_guest_bootstrap_sshd_dropin_path | quote }} <<'EOF_SSHD'
+PubkeyAuthentication yes
+PasswordAuthentication {{ vmware_vsphere_guest_bootstrap_disable_password_auth | ternary('no', 'yes') }}
+KbdInteractiveAuthentication no
+ChallengeResponseAuthentication no
+PermitRootLogin {{ vmware_vsphere_guest_bootstrap_disable_root_login | ternary('no', 'prohibit-password') }}
+AuthenticationMethods publickey
+UsePAM yes
+EOF_SSHD
+chmod 0600 {{ vmware_vsphere_guest_bootstrap_sshd_dropin_path | quote }}
+
+{% for user in vmware_vsphere_guest_bootstrap_users_accounts %}
+{% if user is mapping and (user.state | default('present')) == 'present' %}
+if ! id {{ user.name | quote }} >/dev/null 2>&1; then
+  useradd --create-home --shell {{ user.shell | default('/bin/bash') | quote }} {{ user.name | quote }}
+fi
+usermod --shell {{ user.shell | default('/bin/bash') | quote }} {{ user.name | quote }}
+{% if user.password is defined and (user.password | string | length) > 0 %}
+usermod --password {{ user.password | quote }} {{ user.name | quote }}
+{% endif %}
+{% if user.groups is defined and (user.groups | length) > 0 %}
+{% for group_name in user.groups %}
+if [ {{ group_name | quote }} = "wheel" ] && [ "${admin_group}" = "sudo" ]; then
+  groupadd -f sudo
+  usermod -aG sudo {{ user.name | quote }}
+else
+  groupadd -f {{ group_name | quote }}
+  usermod -aG {{ group_name | quote }} {{ user.name | quote }}
+fi
+{% endfor %}
+{% endif %}
+home_dir="$(getent passwd {{ user.name | quote }} | cut -d: -f6)"
+install -d -m 0700 -o {{ user.name | quote }} -g {{ user.name | quote }} "${home_dir}/.ssh"
+{% if user.ssh_keys is defined and (user.ssh_keys | length) > 0 %}
+cat > "${home_dir}/.ssh/authorized_keys" <<'EOF_KEYS_{{ loop.index }}
+{% for ssh_key in user.ssh_keys %}
+{{ ssh_key }}
+{% endfor %}
+EOF_KEYS_{{ loop.index }}
+chown {{ user.name | quote }}:{{ user.name | quote }} "${home_dir}/.ssh/authorized_keys"
+chmod 0600 "${home_dir}/.ssh/authorized_keys"
+{% endif %}
+{% endif %}
+{% endfor %}
+
+if command -v sshd >/dev/null 2>&1; then
+  install -d -m 0755 /run/sshd
+  sshd -t
+fi
+if command -v systemctl >/dev/null 2>&1; then
+  systemctl enable "${ssh_service}" || true
+  systemctl restart "${ssh_service}" || systemctl restart sshd || true
+fi
+
+{% if vmware_vsphere_guest_bootstrap_clean_cloud_init | bool %}
+if command -v cloud-init >/dev/null 2>&1; then
+  cloud-init clean --logs || true
+fi
+{% endif %}
+{% if vmware_vsphere_guest_bootstrap_clean_machine_id | bool %}
+: > /etc/machine-id
+rm -f /var/lib/dbus/machine-id
+ln -sf /etc/machine-id /var/lib/dbus/machine-id
+{% endif %}
+{% if vmware_vsphere_guest_bootstrap_clean_ssh_host_keys | bool %}
+rm -f /etc/ssh/ssh_host_*
+{% endif %}
+sync
