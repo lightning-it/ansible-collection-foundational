@@ -23,9 +23,15 @@ vmware_vsphere_guest_bootstrap_vm_name: "{{ vmware_vsphere_vm_name | default(inv
 
 vmware_vsphere_guest_bootstrap_guest_username: "{{ linux_bootstrap_user | default('root', true) }}"
 vmware_vsphere_guest_bootstrap_guest_password: "{{ linux_bootstrap_password | default('', true) }}"
+vmware_vsphere_guest_bootstrap_guest_become: false
+vmware_vsphere_guest_bootstrap_guest_become_password: "{{ vmware_vsphere_guest_bootstrap_guest_password }}"
 vmware_vsphere_guest_bootstrap_guest_script_path: /tmp/lit-vsphere-guest-bootstrap.sh
+vmware_vsphere_guest_bootstrap_guest_script_base64_path: /tmp/lit-vsphere-guest-bootstrap.sh.b64
+vmware_vsphere_guest_bootstrap_guest_log_path: /tmp/lit-vsphere-guest-bootstrap.log
+vmware_vsphere_guest_bootstrap_upload_chunk_size: 900
 vmware_vsphere_guest_bootstrap_tools_timeout: 600
 vmware_vsphere_guest_bootstrap_shell_timeout: 600
+vmware_vsphere_guest_bootstrap_no_log: true
 
 vmware_vsphere_guest_bootstrap_convert_template_to_vm: true
 vmware_vsphere_guest_bootstrap_power_on: true
@@ -33,7 +39,11 @@ vmware_vsphere_guest_bootstrap_power_off: true
 vmware_vsphere_guest_bootstrap_mark_as_template: true
 vmware_vsphere_guest_bootstrap_shutdown_timeout: 300
 
-vmware_vsphere_guest_bootstrap_users_accounts: "{{ users_accounts | default([]) }}"
+vmware_vsphere_guest_bootstrap_users_accounts: >-
+  {{
+    (users_accounts | default([]))
+    + (users_accounts_extra | default([]))
+  }}
 vmware_vsphere_guest_bootstrap_sshd_dropin_path: /etc/ssh/sshd_config.d/10-lit-template-bootstrap.conf
 vmware_vsphere_guest_bootstrap_disable_password_auth: true
 vmware_vsphere_guest_bootstrap_disable_root_login: true

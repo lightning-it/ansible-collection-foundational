@@ -16,6 +16,7 @@ fi
 if ! getent group "${admin_group}" >/dev/null 2>&1; then
   groupadd "${admin_group}"
 fi
+install -d -m 0755 /etc/sudoers.d
 
 install -d -m 0755 /etc/ssh/sshd_config.d
 cat > {{ vmware_vsphere_guest_bootstrap_sshd_dropin_path | quote }} <<'EOF_SSHD'
@@ -60,11 +61,23 @@ EOF_KEYS_{{ loop.index }}
 chown {{ user.name | quote }}:{{ user.name | quote }} "${home_dir}/.ssh/authorized_keys"
 chmod 0600 "${home_dir}/.ssh/authorized_keys"
 {% endif %}
+{% if user.passwordless_sudo | default(false) | bool %}
+cat > "/etc/sudoers.d/{{ user.sudoers_name | default(user.name) }}" <<'EOF_SUDOERS_{{ loop.index }}
+{{ user.name }} ALL=(ALL) NOPASSWD:ALL
+EOF_SUDOERS_{{ loop.index }}
+chmod 0440 "/etc/sudoers.d/{{ user.sudoers_name | default(user.name) }}"
+if command -v visudo >/dev/null 2>&1; then
+  visudo -cf "/etc/sudoers.d/{{ user.sudoers_name | default(user.name) }}"
+fi
+{% endif %}
 {% endif %}
 {% endfor %}
 
 if command -v sshd >/dev/null 2>&1; then
   install -d -m 0755 /run/sshd
+  if command -v ssh-keygen >/dev/null 2>&1; then
+    ssh-keygen -A
+  fi
   sshd -t
 fi
 if command -v systemctl >/dev/null 2>&1; then

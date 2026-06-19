@@ -81,7 +81,69 @@
         src: "{{ vmware_vsphere_guest_bootstrap_tempdir.path }}/bootstrap-linux.sh"
       register: vmware_vsphere_guest_bootstrap_script
       delegate_to: "{{ vmware_vsphere_guest_bootstrap_delegate_to }}"
-      no_log: true
+      no_log: "{{ vmware_vsphere_guest_bootstrap_no_log | bool }}"
+
+    - name: Split guest bootstrap script into upload chunks
+      ansible.builtin.set_fact:
+        vmware_vsphere_guest_bootstrap_script_chunks: >-
+          {{
+            vmware_vsphere_guest_bootstrap_script.content
+            | regex_findall('.{1,' ~ (vmware_vsphere_guest_bootstrap_upload_chunk_size | int | string) ~ '}')
+          }}
+      no_log: "{{ vmware_vsphere_guest_bootstrap_no_log | bool }}"
+
+    - name: Remove stale guest bootstrap artifacts
+      module_defaults:
+        group/vmware: "{{ vmware_vsphere_guest_bootstrap_module_defaults }}"
+      delegate_to: "{{ vmware_vsphere_guest_bootstrap_delegate_to }}"
+      community.vmware.vmware_vm_shell:
+        datacenter: "{{ vmware_vsphere_guest_bootstrap_datacenter }}"
+        vm_id: "{{ vmware_vsphere_guest_bootstrap_vm_name }}"
+        vm_username: "{{ vmware_vsphere_guest_bootstrap_guest_username }}"
+        vm_password: "{{ vmware_vsphere_guest_bootstrap_guest_password }}"
+        vm_shell: /bin/bash
+        vm_shell_args: >-
+          {{
+            ' -lc '
+            ~ (
+              'rm -f '
+              ~ (vmware_vsphere_guest_bootstrap_guest_script_base64_path | quote)
+              ~ ' '
+              ~ (vmware_vsphere_guest_bootstrap_guest_script_path | quote)
+              ~ ' '
+              ~ (vmware_vsphere_guest_bootstrap_guest_log_path | quote)
+            ) | quote
+          }}
+        wait_for_process: true
+        timeout: "{{ vmware_vsphere_guest_bootstrap_shell_timeout | int }}"
+      no_log: "{{ vmware_vsphere_guest_bootstrap_no_log | bool }}"
+
+    - name: Upload guest bootstrap script chunks
+      module_defaults:
+        group/vmware: "{{ vmware_vsphere_guest_bootstrap_module_defaults }}"
+      delegate_to: "{{ vmware_vsphere_guest_bootstrap_delegate_to }}"
+      community.vmware.vmware_vm_shell:
+        datacenter: "{{ vmware_vsphere_guest_bootstrap_datacenter }}"
+        vm_id: "{{ vmware_vsphere_guest_bootstrap_vm_name }}"
+        vm_username: "{{ vmware_vsphere_guest_bootstrap_guest_username }}"
+        vm_password: "{{ vmware_vsphere_guest_bootstrap_guest_password }}"
+        vm_shell: /bin/bash
+        vm_shell_args: >-
+          {{
+            ' -lc '
+            ~ (
+              'printf %s '
+              ~ (item | quote)
+              ~ ' >> '
+              ~ (vmware_vsphere_guest_bootstrap_guest_script_base64_path | quote)
+            ) | quote
+          }}
+        wait_for_process: true
+        timeout: "{{ vmware_vsphere_guest_bootstrap_shell_timeout | int }}"
+      loop: "{{ vmware_vsphere_guest_bootstrap_script_chunks }}"
+      loop_control:
+        label: "bootstrap script chunk"
+      no_log: "{{ vmware_vsphere_guest_bootstrap_no_log | bool }}"
 
     - name: Build guest bootstrap command
       ansible.builtin.set_fact:
@@ -89,17 +151,36 @@
           {{
             ' -lc '
             ~ (
-              'printf %s '
-              ~ (vmware_vsphere_guest_bootstrap_script.content | quote)
-              ~ ' | base64 -d > '
+              'base64 -d '
+              ~ (vmware_vsphere_guest_bootstrap_guest_script_base64_path | quote)
+              ~ ' > '
               ~ (vmware_vsphere_guest_bootstrap_guest_script_path | quote)
               ~ ' && chmod 700 '
               ~ (vmware_vsphere_guest_bootstrap_guest_script_path | quote)
-              ~ ' && bash '
-              ~ (vmware_vsphere_guest_bootstrap_guest_script_path | quote)
+              ~ ' && '
+              ~ (
+                  (
+                    'printf '
+                    ~ ('%s\\n' | quote)
+                    ~ ' '
+                    ~ (vmware_vsphere_guest_bootstrap_guest_become_password | quote)
+                    ~ ' | sudo -S -p '
+                    ~ ('' | quote)
+                    ~ ' bash -x '
+                    ~ (vmware_vsphere_guest_bootstrap_guest_script_path | quote)
+                  )
+                  if (vmware_vsphere_guest_bootstrap_guest_become | bool)
+                  else (
+                    'bash -x '
+                    ~ (vmware_vsphere_guest_bootstrap_guest_script_path | quote)
+                  )
+                )
+              ~ ' > '
+              ~ (vmware_vsphere_guest_bootstrap_guest_log_path | quote)
+              ~ ' 2>&1'
             ) | quote
           }}
-      no_log: true
+      no_log: "{{ vmware_vsphere_guest_bootstrap_no_log | bool }}"
 
     - name: Run bootstrap script inside guest
       module_defaults:
@@ -114,7 +195,66 @@
         vm_shell_args: "{{ vmware_vsphere_guest_bootstrap_shell_args }}"
         wait_for_process: true
         timeout: "{{ vmware_vsphere_guest_bootstrap_shell_timeout | int }}"
-      no_log: true
+      register: vmware_vsphere_guest_bootstrap_shell
+      failed_when: false
+      no_log: "{{ vmware_vsphere_guest_bootstrap_no_log | bool }}"
+
+    - name: Fetch failed guest bootstrap log
+      module_defaults:
+        group/vmware: "{{ vmware_vsphere_guest_bootstrap_module_defaults }}"
+      delegate_to: "{{ vmware_vsphere_guest_bootstrap_delegate_to }}"
+      community.vmware.vmware_guest_file_operation:
+        datacenter: "{{ vmware_vsphere_guest_bootstrap_datacenter }}"
+        vm_id: "{{ vmware_vsphere_guest_bootstrap_vm_name }}"
+        vm_username: "{{ vmware_vsphere_guest_bootstrap_guest_username }}"
+        vm_password: "{{ vmware_vsphere_guest_bootstrap_guest_password }}"
+        fetch:
+          src: "{{ vmware_vsphere_guest_bootstrap_guest_log_path }}"
+          dest: "{{ vmware_vsphere_guest_bootstrap_tempdir.path }}/bootstrap.log"
+      register: vmware_vsphere_guest_bootstrap_log_fetch
+      failed_when: false
+      when: vmware_vsphere_guest_bootstrap_shell.exit_code | default(0) | int != 0
+      no_log: "{{ vmware_vsphere_guest_bootstrap_no_log | bool }}"
+
+    - name: Read failed guest bootstrap log
+      ansible.builtin.slurp:
+        src: "{{ vmware_vsphere_guest_bootstrap_tempdir.path }}/bootstrap.log"
+      register: vmware_vsphere_guest_bootstrap_log
+      delegate_to: "{{ vmware_vsphere_guest_bootstrap_delegate_to }}"
+      failed_when: false
+      when:
+        - vmware_vsphere_guest_bootstrap_shell.exit_code | default(0) | int != 0
+        - not vmware_vsphere_guest_bootstrap_log_fetch.failed | default(false) | bool
+      no_log: "{{ vmware_vsphere_guest_bootstrap_no_log | bool }}"
+
+    - name: Show failed guest bootstrap log fetch status
+      ansible.builtin.debug:
+        msg:
+          fetch_failed: "{{ vmware_vsphere_guest_bootstrap_log_fetch.failed | default(false) }}"
+          fetch_msg: "{{ vmware_vsphere_guest_bootstrap_log_fetch.msg | default('') }}"
+          fetch_dest: "{{ vmware_vsphere_guest_bootstrap_tempdir.path }}/bootstrap.log"
+          slurp_failed: "{{ vmware_vsphere_guest_bootstrap_log.failed | default(false) }}"
+          slurp_msg: "{{ vmware_vsphere_guest_bootstrap_log.msg | default('') }}"
+          slurp_has_content: "{{ vmware_vsphere_guest_bootstrap_log.content is defined }}"
+      when:
+        - vmware_vsphere_guest_bootstrap_shell.exit_code | default(0) | int != 0
+        - not vmware_vsphere_guest_bootstrap_no_log | bool
+
+    - name: Show failed guest bootstrap log
+      ansible.builtin.debug:
+        msg: "{{ vmware_vsphere_guest_bootstrap_log.content | b64decode }}"
+      when:
+        - vmware_vsphere_guest_bootstrap_shell.exit_code | default(0) | int != 0
+        - vmware_vsphere_guest_bootstrap_log.content is defined
+        - not vmware_vsphere_guest_bootstrap_no_log | bool
+
+    - name: Fail when guest bootstrap script failed
+      ansible.builtin.fail:
+        msg: >-
+          VMware guest bootstrap failed with exit code
+          {{ vmware_vsphere_guest_bootstrap_shell.exit_code | default('unknown') }}.
+      when: vmware_vsphere_guest_bootstrap_shell.exit_code | default(0) | int != 0
+      no_log: "{{ vmware_vsphere_guest_bootstrap_no_log | bool }}"
 
     - name: Remove local temporary script directory
       ansible.builtin.file:
