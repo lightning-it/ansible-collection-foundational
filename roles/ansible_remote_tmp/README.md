@@ -7,14 +7,9 @@ This is general Ansible runtime behavior, not AAP behavior. Use this role before
 heavy roles when inventory sets `ansible_remote_tmp` to a custom path such as
 `/appl/ansible-tmp`.
 
-## Why This Role Uses Raw First
+## Requirements
 
-Normal Ansible modules need `ansible_remote_tmp` before they can run. If the
-directory is missing or has restrictive permissions, even `file`, `setup`, and
-`assert` can fail before a role has a chance to repair it.
-
-This role therefore runs one small `raw` bootstrap command first, then enforces
-the final state with normal Ansible modules.
+None.
 
 ## Variables
 
@@ -33,7 +28,11 @@ the final state with normal Ansible modules.
   Skip validation users that do not exist yet. Set to `false` when every listed
   user must already exist.
 
-## Example
+## Dependencies
+
+None.
+
+## Example Playbook
 
 Use this in a pre-task before fact gathering or application roles:
 
@@ -60,3 +59,18 @@ ansible_remote_tmp: /appl/ansible-tmp
 ## License
 
 MIT
+
+## Author
+
+Lightning IT
+
+## Additional Notes
+
+### Why This Role Uses Raw First
+
+Normal Ansible modules need `ansible_remote_tmp` before they can run. If the
+directory is missing or has restrictive permissions, even `file`, `setup`, and
+`assert` can fail before a role has a chance to repair it.
+
+This role therefore runs one small `raw` bootstrap command first, then enforces
+the final state with normal Ansible modules.

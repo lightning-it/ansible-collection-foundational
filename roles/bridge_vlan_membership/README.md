@@ -6,7 +6,19 @@ Ensures a linux bridge is VLAN-aware and that:
 - optionally enables `vlan_filtering=1` runtime
 - persists the bridge VLAN membership across reboot with a dedicated systemd unit
 
-## Example
+## Requirements
+
+None.
+
+## Variables
+
+See `defaults/main.yml`.
+
+## Dependencies
+
+None.
+
+## Example Playbook
 
 ```yaml
 - name: Ensure bridge VLAN membership
@@ -20,7 +32,17 @@ Ensures a linux bridge is VLAN-aware and that:
 
 ---
 
-## 3) Replace in your base playbook
+## License
+
+MIT
+
+## Author
+
+Lightning IT
+
+## Additional Notes
+
+### 3) Replace in your base playbook
 
 This inline block:
 

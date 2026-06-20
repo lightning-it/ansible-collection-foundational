@@ -1,0 +1,16 @@
+---
+- name: Converge ansible remote tmp syntax coverage
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    ansible_remote_tmp_molecule_execute_role: false
+  tasks:
+    - name: Import lit.foundational.ansible_remote_tmp for syntax coverage
+      ansible.builtin.import_role:
+        name: lit.foundational.ansible_remote_tmp
+      when: ansible_remote_tmp_molecule_execute_role | bool
+
+    - name: Record lit.foundational.ansible_remote_tmp Molecule coverage mode
+      ansible.builtin.set_fact:
+        ansible_remote_tmp_molecule_coverage_mode: syntax_stub
