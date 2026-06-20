@@ -4,7 +4,45 @@ Wrapper role to run application roles (vault, nexus, etc.) with a single list.
 Apps can be specified by name (mapped to a role), by explicit role, or by a
 local tasks file.
 
-## Usage
+## Requirements
+
+None.
+
+## Variables
+
+- `kubeplay_enabled` (bool, default: `true`): enable/disable the role.
+- `kubeplay_apps` (list, default: `[]`): app list to execute.
+- `kubeplay_app_map` (dict, default: includes `vault` and `nexus`): map of
+  short names to roles.
+- `kubeplay_fail_on_unknown` (bool, default: `true`): fail when an app has no
+  role or tasks defined.
+
+## Dependencies
+
+None.
+
+## Example Playbook
+
+```yaml
+---
+- name: Use lit.foundational.kubeplay
+  hosts: all
+  become: true
+  roles:
+    - role: lit.foundational.kubeplay
+```
+
+## License
+
+MIT
+
+## Author
+
+Lightning IT
+
+## Additional Notes
+
+### Usage
 
 ```yaml
 - name: Run platform apps
@@ -21,7 +59,7 @@ local tasks file.
               nexus_experimental_acknowledge: true
 ```
 
-## App definition formats
+### App definition formats
 
 ```yaml
 kubeplay_apps:
@@ -39,16 +77,7 @@ kubeplay_apps:
     tasks: apps/demo.yml
 ```
 
-## Variables
-
-- `kubeplay_enabled` (bool, default: `true`): enable/disable the role.
-- `kubeplay_apps` (list, default: `[]`): app list to execute.
-- `kubeplay_app_map` (dict, default: includes `vault` and `nexus`): map of
-  short names to roles.
-- `kubeplay_fail_on_unknown` (bool, default: `true`): fail when an app has no
-  role or tasks defined.
-
-## Notes
+### Notes
 
 - App entries can include `vars`, `tags`, `enabled`, and `when` keys.
 - `tags` are applied to included role tasks via `apply`.

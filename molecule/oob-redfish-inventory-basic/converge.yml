@@ -1,0 +1,16 @@
+---
+- name: Converge oob redfish inventory syntax coverage
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    oob_redfish_inventory_molecule_execute_role: false
+  tasks:
+    - name: Import lit.foundational.oob_redfish_inventory for syntax coverage
+      ansible.builtin.import_role:
+        name: lit.foundational.oob_redfish_inventory
+      when: oob_redfish_inventory_molecule_execute_role | bool
+
+    - name: Record lit.foundational.oob_redfish_inventory Molecule coverage mode
+      ansible.builtin.set_fact:
+        oob_redfish_inventory_molecule_coverage_mode: syntax_stub
