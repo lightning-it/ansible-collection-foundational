@@ -5,7 +5,40 @@ Performs vendor-neutral Redfish actions using `community.general.redfish_command
 - Boot override (PXE/CD/...)
 - Virtual media insert/eject
 
-## Typical usage
+## Requirements
+
+None.
+
+## Variables
+
+See `defaults/main.yml`.
+
+## Dependencies
+
+None.
+
+## Example Playbook
+
+```yaml
+---
+- name: Use lit.foundational.oob_redfish_control
+  hosts: all
+  become: true
+  roles:
+    - role: lit.foundational.oob_redfish_control
+```
+
+## License
+
+MIT
+
+## Author
+
+Lightning IT
+
+## Additional Notes
+
+### Typical usage
 
 ```ini
 [oob]

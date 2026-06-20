@@ -16,6 +16,6 @@
 
 - name: Ensure vmware_hosts list exists
   ansible.builtin.set_fact:
-    vmware_hosts: "{{ vmware_hosts | default([inventory_hostname]) }}"
+    vmware_hosts: "{{ vmware_hosts | default([vmware_vsphere_vm_name | default(inventory_hostname)]) }}"
   tags:
     - always

@@ -10,7 +10,15 @@
       - vmware_vsphere_guest_bootstrap_vm_name | default('', true) | length > 0
       - vmware_vsphere_guest_bootstrap_guest_username | default('', true) | length > 0
       - vmware_vsphere_guest_bootstrap_guest_password | default('', true) | length > 0
+      - vmware_vsphere_guest_bootstrap_guest_become is boolean
+      - >-
+        not (vmware_vsphere_guest_bootstrap_guest_become | bool)
+        or vmware_vsphere_guest_bootstrap_guest_become_password | default('', true) | length > 0
       - vmware_vsphere_guest_bootstrap_guest_script_path | default('', true) | length > 0
+      - vmware_vsphere_guest_bootstrap_guest_script_base64_path | default('', true) | length > 0
+      - vmware_vsphere_guest_bootstrap_guest_log_path | default('', true) | length > 0
+      - vmware_vsphere_guest_bootstrap_upload_chunk_size is number
+      - vmware_vsphere_guest_bootstrap_upload_chunk_size | int > 0
       - vmware_vsphere_guest_bootstrap_tools_timeout is number
       - vmware_vsphere_guest_bootstrap_shell_timeout is number
       - vmware_vsphere_guest_bootstrap_shutdown_timeout is number
@@ -20,6 +28,7 @@
       - vmware_vsphere_guest_bootstrap_power_on is boolean
       - vmware_vsphere_guest_bootstrap_power_off is boolean
       - vmware_vsphere_guest_bootstrap_mark_as_template is boolean
+      - vmware_vsphere_guest_bootstrap_manage_sshd_dropin is boolean
       - vmware_vsphere_guest_bootstrap_disable_password_auth is boolean
       - vmware_vsphere_guest_bootstrap_disable_root_login is boolean
       - vmware_vsphere_guest_bootstrap_clean_machine_id is boolean

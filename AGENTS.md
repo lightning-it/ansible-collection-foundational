@@ -35,23 +35,22 @@ If generic guidance conflicts with repository behavior, you MUST prefer reposito
    2. `SECURITY.md`
    3. `scripts/wunder-devtools-ee.sh`
 4. Managed collection baseline files from `shared-assets/ansible-collection/base`:
-   1. `AGENT.md`
-   2. `AGENTS.md`
-   3. `CONTRIBUTING.md`
-   4. `.ansible-lint`
-   5. `ansible.cfg`
-   6. `renovate.base.json`
-   7. `.releaserc`
-   8. `.yamllint`
-   9. `.gitignore`
-   10. shared block in `.pre-commit-config.yaml`
-   11. `scripts/bump_galaxy_version.py`
-   12. `scripts/devtools-ansible-lint.sh`
-   13. `scripts/devtools-collection-prepare.sh`
-   14. `scripts/devtools-collection-smoke.sh`
-   15. `scripts/devtools-galaxy-verify.sh`
-   16. `scripts/devtools-galaxy.sh`
-   17. `scripts/devtools-molecule.sh`
+   1. `AGENT.md` or downstream `AGENTS.md` when the repository uses the plural name
+   2. `CONTRIBUTING.md`
+   3. `.ansible-lint`
+   4. `ansible.cfg`
+   5. `renovate.base.json`
+   6. `.releaserc`
+   7. `.yamllint`
+   8. `.gitignore`
+   9. shared block in `.pre-commit-config.yaml`
+   10. `scripts/bump_galaxy_version.py`
+   11. `scripts/devtools-ansible-lint.sh`
+   12. `scripts/devtools-collection-prepare.sh`
+   13. `scripts/devtools-collection-smoke.sh`
+   14. `scripts/devtools-galaxy-verify.sh`
+   15. `scripts/devtools-galaxy.sh`
+   16. `scripts/devtools-molecule.sh`
 5. Repo-local exceptions MUST be explicit in the sync workflow and documented in the repository.
 
 ## 2. Repository Baseline (This Repo)

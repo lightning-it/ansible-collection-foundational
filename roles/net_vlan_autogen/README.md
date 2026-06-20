@@ -4,7 +4,54 @@ Generate VLAN trunk subinterfaces and NetworkManager `network_connections` data
 from a simple `net_ifaces` list. This role only sets facts and does not apply
 network configuration itself.
 
-## Usage
+## Requirements
+
+None.
+
+## Variables
+
+- `net_vlan_autogen_enabled` (bool, default: `true`): enable/disable generation.
+- `net_vlan_autogen_overwrite` (bool, default: `false`): overwrite existing
+  `network_connections` facts when already defined.
+- `net_vlan_autogen_wan_connection_name` (string, default: `"wan"`): name for
+  the uplink connection.
+- `net_vlan_autogen_admin_connection_name` (string, default: `"admin"`): name
+  for the management connection.
+- `net_vlan_autogen_trunk_connection_name` (string, default: `"trunk-parent"`):
+  name for the trunk parent connection (VLANs refer to this).
+- `net_vlan_autogen_connection_state` (string, default: `"up"`): state for the
+  uplink + management connections (`present` or `up`).
+- `net_vlan_autogen_trunk_parent_state` (string, default: `"present"`): state
+  for the trunk parent connection (`present` or `up`).
+- `net_trunk_parent_state` (string, optional): override trunk parent state for
+  this role without changing defaults.
+
+## Dependencies
+
+None.
+
+## Example Playbook
+
+```yaml
+---
+- name: Use lit.foundational.net_vlan_autogen
+  hosts: all
+  become: true
+  roles:
+    - role: lit.foundational.net_vlan_autogen
+```
+
+## License
+
+MIT
+
+## Author
+
+Lightning IT
+
+## Additional Notes
+
+### Usage
 
 ```yaml
 - name: Build network connection facts
@@ -33,7 +80,7 @@ network configuration itself.
                 ipv4: 10.10.11.1/24
 ```
 
-## Inputs
+### Inputs
 
 - `net_ifaces` (list, required): input interface model. Allowed roles are
   `uplink`, `mgmt`, and `trunk` (each at most once). Example structure:
@@ -60,31 +107,13 @@ network configuration itself.
           ipv4: 10.10.10.1/24
   ```
 
-## Variables
-
-- `net_vlan_autogen_enabled` (bool, default: `true`): enable/disable generation.
-- `net_vlan_autogen_overwrite` (bool, default: `false`): overwrite existing
-  `network_connections` facts when already defined.
-- `net_vlan_autogen_wan_connection_name` (string, default: `"wan"`): name for
-  the uplink connection.
-- `net_vlan_autogen_admin_connection_name` (string, default: `"admin"`): name
-  for the management connection.
-- `net_vlan_autogen_trunk_connection_name` (string, default: `"trunk-parent"`):
-  name for the trunk parent connection (VLANs refer to this).
-- `net_vlan_autogen_connection_state` (string, default: `"up"`): state for the
-  uplink + management connections (`present` or `up`).
-- `net_vlan_autogen_trunk_parent_state` (string, default: `"present"`): state
-  for the trunk parent connection (`present` or `up`).
-- `net_trunk_parent_state` (string, optional): override trunk parent state for
-  this role without changing defaults.
-
-## Outputs
+### Outputs
 
 - `network_connections`: list of NetworkManager connection profiles for
   `fedora.linux_system_roles.network`.
 - `net_lan_ifaces`: VLAN subinterface names (for example, firewall zones).
 
-## Notes
+### Notes
 
 - VLAN subinterfaces reference the trunk connection **name** so that
   `fedora.linux_system_roles.network` can resolve the parent profile.

@@ -1,3 +1,5 @@
+# lit.foundational.terraform_state_migrate
+
 Terraform State Migrate
 ========================
 
@@ -36,3 +38,34 @@ Example Playbook
         terraform_state_migrate_s3_secret_key: "{{ minio_secret_key }}"
         terraform_state_migrate_s3_key_prefix: vault
 ```
+
+## Requirements
+
+None.
+
+## Variables
+
+See `defaults/main.yml`.
+
+## Dependencies
+
+None.
+
+## Example Playbook
+
+```yaml
+---
+- name: Use lit.foundational.terraform_state_migrate
+  hosts: all
+  become: true
+  roles:
+    - role: lit.foundational.terraform_state_migrate
+```
+
+## License
+
+MIT
+
+## Author
+
+Lightning IT
