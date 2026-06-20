@@ -2,7 +2,7 @@
 # manage_vm.yml
 # Create or delete VM(s) in vCenter.
 # - Create path acts on the current host (inventory_hostname)
-# - Destroy path can act on multiple VMs via vmware_hosts, defaulting to [inventory_hostname]
+# - Destroy path can act on multiple VMs via vmware_hosts, defaulting to the configured VM name
 
 - name: Check if VM already exists
   module_defaults:
@@ -410,7 +410,7 @@
     datacenter: "{{ vmware_vsphere_datacenter }}"
     name: "{{ item }}"
     folder: "{{ vmware_vsphere_folder_full_path | default(omit) }}"
-  loop: "{{ vmware_hosts | default([inventory_hostname]) }}"
+  loop: "{{ vmware_hosts | default([vmware_vsphere_vm_name | default(inventory_hostname)]) }}"
   loop_control:
     label: "{{ item }}"
   register: vmware_vsphere_destroy_vm_info
@@ -470,7 +470,11 @@
     # Optional context (safe)
     datacenter: "{{ vmware_vsphere_datacenter | default(omit) }}"
     folder: "{{ vmware_vsphere_folder_full_path | default(omit) }}"
-  loop: "{{ vmware_vsphere_destroy_vm_names | default(vmware_hosts | default([inventory_hostname])) }}"
+  loop: >-
+    {{
+      vmware_vsphere_destroy_vm_names
+        | default(vmware_hosts | default([vmware_vsphere_vm_name | default(inventory_hostname)]))
+    }}
   loop_control:
     label: "{{ item }}"
   when: vmware_vsphere_destroy | bool

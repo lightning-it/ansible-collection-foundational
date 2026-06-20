@@ -28,6 +28,7 @@
       - vmware_vsphere_guest_bootstrap_power_on is boolean
       - vmware_vsphere_guest_bootstrap_power_off is boolean
       - vmware_vsphere_guest_bootstrap_mark_as_template is boolean
+      - vmware_vsphere_guest_bootstrap_manage_sshd_dropin is boolean
       - vmware_vsphere_guest_bootstrap_disable_password_auth is boolean
       - vmware_vsphere_guest_bootstrap_disable_root_login is boolean
       - vmware_vsphere_guest_bootstrap_clean_machine_id is boolean

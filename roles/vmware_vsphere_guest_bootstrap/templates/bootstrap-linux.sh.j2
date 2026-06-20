@@ -18,6 +18,7 @@ if ! getent group "${admin_group}" >/dev/null 2>&1; then
 fi
 install -d -m 0755 /etc/sudoers.d
 
+{% if vmware_vsphere_guest_bootstrap_manage_sshd_dropin | bool %}
 install -d -m 0755 /etc/ssh/sshd_config.d
 cat > {{ vmware_vsphere_guest_bootstrap_sshd_dropin_path | quote }} <<'EOF_SSHD'
 PubkeyAuthentication yes
@@ -25,10 +26,10 @@ PasswordAuthentication {{ vmware_vsphere_guest_bootstrap_disable_password_auth |
 KbdInteractiveAuthentication no
 ChallengeResponseAuthentication no
 PermitRootLogin {{ vmware_vsphere_guest_bootstrap_disable_root_login | ternary('no', 'prohibit-password') }}
-AuthenticationMethods publickey
 UsePAM yes
 EOF_SSHD
 chmod 0600 {{ vmware_vsphere_guest_bootstrap_sshd_dropin_path | quote }}
+{% endif %}
 
 {% for user in vmware_vsphere_guest_bootstrap_users_accounts %}
 {% if user is mapping and (user.state | default('present')) == 'present' %}
@@ -51,14 +52,15 @@ fi
 {% endfor %}
 {% endif %}
 home_dir="$(getent passwd {{ user.name | quote }} | cut -d: -f6)"
-install -d -m 0700 -o {{ user.name | quote }} -g {{ user.name | quote }} "${home_dir}/.ssh"
+home_group="$(id -gn {{ user.name | quote }})"
+install -d -m 0700 -o {{ user.name | quote }} -g "${home_group}" "${home_dir}/.ssh"
 {% if user.ssh_keys is defined and (user.ssh_keys | length) > 0 %}
 cat > "${home_dir}/.ssh/authorized_keys" <<'EOF_KEYS_{{ loop.index }}
 {% for ssh_key in user.ssh_keys %}
 {{ ssh_key }}
 {% endfor %}
 EOF_KEYS_{{ loop.index }}
-chown {{ user.name | quote }}:{{ user.name | quote }} "${home_dir}/.ssh/authorized_keys"
+chown {{ user.name | quote }}:"${home_group}" "${home_dir}/.ssh/authorized_keys"
 chmod 0600 "${home_dir}/.ssh/authorized_keys"
 {% endif %}
 {% if user.passwordless_sudo | default(false) | bool %}
@@ -78,7 +80,9 @@ if command -v sshd >/dev/null 2>&1; then
   if command -v ssh-keygen >/dev/null 2>&1; then
     ssh-keygen -A
   fi
+{% if vmware_vsphere_guest_bootstrap_manage_sshd_dropin | bool %}
   sshd -t
+{% endif %}
 fi
 if command -v systemctl >/dev/null 2>&1; then
   systemctl enable "${ssh_service}" || true
@@ -92,10 +96,47 @@ fi
 {% endif %}
 {% if vmware_vsphere_guest_bootstrap_clean_machine_id | bool %}
 : > /etc/machine-id
+install -d -m 0755 /var/lib/dbus
 rm -f /var/lib/dbus/machine-id
 ln -sf /etc/machine-id /var/lib/dbus/machine-id
 {% endif %}
 {% if vmware_vsphere_guest_bootstrap_clean_ssh_host_keys | bool %}
+cat > /usr/local/sbin/lit-regenerate-ssh-host-keys <<'EOF_REGEN_SSH_KEYS'
+#!/usr/bin/env bash
+set -euo pipefail
+
+ssh-keygen -A
+if command -v systemctl >/dev/null 2>&1; then
+  systemctl disable lit-regenerate-ssh-host-keys.service >/dev/null 2>&1 || true
+fi
+rm -f /etc/systemd/system/multi-user.target.wants/lit-regenerate-ssh-host-keys.service
+rm -f /etc/systemd/system/lit-regenerate-ssh-host-keys.service
+rm -f /usr/local/sbin/lit-regenerate-ssh-host-keys
+if command -v systemctl >/dev/null 2>&1; then
+  systemctl daemon-reload || true
+fi
+EOF_REGEN_SSH_KEYS
+chmod 0755 /usr/local/sbin/lit-regenerate-ssh-host-keys
+
+cat > /etc/systemd/system/lit-regenerate-ssh-host-keys.service <<'EOF_REGEN_SSH_UNIT'
+[Unit]
+Description=Regenerate SSH host keys on first boot
+DefaultDependencies=no
+After=local-fs.target
+Before=ssh.service sshd.service
+ConditionPathExists=/usr/bin/ssh-keygen
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/lit-regenerate-ssh-host-keys
+
+[Install]
+WantedBy=multi-user.target
+EOF_REGEN_SSH_UNIT
+if command -v systemctl >/dev/null 2>&1; then
+  systemctl daemon-reload || true
+  systemctl enable lit-regenerate-ssh-host-keys.service || true
+fi
 rm -f /etc/ssh/ssh_host_*
 {% endif %}
 sync
