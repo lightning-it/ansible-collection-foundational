@@ -20,7 +20,11 @@
       community.vmware.vmware_guest_info:
         datacenter: "{{ vmware_vsphere_guest_bootstrap_datacenter }}"
         name: "{{ vmware_vsphere_guest_bootstrap_vm_name }}"
-        folder: "{{ vmware_vsphere_guest_bootstrap_folder | default(omit, true) }}"
+        folder: >-
+          {{
+            (vmware_vsphere_guest_bootstrap_folder | default('', true) | trim | length > 0)
+            | ternary(vmware_vsphere_guest_bootstrap_folder, omit)
+          }}
         schema: vsphere
         properties:
           - config.template
@@ -35,7 +39,11 @@
         name: "{{ vmware_vsphere_guest_bootstrap_vm_name }}"
         state: present
         datacenter: "{{ vmware_vsphere_guest_bootstrap_datacenter }}"
-        folder: "{{ vmware_vsphere_guest_bootstrap_folder | default(omit, true) }}"
+        folder: >-
+          {{
+            (vmware_vsphere_guest_bootstrap_folder | default('', true) | trim | length > 0)
+            | ternary(vmware_vsphere_guest_bootstrap_folder, omit)
+          }}
         is_template: false
       when:
         - vmware_vsphere_guest_bootstrap_convert_template_to_vm | bool
@@ -48,7 +56,11 @@
       community.vmware.vmware_guest_powerstate:
         name: "{{ vmware_vsphere_guest_bootstrap_vm_name }}"
         datacenter: "{{ vmware_vsphere_guest_bootstrap_datacenter }}"
-        folder: "{{ vmware_vsphere_guest_bootstrap_folder | default(omit, true) }}"
+        folder: >-
+          {{
+            (vmware_vsphere_guest_bootstrap_folder | default('', true) | trim | length > 0)
+            | ternary(vmware_vsphere_guest_bootstrap_folder, omit)
+          }}
         state: powered-on
       when: vmware_vsphere_guest_bootstrap_power_on | bool
 
@@ -59,7 +71,11 @@
       community.vmware.vmware_guest_tools_wait:
         datacenter: "{{ vmware_vsphere_guest_bootstrap_datacenter }}"
         name: "{{ vmware_vsphere_guest_bootstrap_vm_name }}"
-        folder: "{{ vmware_vsphere_guest_bootstrap_folder | default(omit, true) }}"
+        folder: >-
+          {{
+            (vmware_vsphere_guest_bootstrap_folder | default('', true) | trim | length > 0)
+            | ternary(vmware_vsphere_guest_bootstrap_folder, omit)
+          }}
         timeout: "{{ vmware_vsphere_guest_bootstrap_tools_timeout | int }}"
 
     - name: Create local temporary script directory
@@ -270,7 +286,11 @@
       community.vmware.vmware_guest_powerstate:
         name: "{{ vmware_vsphere_guest_bootstrap_vm_name }}"
         datacenter: "{{ vmware_vsphere_guest_bootstrap_datacenter }}"
-        folder: "{{ vmware_vsphere_guest_bootstrap_folder | default(omit, true) }}"
+        folder: >-
+          {{
+            (vmware_vsphere_guest_bootstrap_folder | default('', true) | trim | length > 0)
+            | ternary(vmware_vsphere_guest_bootstrap_folder, omit)
+          }}
         state: shutdown-guest
         state_change_timeout: "{{ vmware_vsphere_guest_bootstrap_shutdown_timeout | int }}"
       register: vmware_vsphere_guest_bootstrap_shutdown
@@ -284,7 +304,11 @@
       community.vmware.vmware_guest_powerstate:
         name: "{{ vmware_vsphere_guest_bootstrap_vm_name }}"
         datacenter: "{{ vmware_vsphere_guest_bootstrap_datacenter }}"
-        folder: "{{ vmware_vsphere_guest_bootstrap_folder | default(omit, true) }}"
+        folder: >-
+          {{
+            (vmware_vsphere_guest_bootstrap_folder | default('', true) | trim | length > 0)
+            | ternary(vmware_vsphere_guest_bootstrap_folder, omit)
+          }}
         state: powered-off
       when: vmware_vsphere_guest_bootstrap_power_off | bool
 
@@ -296,6 +320,10 @@
         name: "{{ vmware_vsphere_guest_bootstrap_vm_name }}"
         state: present
         datacenter: "{{ vmware_vsphere_guest_bootstrap_datacenter }}"
-        folder: "{{ vmware_vsphere_guest_bootstrap_folder | default(omit, true) }}"
+        folder: >-
+          {{
+            (vmware_vsphere_guest_bootstrap_folder | default('', true) | trim | length > 0)
+            | ternary(vmware_vsphere_guest_bootstrap_folder, omit)
+          }}
         is_template: true
       when: vmware_vsphere_guest_bootstrap_mark_as_template | bool
