@@ -1,0 +1,286 @@
+---
+- name: Validate requested build type
+  ansible.builtin.assert:
+    that:
+      - vmware_vsphere_packer_build_kind in ['rhel', 'ubuntu']
+    quiet: true
+    fail_msg: "vmware_vsphere_packer_build_kind must be 'rhel' or 'ubuntu'."
+  tags: always
+
+- name: Derive Packer network name from inventory
+  ansible.builtin.set_fact:
+    _vmware_vsphere_packer_build_network_name: >-
+      {%- set explicit_network = vmware_vsphere_packer_build_network | default('', true) | string | trim -%}
+      {%- if explicit_network | length > 0 -%}
+      {{ explicit_network }}
+      {%- elif vmware_vsphere_network is defined and vmware_vsphere_network is string -%}
+      {{ vmware_vsphere_network | trim }}
+      {%- elif vmware_vsphere_network is defined and vmware_vsphere_network is sequence and vmware_vsphere_network is not string and (vmware_vsphere_network | length > 0) -%}
+      {{ ((vmware_vsphere_network | first).name | default('', true)) | trim }}
+      {%- else -%}
+      {{ '' }}
+      {%- endif -%}
+  tags: always
+
+- name: Normalize Packer build inputs
+  ansible.builtin.set_fact:
+    _vmware_vsphere_packer_build_vars: >-
+      {{
+        {
+          'vsphere_server': vmware_vsphere_hostname | default('', true),
+          'vsphere_username': vmware_vsphere_username | default('', true),
+          'vsphere_password': vmware_vsphere_password | default('', true),
+          'vsphere_insecure': not (vmware_vsphere_validate_certs | default(true) | bool),
+          'vsphere_datacenter': vmware_vsphere_datacenter | default('', true),
+          'vsphere_cluster': vmware_vsphere_vmware_guest_cluster | default(
+            vmware_vsphere_cluster | default('', true),
+            true
+          ),
+          'vsphere_host': vmware_vsphere_vmware_guest_esxi_hostname | default(
+            vmware_vsphere_esxi_hostname | default('', true),
+            true
+          ),
+          'vsphere_resource_pool': vmware_vsphere_resource_pool | default('', true),
+          'vsphere_datastore': vmware_vsphere_packer_build_datastore | default(
+            vmware_vsphere_vmware_guest_datastore | default(
+              vmware_vsphere_datastore | default('', true),
+              true
+            ),
+            true
+          ),
+          'vsphere_folder': vmware_vsphere_packer_build_folder | default(
+            vmware_vsphere_folder_name | default('', true),
+            true
+          ),
+          'vsphere_network': _vmware_vsphere_packer_build_network_name,
+          'vm_name': vmware_vsphere_packer_build_source_vm_name | default('', true),
+          'installer_username': vmware_vsphere_packer_build_installer_username,
+          'installer_password': vmware_vsphere_packer_build_installer_password,
+          'installer_password_hash': vmware_vsphere_packer_build_installer_password_hash,
+          'hostname_domain': vmware_vsphere_packer_build_hostname_domain
+        }
+        | combine(
+          {'rhel_major': vmware_vsphere_packer_build_rhel_major | string},
+          recursive=True
+        )
+        if vmware_vsphere_packer_build_kind == 'rhel'
+        else
+        {
+          'vsphere_server': vmware_vsphere_hostname | default('', true),
+          'vsphere_username': vmware_vsphere_username | default('', true),
+          'vsphere_password': vmware_vsphere_password | default('', true),
+          'vsphere_insecure': not (vmware_vsphere_validate_certs | default(true) | bool),
+          'vsphere_datacenter': vmware_vsphere_datacenter | default('', true),
+          'vsphere_cluster': vmware_vsphere_vmware_guest_cluster | default(
+            vmware_vsphere_cluster | default('', true),
+            true
+          ),
+          'vsphere_host': vmware_vsphere_vmware_guest_esxi_hostname | default(
+            vmware_vsphere_esxi_hostname | default('', true),
+            true
+          ),
+          'vsphere_resource_pool': vmware_vsphere_resource_pool | default('', true),
+          'vsphere_datastore': vmware_vsphere_packer_build_datastore | default(
+            vmware_vsphere_vmware_guest_datastore | default(
+              vmware_vsphere_datastore | default('', true),
+              true
+            ),
+            true
+          ),
+          'vsphere_folder': vmware_vsphere_packer_build_folder | default(
+            vmware_vsphere_folder_name | default('', true),
+            true
+          ),
+          'vsphere_network': _vmware_vsphere_packer_build_network_name,
+          'vm_name': vmware_vsphere_packer_build_source_vm_name | default('', true),
+          'installer_username': vmware_vsphere_packer_build_installer_username,
+          'installer_password': vmware_vsphere_packer_build_installer_password,
+          'installer_password_hash': vmware_vsphere_packer_build_installer_password_hash,
+          'hostname_domain': vmware_vsphere_packer_build_hostname_domain,
+          'ubuntu_release': vmware_vsphere_packer_build_ubuntu_release | string
+        }
+      }}
+  no_log: true
+  tags: always
+
+- name: Validate optional Packer override maps
+  ansible.builtin.assert:
+    that:
+      - vmware_vsphere_packer_build_vars is mapping
+      - vmware_vsphere_packer_build_environment is mapping
+    quiet: true
+    fail_msg: >-
+      vmware_vsphere_packer_build_vars and vmware_vsphere_packer_build_environment
+      must be dictionaries.
+  tags: always
+
+- name: Merge extra Packer variables and select source
+  ansible.builtin.set_fact:
+    _vmware_vsphere_packer_build_vars_merged: >-
+      {{ _vmware_vsphere_packer_build_vars | combine(vmware_vsphere_packer_build_vars, recursive=True) }}
+    _vmware_vsphere_packer_build_source_selector: >-
+      {{ 'vsphere-iso.rhel' if vmware_vsphere_packer_build_kind == 'rhel' else 'vsphere-iso.ubuntu' }}
+  no_log: true
+  tags: always
+
+- name: Validate inventory-driven Packer inputs
+  ansible.builtin.assert:
+    that:
+      - vmware_vsphere_packer_build_project_dir | trim | length > 0
+      - vmware_vsphere_packer_build_source_vm_name | trim | length > 0
+      - _vmware_vsphere_packer_build_vars_merged.vsphere_server | string | trim | length > 0
+      - _vmware_vsphere_packer_build_vars_merged.vsphere_username | string | trim | length > 0
+      - _vmware_vsphere_packer_build_vars_merged.vsphere_password | string | trim | length > 0
+      - _vmware_vsphere_packer_build_vars_merged.vsphere_datacenter | string | trim | length > 0
+      - >-
+          (_vmware_vsphere_packer_build_vars_merged.vsphere_cluster | string | trim | length > 0)
+          or (_vmware_vsphere_packer_build_vars_merged.vsphere_host | string | trim | length > 0)
+      - _vmware_vsphere_packer_build_vars_merged.vsphere_datastore | string | trim | length > 0
+      - _vmware_vsphere_packer_build_vars_merged.vsphere_network | string | trim | length > 0
+      - _vmware_vsphere_packer_build_vars_merged.installer_password | string | trim | length > 0
+      - (vmware_vsphere_packer_build_kind != 'rhel') or (vmware_vsphere_packer_build_rhel_major | string in ['8', '9', '10'])
+      - (vmware_vsphere_packer_build_kind != 'ubuntu') or (vmware_vsphere_packer_build_ubuntu_release | string in ['24.04', '26.04'])
+    quiet: true
+    fail_msg: >-
+      Missing required Packer build inputs. Set the vSphere connection values in inventory,
+      provide vmware_vsphere_packer_build_project_dir, vmware_vsphere_packer_build_source_vm_name,
+      installer password, network, datastore, cluster or ESXi host, and either
+      vmware_vsphere_packer_build_rhel_major or vmware_vsphere_packer_build_ubuntu_release.
+  tags: always
+
+- name: Check Packer project directory
+  ansible.builtin.stat:
+    path: "{{ vmware_vsphere_packer_build_project_dir }}"
+  register: vmware_vsphere_packer_build_project_dir_stat
+  delegate_to: "{{ vmware_vsphere_packer_build_delegate_to }}"
+  become: false
+  changed_when: false
+  tags: always
+
+- name: Fail when Packer project directory is missing
+  ansible.builtin.assert:
+    that:
+      - vmware_vsphere_packer_build_project_dir_stat.stat.exists
+      - vmware_vsphere_packer_build_project_dir_stat.stat.isdir
+      - vmware_vsphere_packer_build_project_dir_stat.stat.readable
+    quiet: true
+    fail_msg: >-
+      vmware_vsphere_packer_build_project_dir must point to a readable Packer workspace.
+      Got: {{ vmware_vsphere_packer_build_project_dir }}
+  tags: always
+
+- name: Check Packer workspace manifest
+  ansible.builtin.stat:
+    path: "{{ vmware_vsphere_packer_build_project_dir }}/packer.pkr.hcl"
+  register: vmware_vsphere_packer_build_manifest_stat
+  delegate_to: "{{ vmware_vsphere_packer_build_delegate_to }}"
+  become: false
+  changed_when: false
+  tags: always
+
+- name: Fail when packer.pkr.hcl is missing
+  ansible.builtin.assert:
+    that:
+      - vmware_vsphere_packer_build_manifest_stat.stat.exists
+      - vmware_vsphere_packer_build_manifest_stat.stat.isreg
+    quiet: true
+    fail_msg: >-
+      Expected packer.pkr.hcl in {{ vmware_vsphere_packer_build_project_dir }}.
+  tags: always
+
+- name: Check HashiCorp Packer binary
+  ansible.builtin.command:
+    argv:
+      - packer
+      - version
+  register: vmware_vsphere_packer_build_version
+  environment: "{{ vmware_vsphere_packer_build_environment }}"
+  delegate_to: "{{ vmware_vsphere_packer_build_delegate_to }}"
+  become: false
+  changed_when: false
+  failed_when: false
+  tags: always
+
+- name: Validate HashiCorp Packer binary
+  ansible.builtin.assert:
+    that:
+      - vmware_vsphere_packer_build_version.rc == 0
+      - vmware_vsphere_packer_build_version.stdout is search('Packer v')
+    quiet: true
+    fail_msg: >-
+      HashiCorp Packer was not found in PATH on {{ vmware_vsphere_packer_build_delegate_to }}.
+      Install HashiCorp Packer and ensure the packer command reports a Packer version.
+  tags: always
+
+- name: Create temporary Packer variable file
+  ansible.builtin.tempfile:
+    state: file
+    prefix: vmware-vsphere-packer-build-
+    suffix: .pkrvars.json
+  register: vmware_vsphere_packer_build_var_file
+  delegate_to: "{{ vmware_vsphere_packer_build_delegate_to }}"
+  become: false
+  changed_when: false
+  tags: always
+
+- name: Run inventory-driven Packer build
+  block:
+    - name: Render temporary Packer variable file
+      ansible.builtin.copy:
+        content: "{{ _vmware_vsphere_packer_build_vars_merged | to_nice_json }}\n"
+        dest: "{{ vmware_vsphere_packer_build_var_file.path }}"
+        mode: '0600'
+      delegate_to: "{{ vmware_vsphere_packer_build_delegate_to }}"
+      become: false
+      no_log: true
+
+    - name: Initialize Packer workspace
+      ansible.builtin.command:
+        argv:
+          - packer
+          - init
+          - .
+      args:
+        chdir: "{{ vmware_vsphere_packer_build_project_dir }}"
+      environment: "{{ vmware_vsphere_packer_build_environment }}"
+      delegate_to: "{{ vmware_vsphere_packer_build_delegate_to }}"
+      become: false
+      changed_when: false
+
+    - name: Validate Packer build inputs
+      ansible.builtin.command:
+        argv:
+          - packer
+          - validate
+          - "-var-file={{ vmware_vsphere_packer_build_var_file.path }}"
+          - .
+      args:
+        chdir: "{{ vmware_vsphere_packer_build_project_dir }}"
+      environment: "{{ vmware_vsphere_packer_build_environment }}"
+      delegate_to: "{{ vmware_vsphere_packer_build_delegate_to }}"
+      become: false
+      changed_when: false
+
+    - name: Build source image with Packer
+      ansible.builtin.command:
+        argv:
+          - packer
+          - build
+          - "-only={{ _vmware_vsphere_packer_build_source_selector }}"
+          - "-var-file={{ vmware_vsphere_packer_build_var_file.path }}"
+          - .
+      args:
+        chdir: "{{ vmware_vsphere_packer_build_project_dir }}"
+      environment: "{{ vmware_vsphere_packer_build_environment }}"
+      delegate_to: "{{ vmware_vsphere_packer_build_delegate_to }}"
+      become: false
+      register: vmware_vsphere_packer_build_result
+  always:
+    - name: Remove temporary Packer variable file
+      ansible.builtin.file:
+        path: "{{ vmware_vsphere_packer_build_var_file.path }}"
+        state: absent
+      delegate_to: "{{ vmware_vsphere_packer_build_delegate_to }}"
+      become: false
+      changed_when: false
+      when: vmware_vsphere_packer_build_var_file.path is defined
