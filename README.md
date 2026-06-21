@@ -1,33 +1,33 @@
 # lit.foundational
 
-Foundational Ansible collection for ModuLix.  
+Foundational Ansible collection for ModuLix.
 It provides generic building blocks and orchestration helpers for consistent, repeatable automation.
 
-## What’s inside
+## What's inside
 
 ### Key roles
 
-- `lit.foundational.terragrunt`  
+- `lit.foundational.terragrunt`
   Terragrunt wrapper that:
   - prepares a per-cluster working directory on the control host,
   - renders a dynamic `terragrunt.hcl`,
   - runs `terragrunt init`, `terragrunt plan`, and `terragrunt apply`
     with optional confirmation and auth support.
 
-- `lit.foundational.terraform_state_migrate`  
+- `lit.foundational.terraform_state_migrate`
   Migrates local Terraform state files to an S3-compatible backend:
   - scans a local root for `*.tfstate*`,
   - uploads to S3/MinIO via `aws s3 cp`,
   - supports optional key prefix and region.
 
-- `lit.foundational.oob_redfish_inventory`  
+- `lit.foundational.oob_redfish_inventory`
   Vendor-neutral Redfish discovery (read-only):
   - discovers Redfish resource IDs (`System`, `Manager`, `Chassis`),
   - exposes a small `oob_redfish_inventory_redfish` summary dict for downstream tasks.
 
-- `lit.foundational.oob_redfish_control`  
+- `lit.foundational.oob_redfish_control`
   Vendor-neutral Redfish control actions:
-  - power actions (on/off/reboot/graceful…),
+  - power actions (on/off/reboot/graceful shutdown),
   - one-time or persistent boot override (PXE/CD/USB/HDD/UEFI targets),
   - optional virtual media insert/eject.
 
@@ -64,7 +64,7 @@ ansible-galaxy collection install \
 
 ### Redfish (OOB) inventory + control
 
-**Inventory hosts should point to the BMC endpoint** (iDRAC / iLO / XCC / …).  
+**Inventory hosts should point to the BMC endpoint** (iDRAC / iLO / XCC / other BMCs).
 Run Redfish tasks with a **local connection** (no SSH to the BMC required):
 
 ```ini
@@ -115,7 +115,7 @@ oob_redfish_control_validate_certs=false
     oob_redfish_control_power_action: reboot
 ```
 
-> Note: In a “real” unattended install, Redfish usually only does **boot selection + reboot**.  
+> Note: In a "real" unattended install, Redfish usually only does **boot selection + reboot**.
 > The OS installation itself should be handled by PXE/Kickstart or an ISO workflow.
 
 ---
@@ -159,8 +159,8 @@ source in real use:
 
 See also:
 
-- `playbooks/terragrunt.yml` – focused example only for `terragrunt`.
-- `playbooks/example.yml` – collection-level example playbook used as the
+- `playbooks/terragrunt.yml`  - focused example only for `terragrunt`.
+- `playbooks/example.yml`  - collection-level example playbook used as the
   canonical entrypoint in CI.
 
 ---
@@ -177,9 +177,9 @@ See also:
 
 - Molecule scenarios are located under `molecule/`, for example:
 
-  - `molecule/terragrunt_basic/` – runs the `terragrunt` role against a
+  - `molecule/terragrunt_basic/`  - runs the `terragrunt` role against a
     stubbed terragrunt binary to exercise `init` + `plan` + `apply`.
-  - `molecule/vmware_vsphere_basic/` – stubs the vmware_vsphere role (stub mode)
+  - `molecule/vmware_vsphere_basic/`  - stubs the vmware_vsphere role (stub mode)
     so Molecule can run without a vSphere backend.
 
 ---
