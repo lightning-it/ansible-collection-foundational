@@ -35,7 +35,7 @@ If generic guidance conflicts with repository behavior, you MUST prefer reposito
    2. `SECURITY.md`
    3. `scripts/wunder-devtools-ee.sh`
 4. Managed collection baseline files from `shared-assets/ansible-collection/base`:
-   1. `AGENT.md` or downstream `AGENTS.md` when the repository uses the plural name
+   1. `AGENTS.md`
    2. `CONTRIBUTING.md`
    3. `.ansible-lint`
    4. `ansible.cfg`
@@ -73,7 +73,7 @@ production readiness, Ansible Galaxy readiness, and Red Hat Ansible Automation P
 2. Keep `galaxy.yml` complete and accurate: namespace, name, version, README, description, repository, authors,
    license, tags, dependencies, and `build_ignore`.
 3. Keep `meta/runtime.yml` aligned with the supported Ansible range.
-4. Keep README, changelog/release notes, examples, role docs, and licensing suitable for publication.
+4. Keep README, GitHub Release notes, examples, role docs, and licensing suitable for publication.
 5. Ensure collection dependencies are declared once in `galaxy.yml` unless this guide documents an overlay exception.
 
 ### 2.1.2 Ansible Community Best Practices
