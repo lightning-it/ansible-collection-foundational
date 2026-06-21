@@ -28,19 +28,19 @@ If generic guidance conflicts with repository behavior, you MUST prefer reposito
 
 ## 1.1 Shared-Assets Managed Files (Mandatory)
 
-1. This repository receives centrally managed baseline files from `lightning-it/shared-assets`.
-2. Do not hand-edit these files in downstream repos unless you also update `shared-assets` and run sync.
-3. Managed default files from `shared-assets/default`:
+1. This repository receives centrally managed baseline files rendered from `lightning-it/shared-assets-lit`.
+2. Do not hand-edit these files in downstream repos unless you also update `shared-assets-lit` and run sync.
+3. Managed default files from `shared-assets-lit/default`:
    1. `CODE_OF_CONDUCT.md`
    2. `SECURITY.md`
    3. `scripts/wunder-devtools-ee.sh`
-4. Managed collection baseline files from `shared-assets/ansible-collection/base`:
+4. Managed collection baseline files from `shared-assets-lit/ansible-collection/base`:
    1. `AGENTS.md`
    2. `CONTRIBUTING.md`
    3. `.ansible-lint`
    4. `ansible.cfg`
-   5. `renovate.base.json`
-   6. `.releaserc`
+   5. `renovate.json` rendered from `renovate.base.json`
+   6. `changelogs/config.yaml`
    7. `.yamllint`
    8. `.gitignore`
    9. shared block in `.pre-commit-config.yaml`
@@ -62,6 +62,34 @@ If generic guidance conflicts with repository behavior, you MUST prefer reposito
    2. `ansible-lint.yml` YAML max line length 120
 4. Pre-commit runs devtools-based hooks for `yamllint`, `ansible-lint`, and Molecule light scenarios.
 
+## 2.0.1 Release and Changelog Rules (Mandatory)
+
+1. Ansible collection changelog handling MUST stay repository-based.
+2. NEVER replace Ansible collection changelog files with GitHub Release notes only.
+3. Ansible collection releases MUST NOT use `semantic-release`.
+4. `semantic-release` remains allowed for non-collection repositories only.
+5. If a repository has `galaxy.yml` and collection structure such as `roles/`, `plugins/`, or `playbooks/`,
+   treat it as an Ansible Collection repository.
+6. Shared release workflow logic belongs in `shared-assets-lit` and is rendered into local collection workflows.
+7. Use `antsibull-changelog` for collection changelogs:
+   1. fragments live under `changelogs/fragments/`,
+   2. generated changelog metadata lives in `changelogs/changelog.yaml`,
+   3. generated release notes live in `CHANGELOG.rst`.
+8. Every user-visible feature, fix, deprecation, removal, security fix, or known issue MUST add a fragment under
+   `changelogs/fragments/<meaningful-name>.yml`.
+9. Normal feature/fix PRs MUST NOT manually edit generated changelog files:
+   1. `changelogs/changelog.yaml`,
+   2. `CHANGELOG.rst`,
+   3. legacy `CHANGELOG.md` files where they still exist.
+10. Generated changelog files and `galaxy.yml` version bumps are release-PR changes only.
+11. Release preparation MUST happen on `release/vX.Y.Z` branches and open a PR into `main`.
+12. Publishing happens only after the release PR is merged into `main`.
+13. No workflow or agent may push release commits directly to `main`.
+14. GitHub Release notes are an additional publishing surface; they MUST be generated from or aligned with the
+   repository changelog, not used as the only changelog.
+15. GitHub repository settings, branch protection, required checks, workflow permissions, labels, environments,
+    secrets, and release-bot permissions MUST be changed only through `github-management-lit`.
+
 ## 2.1 Production Review Standard (Community, Red Hat, Efficiency)
 
 Use this standard when reviewing, creating, or changing collection content. Treat it as the baseline audit prompt for
@@ -73,7 +101,7 @@ production readiness, Ansible Galaxy readiness, and Red Hat Ansible Automation P
 2. Keep `galaxy.yml` complete and accurate: namespace, name, version, README, description, repository, authors,
    license, tags, dependencies, and `build_ignore`.
 3. Keep `meta/runtime.yml` aligned with the supported Ansible range.
-4. Keep README, changelog/release notes, examples, role docs, and licensing suitable for publication.
+4. Keep README, Ansible collection changelog files, examples, role docs, and licensing suitable for publication.
 5. Ensure collection dependencies are declared once in `galaxy.yml` unless this guide documents an overlay exception.
 
 ### 2.1.2 Ansible Community Best Practices
@@ -197,9 +225,8 @@ For each finding, include severity, file and line, why it matters, recommended f
 
 For Lightning IT Ansible collection repositories, follow the shared Renovate and release model.
 
-Do not duplicate generic Renovate policy in individual collection repositories. Generic Renovate rules must be
-maintained in `lightning-it/shared-assets` and consumed through the repository's `renovate.json` `extends`
-configuration.
+Do not hand-maintain generic Renovate policy in individual collection repositories. Generic Renovate rules must be
+maintained in `lightning-it/shared-assets-lit` and rendered into each repository's local `renovate.json`.
 
 Collection repositories may only define repository-specific Renovate overrides, such as:
 
@@ -215,12 +242,11 @@ The standard branch and release model is:
 - Safe patch, minor, pin, and digest updates may auto-merge into `develop` after required CI passes.
 - Major updates require manual approval.
 - `main` is the stable release branch.
-- `develop` must not be configured as a semantic-release branch unless an explicit pre-release strategy is
-  requested.
-- Weekly promotion from `develop` to `main` must happen through a pull request.
-- Weekly promotion may use GitHub auto-merge, but must not bypass required checks.
+- Promotion from `develop` to `main` must happen through a pull request.
+- Promotion pull requests must remain a human-visible manual merge checkpoint after required checks pass.
 - Do not direct-push from `develop` to `main`.
-- semantic-release must remain main-only for stable releases.
+- Collection releases must be prepared from `release/vX.Y.Z` branches with `antsibull-changelog`.
+- Release PRs target `main` and must pass required checks before merge.
 
 Automation safety requirements:
 
@@ -228,7 +254,8 @@ Automation safety requirements:
 - Only trusted Renovate PRs may be auto-approved by collection automation.
 - A trusted Renovate PR must have `renovate[bot]` as both trigger actor and PR author, a `renovate/*` source
   branch, `develop` as the base branch, and both `renovate` and `dependencies` labels.
-- Human and external contributor PRs must not be auto-approved or auto-merged by collection automation.
+- Human, external contributor, and develop-to-main promotion PRs must not be auto-approved or auto-merged by
+  collection automation.
 - Do not use `pull_request_target` for Renovate approval or merge automation.
 
 ## 3. Role Variable Naming and Mapping Rules
@@ -616,15 +643,8 @@ Before finalizing, confirm all items below:
 3. If a local gate is skipped, the final response names the missing runtime or concrete blocker, such as no
    Docker/Podman socket or protected Incus requirements.
 4. Documentation is updated for changed role interfaces.
-5. No CI, workflow, Renovate, or semantic-release config changes were made unless requested.
+5. No CI, workflow, Renovate, or release-automation config changes were made unless requested.
 6. Role prechecks are action-scoped and role-scoped:
    1. no cross-role raw var assertions in `assert.yml`
    2. no duplicate copy-paste assert blocks
    3. required foreign inputs mapped in `defaults/main.yml` with role prefix
-
-## Secret Storage Rule
-
-- Never commit secret values, tokens, passwords, private keys, activation codes, or decrypted Vault output.
-- When HC Vault is configured for a role or runbook, generated credentials must be read from HC Vault first, generated only when missing, written back to HC Vault, and then consumed by the application from the Vault-backed Ansible variables. Do not keep generated plaintext secret files on the managed host unless a role has an explicit break-glass option such as `*_allow_local_secret_files=true`.
-- When HC Vault is not configured, required credentials must be supplied from Ansible Vault encrypted inventory variables. Do not add new plaintext generated-secret fallbacks.
-- Tasks that read, generate, write, template, or compare secret material must use `no_log: true`.

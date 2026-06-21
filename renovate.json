@@ -1,29 +1,38 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "github>lightning-it/shared-assets//ansible-collection/base/renovate.base.json"
+    "config:recommended",
+    ":dependencyDashboard",
+    ":semanticCommits",
+    ":semanticCommitType(chore)",
+    ":semanticCommitScope(deps)"
   ],
-  "customManagers": [
+  "renovate-config": {
+    "enabled": false
+  },
+  "labels": ["dependencies", "renovate"],
+  "baseBranchPatterns": ["develop"],
+  "timezone": "UTC",
+  "schedule": [],
+  "rebaseWhen": "conflicted",
+  "prConcurrentLimit": 5,
+  "packageRules": [
     {
-      "customType": "regex",
-      "description": "Ansible Galaxy collection dependencies in galaxy.yml (minimum version)",
-      "managerFilePatterns": ["/^galaxy\\.yml$/"],
-      "matchStrings": [
-        "(?m)^\\s{2}(?<depName>[a-z0-9_]+\\.[a-z0-9_]+):\\s*[\"']?>=(?<currentValue>[0-9]+(?:\\.[0-9]+){1,3})(?:,[^\"'\\n]+)?[\"']?"
-      ],
-      "datasourceTemplate": "galaxy-collection"
+      "description": "Automerge safe non-major updates into develop after CI passes",
+      "matchUpdateTypes": ["minor", "patch", "pin", "digest", "pinDigest"],
+      "automerge": true,
+      "automergeType": "pr"
     },
     {
-      "customType": "regex",
-      "description": "Ansible Galaxy collection dependencies in galaxy.yml (exact version)",
-      "managerFilePatterns": ["/^galaxy\\.yml$/"],
-      "matchStrings": [
-        "(?m)^\\s{2}(?<depName>[a-z0-9_]+\\.[a-z0-9_]+):\\s*[\"']?(?<currentValue>[0-9]+(?:\\.[0-9]+){1,3})[\"']?"
-      ],
-      "datasourceTemplate": "galaxy-collection"
-    }
-  ],
-  "packageRules": [
+      "description": "Require manual approval for major updates",
+      "matchUpdateTypes": ["major"],
+      "dependencyDashboardApproval": true
+    },
+    {
+      "groupName": "ansible-core (2.18.x only)",
+      "matchPackageNames": ["ansible-core"],
+      "allowedVersions": "/^2\\.18\\./"
+    },
     {
       "description": "Keep community.general on 11.x for linux_system_roles compatibility",
       "matchDepNames": ["community.general"],
@@ -35,6 +44,34 @@
       "matchDepNames": ["community.vmware"],
       "matchDatasources": ["galaxy-collection"],
       "allowedVersions": "/^5\\.10\\.0$/"
+    }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "ansible-core version in workflow env (ANSIBLE_CORE_VERSION)",
+      "managerFilePatterns": ["/.github/workflows/.*\\.ya?ml/"],
+      "matchStrings": ["ANSIBLE_CORE_VERSION:\\s*\"(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)\""],
+      "datasourceTemplate": "pypi",
+      "packageNameTemplate": "ansible-core",
+      "versioningTemplate": "pep440"
+    },
+    {
+      "customType": "regex",
+      "description": "ee-wunder-devtools-ubi9 image tag in collection docs and helper scripts",
+      "managerFilePatterns": [
+        "/^scripts\\/.*\\.sh$/",
+        "/^README\\.md$/",
+        "/^CONTRIBUTING\\.md$/",
+        "/^AGENTS\\.md$/",
+        "/^\\.github\\/workflows\\/.*\\.ya?ml$/",
+        "/^\\.pre-commit-config\\.ya?ml$/"
+      ],
+      "matchStrings": [
+        "quay\\.io/l-it/ee-wunder-devtools-ubi9:v(?<currentValue>[0-9.]+)"
+      ],
+      "datasourceTemplate": "docker",
+      "packageNameTemplate": "quay.io/l-it/ee-wunder-devtools-ubi9"
     }
   ]
 }
