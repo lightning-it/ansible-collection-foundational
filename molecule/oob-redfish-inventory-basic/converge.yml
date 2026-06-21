@@ -12,5 +12,7 @@
       when: oob_redfish_inventory_molecule_execute_role | bool
 
     - name: Record lit.foundational.oob_redfish_inventory Molecule coverage mode
-      ansible.builtin.set_fact:
-        oob_redfish_inventory_molecule_coverage_mode: syntax_stub
+      ansible.builtin.copy:
+        content: "syntax_stub\n"
+        dest: /tmp/lit-foundational-oob-redfish-inventory-molecule-coverage
+        mode: "0644"

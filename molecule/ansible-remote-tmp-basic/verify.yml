@@ -4,8 +4,13 @@
   connection: local
   gather_facts: false
   tasks:
+    - name: Check lit.foundational.ansible_remote_tmp coverage marker
+      ansible.builtin.stat:
+        path: /tmp/lit-foundational-ansible-remote-tmp-molecule-coverage
+      register: ansible_remote_tmp_molecule_coverage_marker
+
     - name: Assert lit.foundational.ansible_remote_tmp coverage stub ran
       ansible.builtin.assert:
         that:
-          - ansible_remote_tmp_molecule_coverage_mode | default('') == 'syntax_stub'
+          - ansible_remote_tmp_molecule_coverage_marker.stat.exists
         quiet: true

@@ -4,8 +4,13 @@
   connection: local
   gather_facts: false
   tasks:
+    - name: Check lit.foundational.terraform_state_migrate coverage marker
+      ansible.builtin.stat:
+        path: /tmp/lit-foundational-terraform-state-migrate-molecule-coverage
+      register: terraform_state_migrate_molecule_coverage_marker
+
     - name: Assert lit.foundational.terraform_state_migrate coverage stub ran
       ansible.builtin.assert:
         that:
-          - terraform_state_migrate_molecule_coverage_mode | default('') == 'syntax_stub'
+          - terraform_state_migrate_molecule_coverage_marker.stat.exists
         quiet: true

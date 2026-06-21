@@ -12,5 +12,7 @@
       when: ansible_remote_tmp_molecule_execute_role | bool
 
     - name: Record lit.foundational.ansible_remote_tmp Molecule coverage mode
-      ansible.builtin.set_fact:
-        ansible_remote_tmp_molecule_coverage_mode: syntax_stub
+      ansible.builtin.copy:
+        content: "syntax_stub\n"
+        dest: /tmp/lit-foundational-ansible-remote-tmp-molecule-coverage
+        mode: "0644"

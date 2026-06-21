@@ -4,8 +4,13 @@
   connection: local
   gather_facts: false
   tasks:
+    - name: Check lit.foundational.oob_redfish_inventory coverage marker
+      ansible.builtin.stat:
+        path: /tmp/lit-foundational-oob-redfish-inventory-molecule-coverage
+      register: oob_redfish_inventory_molecule_coverage_marker
+
     - name: Assert lit.foundational.oob_redfish_inventory coverage stub ran
       ansible.builtin.assert:
         that:
-          - oob_redfish_inventory_molecule_coverage_mode | default('') == 'syntax_stub'
+          - oob_redfish_inventory_molecule_coverage_marker.stat.exists
         quiet: true

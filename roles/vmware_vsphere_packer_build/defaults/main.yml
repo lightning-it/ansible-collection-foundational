@@ -1,0 +1,16 @@
+---
+vmware_vsphere_packer_build_delegate_to: localhost
+vmware_vsphere_packer_build_project_dir: ""
+vmware_vsphere_packer_build_kind: rhel
+vmware_vsphere_packer_build_source_vm_name: ""
+vmware_vsphere_packer_build_rhel_major: ""
+vmware_vsphere_packer_build_ubuntu_release: ""
+vmware_vsphere_packer_build_installer_username: breakglass
+vmware_vsphere_packer_build_installer_password: ""
+vmware_vsphere_packer_build_installer_password_hash: ""
+vmware_vsphere_packer_build_network: ""
+vmware_vsphere_packer_build_datastore: ""
+vmware_vsphere_packer_build_folder: ""
+vmware_vsphere_packer_build_hostname_domain: localdomain
+vmware_vsphere_packer_build_vars: {}
+vmware_vsphere_packer_build_environment: {}
