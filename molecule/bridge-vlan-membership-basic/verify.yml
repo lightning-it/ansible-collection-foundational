@@ -4,8 +4,13 @@
   connection: local
   gather_facts: false
   tasks:
+    - name: Check lit.foundational.bridge_vlan_membership coverage marker
+      ansible.builtin.stat:
+        path: /tmp/lit-foundational-bridge-vlan-membership-molecule-coverage
+      register: bridge_vlan_membership_molecule_coverage_marker
+
     - name: Assert lit.foundational.bridge_vlan_membership coverage stub ran
       ansible.builtin.assert:
         that:
-          - bridge_vlan_membership_molecule_coverage_mode | default('') == 'syntax_stub'
+          - bridge_vlan_membership_molecule_coverage_marker.stat.exists
         quiet: true
