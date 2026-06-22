@@ -43,7 +43,7 @@ Add this to your collection `galaxy.yml`:
 
 ```yaml
 dependencies:
-  community.general: ">=11.4.5,<12.0.0"
+  community.general: ">=11.4.9,<12.0.0"
 ```
 
 ---
