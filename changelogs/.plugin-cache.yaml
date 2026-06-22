@@ -1,0 +1,32 @@
+---
+objects:
+  role:
+    bridge_vlan_membership:
+      description: Ensure VLAN filtering and VLAN membership on a linux bridge.
+      name: bridge_vlan_membership
+      version_added: null
+    oob_redfish_control:
+      description: Perform Redfish actions (power/boot/virtual media).
+      name: oob_redfish_control
+      version_added: null
+    oob_redfish_inventory:
+      description: Discover Redfish IDs and basic inventory.
+      name: oob_redfish_inventory
+      version_added: null
+plugins:
+  become: {}
+  cache: {}
+  callback: {}
+  cliconf: {}
+  connection: {}
+  filter: {}
+  httpapi: {}
+  inventory: {}
+  lookup: {}
+  module: {}
+  netconf: {}
+  shell: {}
+  strategy: {}
+  test: {}
+  vars: {}
+version: 1.22.0
