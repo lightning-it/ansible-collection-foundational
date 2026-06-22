@@ -1,0 +1,16 @@
+---
+ancestor: null
+releases:
+  1.22.0:
+    changes:
+      minor_changes:
+        - foundational - Add Molecule coverage for remote tmp, bridge VLAN membership,
+          OOB Redfish, and Terraform state migration scenarios.
+        - vmware_vsphere - Improve VM asset, normalization, and management task handling.
+        - vmware_vsphere_guest_bootstrap - Expand guest bootstrap configuration and
+          task handling.
+        - vmware_vsphere_packer_build - Add a role for VMware vSphere Packer template
+          build automation.
+    fragments:
+      - foundational-agents-refactored.yml
+    release_date: '2026-06-22'
