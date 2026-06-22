@@ -14,3 +14,10 @@ releases:
     fragments:
       - foundational-agents-refactored.yml
     release_date: '2026-06-22'
+  1.23.0:
+    changes:
+      minor_changes:
+        - lit.foundational - Verify automated collection release workflow cycle 1.
+    fragments:
+      - release-verification-1.yml
+    release_date: '2026-06-22'
