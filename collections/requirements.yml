@@ -3,6 +3,7 @@ collections:
   - name: community.general
     version: "11.4.9"
   - name: ansible.posix
+    version: "2.2.0"
   - name: community.docker
   - name: community.vmware
     version: "5.10.0"
