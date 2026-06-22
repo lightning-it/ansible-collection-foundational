@@ -4,6 +4,14 @@ Lightning IT Collection Release Notes Release Notes
 
 .. contents:: Topics
 
+v1.24.0
+=======
+
+Minor Changes
+-------------
+
+- lit.foundational - Verify automated collection release workflow cycle 2.
+
 v1.23.0
 =======
 
