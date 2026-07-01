@@ -46,6 +46,8 @@
             )
             | ternary(vmware_vsphere_network, [vmware_vsphere_network])
           )
+        | to_json
+        | from_json
       }}
     # optional legacy alias (keep both in sync)
     vmware_vsphere_network: >-
@@ -64,7 +66,8 @@
   ansible.builtin.set_fact:
     vmware_vsphere_vmware_guest_networks: >-
       {{
-        vmware_vsphere_vmware_guest_networks
+        (
+          vmware_vsphere_vmware_guest_networks
         + [
           (
             (
@@ -78,6 +81,9 @@
               )
           )
         ]
+        )
+        | to_json
+        | from_json
       }}
   loop: "{{ _vmware_vsphere_vmware_guest_networks_raw }}"
   tags:
@@ -101,6 +107,8 @@
         | dict2items
         | rejectattr('key', 'equalto', 'nic_setting_map')
         | items2dict
+        | to_json
+        | from_json
       }}
     vmware_vsphere_vmware_guest_customization_spec: >-
       {{
@@ -109,9 +117,13 @@
       }}
     vmware_vsphere_vmware_guest_nic_setting_map: >-
       {{
-        (_vmware_vsphere_customization_raw.nic_setting_map | default([], true))
-        if _vmware_vsphere_customization_raw is mapping
-        else []
+        (
+          (_vmware_vsphere_customization_raw.nic_setting_map | default([], true))
+          if _vmware_vsphere_customization_raw is mapping
+          else []
+        )
+        | to_json
+        | from_json
       }}
   tags:
     - always
@@ -157,7 +169,7 @@
           {%- set _ = updated.append(net) -%}
         {%- endfor -%}
       {%- endif -%}
-      {{ updated }}
+      {{ updated | to_json | from_json }}
   when: (vmware_vsphere_vmware_guest_nic_setting_map | length) > 0
   tags:
     - always

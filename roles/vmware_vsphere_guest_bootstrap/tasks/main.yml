@@ -132,6 +132,10 @@
           }}
         wait_for_process: true
         timeout: "{{ vmware_vsphere_guest_bootstrap_shell_timeout | int }}"
+      register: vmware_vsphere_guest_bootstrap_remove_stale
+      retries: "{{ vmware_vsphere_guest_bootstrap_shell_retries | int }}"
+      delay: "{{ vmware_vsphere_guest_bootstrap_shell_retry_delay | int }}"
+      until: vmware_vsphere_guest_bootstrap_remove_stale is succeeded
       no_log: "{{ vmware_vsphere_guest_bootstrap_no_log | bool }}"
 
     - name: Upload guest bootstrap script chunks
@@ -156,6 +160,10 @@
           }}
         wait_for_process: true
         timeout: "{{ vmware_vsphere_guest_bootstrap_shell_timeout | int }}"
+      register: vmware_vsphere_guest_bootstrap_upload_chunk
+      retries: "{{ vmware_vsphere_guest_bootstrap_shell_retries | int }}"
+      delay: "{{ vmware_vsphere_guest_bootstrap_shell_retry_delay | int }}"
+      until: vmware_vsphere_guest_bootstrap_upload_chunk is succeeded
       loop: "{{ vmware_vsphere_guest_bootstrap_script_chunks }}"
       loop_control:
         label: "bootstrap script chunk"
@@ -212,6 +220,9 @@
         wait_for_process: true
         timeout: "{{ vmware_vsphere_guest_bootstrap_shell_timeout | int }}"
       register: vmware_vsphere_guest_bootstrap_shell
+      retries: "{{ vmware_vsphere_guest_bootstrap_shell_retries | int }}"
+      delay: "{{ vmware_vsphere_guest_bootstrap_shell_retry_delay | int }}"
+      until: vmware_vsphere_guest_bootstrap_shell is succeeded
       failed_when: false
       no_log: "{{ vmware_vsphere_guest_bootstrap_no_log | bool }}"
 
@@ -270,6 +281,61 @@
           VMware guest bootstrap failed with exit code
           {{ vmware_vsphere_guest_bootstrap_shell.exit_code | default('unknown') }}.
       when: vmware_vsphere_guest_bootstrap_shell.exit_code | default(0) | int != 0
+      no_log: "{{ vmware_vsphere_guest_bootstrap_no_log | bool }}"
+
+    - name: Clean guest template network and cloud-init state explicitly
+      vars:
+        vmware_vsphere_guest_bootstrap_cleanup_command: |
+          set -euo pipefail
+          rm -f /etc/cloud/cloud.cfg.d/99-disable-network-config.cfg
+          rm -rf /var/run/vmware-imc
+          if command -v nmcli >/dev/null 2>&1; then
+            nmcli -t -f NAME connection show | while IFS= read -r connection_name; do
+              [ -n "${connection_name}" ] || continue
+              nmcli connection delete "${connection_name}" || true
+            done
+          fi
+          rm -f /etc/NetworkManager/system-connections/*.nmconnection
+          rm -f /etc/sysconfig/network-scripts/ifcfg-*
+          rm -f /var/lib/NetworkManager/*.lease
+          rm -f /var/lib/NetworkManager/NetworkManager.state
+          if command -v cloud-init >/dev/null 2>&1; then
+            cloud-init clean --logs --seed --machine-id || cloud-init clean --logs || true
+          fi
+          test ! -e /etc/cloud/cloud.cfg.d/99-disable-network-config.cfg
+      module_defaults:
+        group/vmware: "{{ vmware_vsphere_guest_bootstrap_module_defaults }}"
+      delegate_to: "{{ vmware_vsphere_guest_bootstrap_delegate_to }}"
+      community.vmware.vmware_vm_shell:
+        datacenter: "{{ vmware_vsphere_guest_bootstrap_datacenter }}"
+        vm_id: "{{ vmware_vsphere_guest_bootstrap_vm_name }}"
+        vm_username: "{{ vmware_vsphere_guest_bootstrap_guest_username }}"
+        vm_password: "{{ vmware_vsphere_guest_bootstrap_guest_password }}"
+        vm_shell: /bin/bash
+        vm_shell_args: >-
+          {{
+            ' -lc '
+            ~ (
+              (
+                'printf '
+                ~ ('%s\\n' | quote)
+                ~ ' '
+                ~ (vmware_vsphere_guest_bootstrap_guest_become_password | quote)
+                ~ ' | sudo -S -p '
+                ~ ('' | quote)
+                ~ ' bash -lc '
+                ~ (vmware_vsphere_guest_bootstrap_cleanup_command | quote)
+              )
+              if (vmware_vsphere_guest_bootstrap_guest_become | bool)
+              else vmware_vsphere_guest_bootstrap_cleanup_command
+            ) | quote
+          }}
+        wait_for_process: true
+        timeout: "{{ vmware_vsphere_guest_bootstrap_shell_timeout | int }}"
+      register: vmware_vsphere_guest_bootstrap_cleanup
+      retries: "{{ vmware_vsphere_guest_bootstrap_shell_retries | int }}"
+      delay: "{{ vmware_vsphere_guest_bootstrap_shell_retry_delay | int }}"
+      until: vmware_vsphere_guest_bootstrap_cleanup is succeeded
       no_log: "{{ vmware_vsphere_guest_bootstrap_no_log | bool }}"
 
     - name: Remove local temporary script directory
