@@ -90,9 +90,27 @@ if command -v systemctl >/dev/null 2>&1; then
 fi
 
 {% if vmware_vsphere_guest_bootstrap_clean_cloud_init | bool %}
+rm -f /etc/cloud/cloud.cfg.d/99-disable-network-config.cfg
+rm -rf /var/run/vmware-imc
 if command -v cloud-init >/dev/null 2>&1; then
-  cloud-init clean --logs || true
+  cloud-init clean --logs --seed --machine-id || cloud-init clean --logs || true
 fi
+if [ -e /etc/cloud/cloud.cfg.d/99-disable-network-config.cfg ]; then
+  echo "cloud-init network disable file still exists after cleanup" >&2
+  exit 1
+fi
+{% endif %}
+{% if vmware_vsphere_guest_bootstrap_clean_network_connections | bool %}
+if command -v nmcli >/dev/null 2>&1; then
+  nmcli -t -f NAME connection show | while IFS= read -r connection_name; do
+    [ -n "${connection_name}" ] || continue
+    nmcli connection delete "${connection_name}" || true
+  done
+fi
+rm -f /etc/NetworkManager/system-connections/*.nmconnection
+rm -f /etc/sysconfig/network-scripts/ifcfg-*
+rm -f /var/lib/NetworkManager/*.lease
+rm -f /var/lib/NetworkManager/NetworkManager.state
 {% endif %}
 {% if vmware_vsphere_guest_bootstrap_clean_machine_id | bool %}
 : > /etc/machine-id
