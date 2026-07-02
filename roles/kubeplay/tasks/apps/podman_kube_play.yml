@@ -32,7 +32,7 @@
 - name: Remove pod before kube play
   ansible.builtin.command: "podman pod rm -f {{ _kubeplay_pod_name }}"
   register: kubeplay_pod_remove
-  failed_when: kubeplay_pod_remove.rc not in [0, 125]
+  failed_when: kubeplay_pod_remove.rc not in [0, 1, 2, 125]
   changed_when: "'deleted' in kubeplay_pod_remove.stdout"
   when: _kubeplay_action in ['recreate', 'remove']
 
