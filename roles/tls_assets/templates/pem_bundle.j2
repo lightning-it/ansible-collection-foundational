@@ -1,0 +1,3 @@
+{% for pem_entry in tls_assets_pem_entries | default([]) %}
+{{ pem_entry | string | replace('\r', '') | replace('\\n', "\n") | trim }}
+{% endfor %}

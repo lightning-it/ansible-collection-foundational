@@ -1,0 +1,38 @@
+---
+- name: Prechecks
+  ansible.builtin.import_tasks: assert.yml
+  tags: always
+
+- name: Skip TLS asset staging when disabled
+  ansible.builtin.debug:
+    msg: "TLS asset staging skipped because tls_assets_enabled=false."
+  changed_when: false
+  when: not tls_assets_enabled | bool
+  tags: always
+
+- name: Stage TLS assets
+  when: tls_assets_enabled | bool
+  block:
+    - name: Ensure TLS asset directory exists
+      ansible.builtin.file:
+        path: "{{ tls_assets_dir }}"
+        state: directory
+        owner: "{{ tls_assets_owner }}"
+        group: "{{ tls_assets_group }}"
+        mode: "{{ tls_assets_dir_mode }}"
+
+    - name: Stage customer TLS assets
+      ansible.builtin.import_tasks: stage_customer_files.yml
+      when: tls_assets_source == 'customer_files'
+
+    - name: Generate and stage Vault PKI TLS assets
+      ansible.builtin.import_tasks: stage_vault_pki.yml
+      when: tls_assets_source == 'vault_pki'
+
+    - name: Record staged TLS asset result
+      ansible.builtin.set_fact:
+        "{{ tls_assets_result_fact }}":
+          services: "{{ tls_assets_services }}"
+          target_files: "{{ tls_assets_target_files }}"
+          ca_cert_path: "{{ tls_assets_ca_cert_path }}"
+      changed_when: false
