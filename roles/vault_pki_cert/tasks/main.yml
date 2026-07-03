@@ -1,0 +1,230 @@
+---
+- name: Prechecks
+  ansible.builtin.import_tasks: assert.yml
+  tags: always
+
+- name: Generate Vault PKI leaf certificates
+  community.hashi_vault.vault_pki_generate_certificate:
+    url: "{{ vault_pki_cert_addr }}"
+    auth_method: "{{ vault_pki_cert_auth_method }}"
+    token: >-
+      {{
+        vault_pki_cert_token
+        if (vault_pki_cert_token | default('', true) | trim | length > 0)
+        else omit
+      }}
+    role_id: >-
+      {{
+        vault_pki_cert_role_id
+        if (vault_pki_cert_role_id | default('', true) | trim | length > 0)
+        else omit
+      }}
+    secret_id: >-
+      {{
+        vault_pki_cert_secret_id
+        if (vault_pki_cert_secret_id | default('', true) | trim | length > 0)
+        else omit
+      }}
+    validate_certs: "{{ vault_pki_cert_validate_certs | bool }}"
+    engine_mount_point: "{{ vault_pki_cert_mount_point }}"
+    role_name: "{{ vault_pki_cert_services[item].role_name }}"
+    common_name: "{{ vault_pki_cert_services[item].common_name }}"
+    alt_names: "{{ vault_pki_cert_services[item].alt_names | default([]) }}"
+    ip_sans: "{{ vault_pki_cert_services[item].ip_sans | default([]) }}"
+    ttl: "{{ vault_pki_cert_ttl if (vault_pki_cert_ttl | default('', true) | trim | length > 0) else omit }}"
+    format: "{{ vault_pki_cert_format }}"
+    private_key_format: "{{ vault_pki_cert_private_key_format }}"
+  register: vault_pki_cert_results
+  loop: "{{ vault_pki_cert_service_names }}"
+  delegate_to: localhost
+  become: false
+  no_log: true
+
+- name: Build normalized Vault PKI CA bundle candidates
+  ansible.builtin.set_fact:
+    _vault_pki_cert_ca_bundles: >-
+      {{
+        (_vault_pki_cert_ca_bundles | default([]))
+        + [
+          (
+            (
+              (item.data.data.ca_chain | default([]))
+              + [(item.data.data.issuing_ca | default(''))]
+            )
+            | map('string')
+            | map('replace', '\r', '')
+            | map('replace', '\\n', "\n")
+            | map('trim')
+            | reject('equalto', '')
+            | unique
+            | join("\n")
+            | replace('\\n', "\n")
+            | regex_replace("\n+$", '')
+          )
+        ]
+      }}
+  loop: "{{ vault_pki_cert_results.results | default([]) }}"
+  changed_when: false
+  no_log: true
+
+- name: Ensure Vault PKI issued one shared CA bundle
+  ansible.builtin.assert:
+    that:
+      - (_vault_pki_cert_ca_bundles | default([]) | length) > 0
+      - (_vault_pki_cert_ca_bundles | default([]) | unique | length) == 1
+    fail_msg: "Vault PKI issued multiple CA bundles for the requested certificates."
+    quiet: true
+  when: vault_pki_cert_require_shared_ca | bool
+  no_log: true
+
+- name: Record shared Vault PKI CA entries
+  ansible.builtin.set_fact:
+    vault_pki_cert_ca_bundle: "{{ (_vault_pki_cert_ca_bundles | default([]) | unique | first) }}"
+    vault_pki_cert_ca_entries: >-
+      {{
+        (
+          (
+            vault_pki_cert_results.results | first
+          ).data.data.ca_chain | default([])
+        )
+        + [
+          (
+            (
+              vault_pki_cert_results.results | first
+            ).data.data.issuing_ca | default('')
+          )
+        ]
+      }}
+  changed_when: false
+  no_log: true
+
+- name: Inspect first Vault PKI CA certificate
+  community.crypto.x509_certificate_info:
+    content: "{{ vault_pki_cert_ca_entries | first }}"
+  register: vault_pki_cert_ca_first_info
+  delegate_to: localhost
+  become: false
+  when:
+    - vault_pki_cert_read_issuer | bool
+    - (vault_pki_cert_ca_entries | default([]) | length) > 0
+  no_log: true
+
+- name: Derive Vault PKI issuer certificate PEM URL
+  ansible.builtin.set_fact:
+    vault_pki_cert_ca_issuer_pem_url: >-
+      {{
+        vault_pki_cert_ca_first_info.issuer_uri
+        | default('', true)
+        | string
+        | trim
+        | regex_replace('/$', '')
+        | regex_replace('/ca$', '/ca/pem')
+      }}
+  changed_when: false
+  when:
+    - vault_pki_cert_read_issuer | bool
+    - vault_pki_cert_ca_first_info is defined
+  no_log: true
+
+- name: Read Vault PKI issuer certificate PEM from issuer URI
+  ansible.builtin.uri:
+    url: "{{ vault_pki_cert_ca_issuer_pem_url }}"
+    method: GET
+    return_content: true
+    validate_certs: "{{ vault_pki_cert_validate_certs | bool }}"
+    status_code: 200
+  register: vault_pki_cert_ca_issuer_pem
+  delegate_to: localhost
+  become: false
+  failed_when: false
+  when:
+    - vault_pki_cert_read_issuer | bool
+    - vault_pki_cert_ca_first_info is defined
+    - >-
+      (vault_pki_cert_ca_first_info.subject_ordered | default([]))
+      !=
+      (vault_pki_cert_ca_first_info.issuer_ordered | default([]))
+    - vault_pki_cert_ca_issuer_pem_url | default('', true) | trim | length > 0
+  no_log: true
+
+- name: Ensure Vault PKI issuer certificate is readable when CA is not self-signed
+  ansible.builtin.assert:
+    that:
+      - vault_pki_cert_ca_issuer_pem is defined
+      - not (vault_pki_cert_ca_issuer_pem.failed | default(false) | bool)
+      - vault_pki_cert_ca_issuer_pem.status | default(0) | int == 200
+      - vault_pki_cert_ca_issuer_pem.content | default('', true) | trim | length > 0
+    fail_msg: "Vault PKI returned a non-self-signed issuing CA, but the issuer certificate could not be read."
+    quiet: true
+  when:
+    - vault_pki_cert_read_issuer | bool
+    - vault_pki_cert_ca_first_info is defined
+    - >-
+      (vault_pki_cert_ca_first_info.subject_ordered | default([]))
+      !=
+      (vault_pki_cert_ca_first_info.issuer_ordered | default([]))
+  no_log: true
+
+- name: Append Vault PKI issuer certificate to shared CA entries
+  ansible.builtin.set_fact:
+    vault_pki_cert_ca_entries: >-
+      {{
+        (
+          (vault_pki_cert_ca_entries | default([]))
+          + [
+              (
+                vault_pki_cert_ca_issuer_pem.content
+                if (
+                  vault_pki_cert_ca_issuer_pem is defined
+                  and not (vault_pki_cert_ca_issuer_pem.failed | default(false) | bool)
+                  and (vault_pki_cert_ca_issuer_pem.status | default(0) | int) == 200
+                )
+                else ''
+              )
+            ]
+        )
+        | map('string')
+        | map('replace', '\r', '')
+        | map('replace', '\\n', "\n")
+        | map('trim')
+        | reject('equalto', '')
+        | unique
+        | list
+      }}
+  changed_when: false
+  when: vault_pki_cert_read_issuer | bool
+  no_log: true
+
+- name: Inspect final Vault PKI trust anchor certificate
+  community.crypto.x509_certificate_info:
+    content: "{{ vault_pki_cert_ca_entries | last }}"
+  register: vault_pki_cert_ca_last_info
+  delegate_to: localhost
+  become: false
+  when:
+    - vault_pki_cert_require_trust_anchor | bool
+    - (vault_pki_cert_ca_entries | default([]) | length) > 0
+  no_log: true
+
+- name: Ensure Vault PKI shared CA bundle ends at trust anchor
+  ansible.builtin.assert:
+    that:
+      - >-
+        (vault_pki_cert_ca_last_info.subject_ordered | default([]))
+        ==
+        (vault_pki_cert_ca_last_info.issuer_ordered | default([]))
+    fail_msg: "Vault PKI CA bundle does not end in a self-signed trust anchor."
+    quiet: true
+  when:
+    - vault_pki_cert_require_trust_anchor | bool
+    - vault_pki_cert_ca_last_info is defined
+  no_log: true
+
+- name: Record Vault PKI certificate result
+  ansible.builtin.set_fact:
+    "{{ vault_pki_cert_result_fact }}":
+      results: "{{ vault_pki_cert_results.results | default([]) }}"
+      ca_entries: "{{ vault_pki_cert_ca_entries | default([]) }}"
+      ca_bundle: "{{ vault_pki_cert_ca_entries | default([]) | join('\n') }}"
+  changed_when: false
+  no_log: true

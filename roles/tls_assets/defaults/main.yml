@@ -1,0 +1,39 @@
+---
+tls_assets_enabled: true
+tls_assets_source: customer_files
+tls_assets_allowed_sources:
+  - customer_files
+  - vault_pki
+
+tls_assets_dir: "/etc/tls-assets"
+tls_assets_owner: root
+tls_assets_group: root
+tls_assets_dir_mode: "0755"
+tls_assets_cert_mode: "0644"
+tls_assets_key_mode: "0600"
+tls_assets_ca_mode: "0644"
+
+tls_assets_services: []
+tls_assets_target_files: {}
+tls_assets_customer_files: {}
+tls_assets_ca_cert_path: "{{ tls_assets_dir }}/ca.crt"
+
+tls_assets_vault_pki_addr: "{{ vault_pki_cert_addr | default('', true) }}"
+tls_assets_vault_pki_auth_method: "{{ vault_pki_cert_auth_method | default('token', true) }}"
+tls_assets_vault_pki_token: "{{ vault_pki_cert_token | default('', true) }}"
+tls_assets_vault_pki_role_id: "{{ vault_pki_cert_role_id | default('', true) }}"
+tls_assets_vault_pki_secret_id: "{{ vault_pki_cert_secret_id | default('', true) }}"
+tls_assets_vault_pki_approle_path: ""
+tls_assets_vault_pki_approle_kv_mount_point: "{{ tls_assets_vault_pki_kv_mount_point | default('', true) }}"
+tls_assets_vault_pki_approle_read_token: "{{ tls_assets_vault_pki_token }}"
+tls_assets_vault_pki_validate_certs: "{{ vault_pki_cert_validate_certs | default(true, true) }}"
+tls_assets_vault_pki_mount_point: "{{ vault_pki_cert_mount_point | default('', true) }}"
+tls_assets_vault_pki_services: {}
+tls_assets_vault_pki_ttl: "{{ vault_pki_cert_ttl | default('', true) }}"
+tls_assets_vault_pki_format: pem
+tls_assets_vault_pki_private_key_format: pkcs8
+tls_assets_vault_pki_require_shared_ca: true
+tls_assets_vault_pki_require_trust_anchor: true
+tls_assets_vault_pki_read_issuer: true
+
+tls_assets_result_fact: tls_assets_result

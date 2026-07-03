@@ -1,0 +1,85 @@
+---
+- name: Validate TLS asset variables
+  ansible.builtin.assert:
+    that:
+      - tls_assets_enabled is boolean
+      - tls_assets_source in tls_assets_allowed_sources
+      - tls_assets_dir | default('', true) | trim | length > 0
+      - tls_assets_dir.startswith('/')
+      - tls_assets_owner | default('', true) | string | trim | length > 0
+      - tls_assets_group | default('', true) | string | trim | length > 0
+      - tls_assets_services is sequence
+      - tls_assets_services is not string
+      - tls_assets_target_files is mapping
+      - tls_assets_customer_files is mapping
+      - tls_assets_ca_cert_path | default('', true) | trim | length > 0
+      - tls_assets_ca_cert_path.startswith('/')
+    fail_msg: "TLS asset variables are missing or invalid."
+  tags: always
+
+- name: Validate TLS asset service targets
+  ansible.builtin.assert:
+    that:
+      - item | default('', true) | trim | length > 0
+      - tls_assets_target_files[item] is mapping
+      - tls_assets_target_files[item].cert_path | default('', true) | trim | length > 0
+      - tls_assets_target_files[item].cert_path.startswith('/')
+      - tls_assets_target_files[item].key_path | default('', true) | trim | length > 0
+      - tls_assets_target_files[item].key_path.startswith('/')
+    fail_msg: "Each TLS asset service requires absolute cert_path and key_path targets."
+  loop: "{{ tls_assets_services }}"
+  when: tls_assets_enabled | bool
+  tags: always
+
+- name: Validate customer TLS asset inputs
+  ansible.builtin.assert:
+    that:
+      - tls_assets_customer_files[item] is mapping
+      - >-
+        (tls_assets_customer_files[item].cert_src | default('', true) | trim | length > 0)
+        or
+        (tls_assets_customer_files[item].cert_content | default('', true) | trim | length > 0)
+      - >-
+        (tls_assets_customer_files[item].key_src | default('', true) | trim | length > 0)
+        or
+        (tls_assets_customer_files[item].key_content | default('', true) | trim | length > 0)
+      - >-
+        (tls_assets_customer_files[item].cert_src | default('', true) | trim | length == 0)
+        or tls_assets_customer_files[item].cert_src.startswith('/')
+      - >-
+        (tls_assets_customer_files[item].key_src | default('', true) | trim | length == 0)
+        or tls_assets_customer_files[item].key_src.startswith('/')
+    fail_msg: "Customer TLS service inputs require cert/key source paths or inline content."
+  loop: "{{ tls_assets_services }}"
+  when:
+    - tls_assets_enabled | bool
+    - tls_assets_source == 'customer_files'
+  tags: always
+
+- name: Validate customer TLS CA input
+  ansible.builtin.assert:
+    that:
+      - >-
+        (tls_assets_customer_files.ca_cert_src | default('', true) | trim | length > 0)
+        or
+        (tls_assets_customer_files.ca_cert_content | default('', true) | trim | length > 0)
+      - >-
+        (tls_assets_customer_files.ca_cert_src | default('', true) | trim | length == 0)
+        or tls_assets_customer_files.ca_cert_src.startswith('/')
+    fail_msg: "Customer TLS CA input requires ca_cert_src or ca_cert_content."
+  when:
+    - tls_assets_enabled | bool
+    - tls_assets_source == 'customer_files'
+  tags: always
+
+- name: Validate Vault PKI AppRole KV lookup inputs
+  ansible.builtin.assert:
+    that:
+      - tls_assets_vault_pki_approle_kv_mount_point | default('', true) | trim | length > 0
+      - tls_assets_vault_pki_approle_read_token | default('', true) | trim | length > 0
+    fail_msg: "Vault PKI AppRole lookup requires KV mount point and read token."
+  when:
+    - tls_assets_enabled | bool
+    - tls_assets_source == 'vault_pki'
+    - tls_assets_vault_pki_approle_path | default('', true) | trim | length > 0
+  tags: always

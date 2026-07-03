@@ -1,0 +1,14 @@
+[Unit]
+Description={{ podman_systemd_description }}
+{% if podman_systemd_after | length > 0 %}
+After={{ podman_systemd_after | join(' ') }}
+{% endif %}
+{% if podman_systemd_wants | length > 0 %}
+Wants={{ podman_systemd_wants | join(' ') }}
+{% endif %}
+
+[Kube]
+Yaml={{ podman_systemd_manifest_path }}
+
+[Install]
+WantedBy={{ podman_systemd_install_wanted_by }}

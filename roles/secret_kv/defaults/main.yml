@@ -1,0 +1,20 @@
+---
+secret_kv_enabled: true
+secret_kv_backend: hashicorp_vault
+secret_kv_action: read
+secret_kv_allowed_actions:
+  - read
+  - write
+  - upsert
+
+secret_kv_vault_addr: "{{ secret_backend_context.vault_addr | default(vault_addr | default(hc_vault_addr | default('', true), true), true) }}"
+secret_kv_vault_validate_certs: "{{ secret_backend_context.vault_validate_certs | default(vault_validate_certs | default(hc_vault_validate_certs | default(true, true), true), true) }}"
+secret_kv_vault_auth_method: "{{ secret_backend_context.vault_auth_method | default(hc_vault_auth_method | default('token', true), true) }}"
+secret_kv_vault_token: "{{ secret_backend_context.vault_token | default(vault_token | default(hc_vault_token | default(lookup('ansible.builtin.env', 'VAULT_TOKEN') | default('', true), true), true), true) }}"
+secret_kv_vault_role_id: "{{ secret_backend_context.vault_role_id | default(vault_role_id | default(hc_vault_role_id | default('', true), true), true) }}"
+secret_kv_vault_secret_id: "{{ secret_backend_context.vault_secret_id | default(vault_secret_id | default(hc_vault_secret_id | default('', true), true), true) }}"
+secret_kv_vault_mount_point: "{{ secret_backend_context.vault_kv_mount_point | default(vault_engine_mount_point | default(hc_vault_engine_mount_point | default('', true), true), true) }}"
+secret_kv_path: ""
+secret_kv_data: {}
+secret_kv_merge_existing: true
+secret_kv_result_fact: secret_kv_result

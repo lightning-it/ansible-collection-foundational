@@ -1,0 +1,7 @@
+---
+galaxy_info:
+  author: Lightning IT
+  description: Stage generic TLS assets from files, inline content, or Vault PKI.
+  license: MIT
+  min_ansible_version: "2.15"
+dependencies: []
