@@ -1,0 +1,41 @@
+---
+- name: Prechecks
+  ansible.builtin.import_tasks: assert.yml
+  tags: always
+
+- name: Record disabled secret backend context
+  ansible.builtin.set_fact:
+    secret_backend_context:
+      enabled: false
+      backend: "{{ secret_backend_name }}"
+  changed_when: false
+  when: not secret_backend_enabled | bool
+  tags: always
+
+- name: Record HashiCorp Vault secret backend context
+  ansible.builtin.set_fact:
+    secret_backend_context:
+      enabled: true
+      backend: hashicorp_vault
+      vault_addr: "{{ secret_backend_vault_addr | string | trim }}"
+      vault_validate_certs: "{{ secret_backend_vault_validate_certs | bool }}"
+      vault_auth_method: "{{ secret_backend_vault_auth_method }}"
+      vault_token: "{{ secret_backend_vault_token | string | trim }}"
+      vault_role_id: "{{ secret_backend_vault_role_id | string | trim }}"
+      vault_secret_id: "{{ secret_backend_vault_secret_id | string | trim }}"
+      vault_kv_mount_point: "{{ secret_backend_vault_kv_mount_point | string | trim }}"
+  changed_when: false
+  when:
+    - secret_backend_enabled | bool
+    - secret_backend_name == 'hashicorp_vault'
+  no_log: true
+
+- name: Record Ansible Vault secret backend context
+  ansible.builtin.set_fact:
+    secret_backend_context:
+      enabled: true
+      backend: ansible_vault
+  changed_when: false
+  when:
+    - secret_backend_enabled | bool
+    - secret_backend_name == 'ansible_vault'

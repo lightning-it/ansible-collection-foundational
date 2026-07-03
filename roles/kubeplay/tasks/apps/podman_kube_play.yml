@@ -1,8 +1,16 @@
 ---
 - name: Normalize kubeplay podman action variables
   ansible.builtin.set_fact:
-    _kubeplay_action: "{{ kubeplay_action | default((kubeplay_app.vars | default({})).kubeplay_action | default('')) }}"
-    _kubeplay_pod_name: "{{ kubeplay_pod_name | default((kubeplay_app.vars | default({})).kubeplay_pod_name | default('')) }}"
+    _kubeplay_action: >-
+      {{
+        kubeplay_action
+        | default((kubeplay_app.vars | default({})).kubeplay_action | default(''))
+      }}
+    _kubeplay_pod_name: >-
+      {{
+        kubeplay_pod_name
+        | default((kubeplay_app.vars | default({})).kubeplay_pod_name | default(''))
+      }}
     _kubeplay_pod_manifest_path: >-
       {{
         kubeplay_pod_manifest_path
@@ -32,7 +40,7 @@
 - name: Remove pod before kube play
   ansible.builtin.command: "podman pod rm -f {{ _kubeplay_pod_name }}"
   register: kubeplay_pod_remove
-  failed_when: kubeplay_pod_remove.rc not in [0, 125]
+  failed_when: kubeplay_pod_remove.rc not in [0, 1, 2, 125]
   changed_when: "'deleted' in kubeplay_pod_remove.stdout"
   when: _kubeplay_action in ['recreate', 'remove']
 
