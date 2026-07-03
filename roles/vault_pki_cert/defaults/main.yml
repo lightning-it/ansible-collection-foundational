@@ -1,0 +1,17 @@
+---
+vault_pki_cert_addr: "{{ hc_vault_addr | default(vault_addr | default('', true), true) }}"
+vault_pki_cert_auth_method: "{{ hc_vault_auth_method | default('token', true) }}"
+vault_pki_cert_token: "{{ hc_vault_token | default('', true) }}"
+vault_pki_cert_role_id: "{{ hc_vault_role_id | default('', true) }}"
+vault_pki_cert_secret_id: "{{ hc_vault_secret_id | default('', true) }}"
+vault_pki_cert_validate_certs: "{{ hc_vault_validate_certs | default(true, true) }}"
+vault_pki_cert_mount_point: ""
+vault_pki_cert_service_names: []
+vault_pki_cert_services: {}
+vault_pki_cert_ttl: ""
+vault_pki_cert_format: pem
+vault_pki_cert_private_key_format: pkcs8
+vault_pki_cert_require_shared_ca: true
+vault_pki_cert_read_issuer: true
+vault_pki_cert_require_trust_anchor: true
+vault_pki_cert_result_fact: vault_pki_cert_result
