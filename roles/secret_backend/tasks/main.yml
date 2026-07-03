@@ -5,7 +5,7 @@
 
 - name: Record disabled secret backend context
   ansible.builtin.set_fact:
-    "{{ secret_backend_result_fact }}":
+    secret_backend_context:
       enabled: false
       backend: "{{ secret_backend_name }}"
   changed_when: false
@@ -14,7 +14,7 @@
 
 - name: Record HashiCorp Vault secret backend context
   ansible.builtin.set_fact:
-    "{{ secret_backend_result_fact }}":
+    secret_backend_context:
       enabled: true
       backend: hashicorp_vault
       vault_addr: "{{ secret_backend_vault_addr | string | trim }}"
@@ -32,7 +32,7 @@
 
 - name: Record Ansible Vault secret backend context
   ansible.builtin.set_fact:
-    "{{ secret_backend_result_fact }}":
+    secret_backend_context:
       enabled: true
       backend: ansible_vault
   changed_when: false

@@ -31,7 +31,7 @@
 
     - name: Record staged TLS asset result
       ansible.builtin.set_fact:
-        "{{ tls_assets_result_fact }}":
+        tls_assets_result:
           services: "{{ tls_assets_services }}"
           target_files: "{{ tls_assets_target_files }}"
           ca_cert_path: "{{ tls_assets_ca_cert_path }}"

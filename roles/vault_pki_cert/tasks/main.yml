@@ -222,7 +222,7 @@
 
 - name: Record Vault PKI certificate result
   ansible.builtin.set_fact:
-    "{{ vault_pki_cert_result_fact }}":
+    vault_pki_cert_result:
       results: "{{ vault_pki_cert_results.results | default([]) }}"
       ca_entries: "{{ vault_pki_cert_ca_entries | default([]) }}"
       ca_bundle: "{{ vault_pki_cert_ca_entries | default([]) | join('\n') }}"

@@ -1,8 +1,16 @@
 ---
 - name: Normalize kubeplay podman action variables
   ansible.builtin.set_fact:
-    _kubeplay_action: "{{ kubeplay_action | default((kubeplay_app.vars | default({})).kubeplay_action | default('')) }}"
-    _kubeplay_pod_name: "{{ kubeplay_pod_name | default((kubeplay_app.vars | default({})).kubeplay_pod_name | default('')) }}"
+    _kubeplay_action: >-
+      {{
+        kubeplay_action
+        | default((kubeplay_app.vars | default({})).kubeplay_action | default(''))
+      }}
+    _kubeplay_pod_name: >-
+      {{
+        kubeplay_pod_name
+        | default((kubeplay_app.vars | default({})).kubeplay_pod_name | default(''))
+      }}
     _kubeplay_pod_manifest_path: >-
       {{
         kubeplay_pod_manifest_path

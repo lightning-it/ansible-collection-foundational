@@ -21,9 +21,18 @@
   community.hashi_vault.vault_kv2_get:
     url: "{{ secret_kv_vault_addr }}"
     auth_method: "{{ secret_kv_vault_auth_method }}"
-    token: "{{ secret_kv_vault_token if (secret_kv_vault_token | default('', true) | trim | length > 0) else omit }}"
-    role_id: "{{ secret_kv_vault_role_id if (secret_kv_vault_role_id | default('', true) | trim | length > 0) else omit }}"
-    secret_id: "{{ secret_kv_vault_secret_id if (secret_kv_vault_secret_id | default('', true) | trim | length > 0) else omit }}"
+    token: >-
+      {{ secret_kv_vault_token
+         if (secret_kv_vault_token | default('', true) | trim | length > 0)
+         else omit }}
+    role_id: >-
+      {{ secret_kv_vault_role_id
+         if (secret_kv_vault_role_id | default('', true) | trim | length > 0)
+         else omit }}
+    secret_id: >-
+      {{ secret_kv_vault_secret_id
+         if (secret_kv_vault_secret_id | default('', true) | trim | length > 0)
+         else omit }}
     validate_certs: "{{ secret_kv_vault_validate_certs | bool }}"
     engine_mount_point: "{{ secret_kv_vault_mount_point }}"
     path: "{{ secret_kv_path }}"
@@ -41,9 +50,18 @@
   community.hashi_vault.vault_kv2_write:
     url: "{{ secret_kv_vault_addr }}"
     auth_method: "{{ secret_kv_vault_auth_method }}"
-    token: "{{ secret_kv_vault_token if (secret_kv_vault_token | default('', true) | trim | length > 0) else omit }}"
-    role_id: "{{ secret_kv_vault_role_id if (secret_kv_vault_role_id | default('', true) | trim | length > 0) else omit }}"
-    secret_id: "{{ secret_kv_vault_secret_id if (secret_kv_vault_secret_id | default('', true) | trim | length > 0) else omit }}"
+    token: >-
+      {{ secret_kv_vault_token
+         if (secret_kv_vault_token | default('', true) | trim | length > 0)
+         else omit }}
+    role_id: >-
+      {{ secret_kv_vault_role_id
+         if (secret_kv_vault_role_id | default('', true) | trim | length > 0)
+         else omit }}
+    secret_id: >-
+      {{ secret_kv_vault_secret_id
+         if (secret_kv_vault_secret_id | default('', true) | trim | length > 0)
+         else omit }}
     validate_certs: "{{ secret_kv_vault_validate_certs | bool }}"
     engine_mount_point: "{{ secret_kv_vault_mount_point }}"
     path: "{{ secret_kv_path }}"
@@ -67,7 +85,7 @@
 
 - name: Record secret KV result
   ansible.builtin.set_fact:
-    "{{ secret_kv_result_fact }}":
+    secret_kv_result:
       backend: "{{ secret_kv_backend }}"
       action: "{{ secret_kv_action }}"
       path: "{{ secret_kv_path }}"

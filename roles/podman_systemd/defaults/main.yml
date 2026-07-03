@@ -11,7 +11,12 @@ podman_systemd_unit_name: ""
 podman_systemd_description: "Podman kube service {{ podman_systemd_unit_name }}"
 podman_systemd_manifest_path: ""
 podman_systemd_scope: "system"
-podman_systemd_quadlet_dir: "{{ '/etc/containers/systemd' if podman_systemd_scope == 'system' else ansible_env.HOME ~ '/.config/containers/systemd' }}"
+podman_systemd_quadlet_dir: >-
+  {{
+    '/etc/containers/systemd'
+    if podman_systemd_scope == 'system'
+    else ansible_env.HOME ~ '/.config/containers/systemd'
+  }}
 podman_systemd_quadlet_path: "{{ podman_systemd_quadlet_dir }}/{{ podman_systemd_unit_name }}.kube"
 podman_systemd_service_name: "{{ podman_systemd_unit_name }}.service"
 podman_systemd_enabled: true
