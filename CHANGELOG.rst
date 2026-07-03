@@ -4,6 +4,20 @@ Lightning IT Collection Release Notes Release Notes
 
 .. contents:: Topics
 
+v1.26.0
+=======
+
+Minor Changes
+-------------
+
+- Added generic tls_assets, vault_pki_cert, secret_backend, and secret_kv foundational roles for reusable TLS and secret handling.
+- Added the podman_systemd role for persistent Podman kube services through Quadlet and systemd.
+
+Bugfixes
+--------
+
+- Fixed kubeplay explicit app task execution so per-app variables are passed into included task files and roles.
+
 v1.24.0
 =======
 
