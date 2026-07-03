@@ -1,0 +1,82 @@
+---
+- name: Prechecks
+  ansible.builtin.import_tasks: assert.yml
+  tags: always
+
+- name: Ensure Quadlet directory exists
+  ansible.builtin.file:
+    path: "{{ podman_systemd_quadlet_dir }}"
+    state: directory
+    mode: "0755"
+  when: podman_systemd_action != 'absent'
+  tags:
+    - podman_systemd
+
+- name: Render Podman kube Quadlet unit
+  ansible.builtin.template:
+    src: kube.quadlet.j2
+    dest: "{{ podman_systemd_quadlet_path }}"
+    mode: "0644"
+  register: podman_systemd_quadlet_render
+  when: podman_systemd_action != 'absent'
+  tags:
+    - podman_systemd
+
+- name: Reload systemd for Podman kube service
+  ansible.builtin.systemd:
+    daemon_reload: true
+    scope: "{{ podman_systemd_scope }}"
+  when:
+    - podman_systemd_action != 'absent'
+    - podman_systemd_scope == 'system'
+  tags:
+    - podman_systemd
+
+- name: Reload user systemd for Podman kube service
+  ansible.builtin.systemd:
+    daemon_reload: true
+    scope: user
+  when:
+    - podman_systemd_action != 'absent'
+    - podman_systemd_scope == 'user'
+  tags:
+    - podman_systemd
+
+- name: Manage Podman kube service state
+  ansible.builtin.systemd:
+    name: "{{ podman_systemd_service_name }}"
+    state: "{{ 'started' if podman_systemd_action == 'present' else podman_systemd_action }}"
+    enabled: "{{ podman_systemd_enabled }}"
+    scope: "{{ podman_systemd_scope }}"
+  when: podman_systemd_action in ['present', 'started', 'restarted', 'stopped']
+  tags:
+    - podman_systemd
+
+- name: Stop and disable Podman kube service
+  ansible.builtin.systemd:
+    name: "{{ podman_systemd_service_name }}"
+    state: stopped
+    enabled: false
+    scope: "{{ podman_systemd_scope }}"
+  failed_when: false
+  when: podman_systemd_action == 'absent'
+  tags:
+    - podman_systemd
+
+- name: Remove Podman kube Quadlet unit
+  ansible.builtin.file:
+    path: "{{ podman_systemd_quadlet_path }}"
+    state: absent
+  when:
+    - podman_systemd_action == 'absent'
+    - podman_systemd_remove_quadlet | bool
+  tags:
+    - podman_systemd
+
+- name: Reload systemd after Podman kube service removal
+  ansible.builtin.systemd:
+    daemon_reload: true
+    scope: "{{ podman_systemd_scope }}"
+  when: podman_systemd_action == 'absent'
+  tags:
+    - podman_systemd

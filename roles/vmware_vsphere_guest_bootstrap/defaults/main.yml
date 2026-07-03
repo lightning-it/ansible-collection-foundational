@@ -58,6 +58,8 @@ vmware_vsphere_guest_bootstrap_guest_log_path: /tmp/lit-vsphere-guest-bootstrap.
 vmware_vsphere_guest_bootstrap_upload_chunk_size: 900
 vmware_vsphere_guest_bootstrap_tools_timeout: 600
 vmware_vsphere_guest_bootstrap_shell_timeout: 600
+vmware_vsphere_guest_bootstrap_shell_retries: 12
+vmware_vsphere_guest_bootstrap_shell_retry_delay: 10
 vmware_vsphere_guest_bootstrap_no_log: true
 
 vmware_vsphere_guest_bootstrap_convert_template_to_vm: true
@@ -77,4 +79,5 @@ vmware_vsphere_guest_bootstrap_disable_password_auth: true
 vmware_vsphere_guest_bootstrap_disable_root_login: true
 vmware_vsphere_guest_bootstrap_clean_machine_id: true
 vmware_vsphere_guest_bootstrap_clean_cloud_init: true
+vmware_vsphere_guest_bootstrap_clean_network_connections: true
 vmware_vsphere_guest_bootstrap_clean_ssh_host_keys: true

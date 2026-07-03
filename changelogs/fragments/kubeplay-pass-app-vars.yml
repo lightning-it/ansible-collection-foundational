@@ -1,0 +1,3 @@
+---
+bugfixes:
+  - Fixed kubeplay explicit app task execution so per-app variables are passed into included task files and roles.

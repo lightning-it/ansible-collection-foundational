@@ -1,0 +1,22 @@
+---
+galaxy_info:
+  role_name: podman_systemd
+  namespace: lit
+  author: Rene Osorio
+  description: Manage persistent Podman kube services through Quadlet and systemd.
+  company: Lightning IT
+  license: MIT
+  min_ansible_version: "2.18"
+
+  platforms:
+    - name: EL
+      versions:
+        - "9"
+
+  galaxy_tags:
+    - modulix
+    - podman
+    - systemd
+    - quadlet
+
+dependencies: []

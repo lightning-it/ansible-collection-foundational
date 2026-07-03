@@ -1,0 +1,3 @@
+---
+minor_changes:
+  - Added the podman_systemd role for persistent Podman kube services through Quadlet and systemd.

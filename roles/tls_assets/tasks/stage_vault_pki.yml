@@ -1,0 +1,181 @@
+---
+- name: Read Vault PKI AppRole credentials from KV
+  ansible.builtin.include_role:
+    name: lit.foundational.secret_kv
+  vars:
+    secret_kv_backend: hashicorp_vault
+    secret_kv_action: read
+    secret_kv_vault_addr: "{{ tls_assets_vault_pki_addr }}"
+    secret_kv_vault_auth_method: token
+    secret_kv_vault_token: "{{ tls_assets_vault_pki_approle_read_token }}"
+    secret_kv_vault_validate_certs: "{{ tls_assets_vault_pki_validate_certs }}"
+    secret_kv_vault_mount_point: "{{ tls_assets_vault_pki_approle_kv_mount_point }}"
+    secret_kv_path: "{{ tls_assets_vault_pki_approle_path }}"
+    secret_kv_result_fact: tls_assets_vault_pki_approle_secret
+  when: tls_assets_vault_pki_approle_path | default('', true) | trim | length > 0
+  no_log: true
+
+- name: Compute effective Vault PKI auth inputs
+  ansible.builtin.set_fact:
+    tls_assets_vault_pki_role_id_effective: >-
+      {{
+        (
+          tls_assets_vault_pki_approle_secret.secret.role_id
+          if (
+            tls_assets_vault_pki_approle_path | default('', true) | trim | length > 0
+            and tls_assets_vault_pki_approle_secret is defined
+            and tls_assets_vault_pki_approle_secret.secret is defined
+          )
+          else tls_assets_vault_pki_role_id
+        )
+        | string
+        | trim
+      }}
+    tls_assets_vault_pki_secret_id_effective: >-
+      {{
+        (
+          tls_assets_vault_pki_approle_secret.secret.secret_id
+          if (
+            tls_assets_vault_pki_approle_path | default('', true) | trim | length > 0
+            and tls_assets_vault_pki_approle_secret is defined
+            and tls_assets_vault_pki_approle_secret.secret is defined
+          )
+          else tls_assets_vault_pki_secret_id
+        )
+        | string
+        | trim
+      }}
+    tls_assets_vault_pki_auth_method_effective: >-
+      {{
+        'approle'
+        if (
+          (
+            (
+              tls_assets_vault_pki_approle_secret.secret.role_id
+              if (
+                tls_assets_vault_pki_approle_path | default('', true) | trim | length > 0
+                and tls_assets_vault_pki_approle_secret is defined
+                and tls_assets_vault_pki_approle_secret.secret is defined
+              )
+              else tls_assets_vault_pki_role_id
+            )
+            | string
+            | trim
+            | length
+          ) > 0
+          and
+          (
+            (
+              tls_assets_vault_pki_approle_secret.secret.secret_id
+              if (
+                tls_assets_vault_pki_approle_path | default('', true) | trim | length > 0
+                and tls_assets_vault_pki_approle_secret is defined
+                and tls_assets_vault_pki_approle_secret.secret is defined
+              )
+              else tls_assets_vault_pki_secret_id
+            )
+            | string
+            | trim
+            | length
+          ) > 0
+        )
+        else tls_assets_vault_pki_auth_method
+      }}
+    tls_assets_vault_pki_token_effective: >-
+      {{
+        ''
+        if (
+          (
+            (
+              tls_assets_vault_pki_approle_secret.secret.role_id
+              if (
+                tls_assets_vault_pki_approle_path | default('', true) | trim | length > 0
+                and tls_assets_vault_pki_approle_secret is defined
+                and tls_assets_vault_pki_approle_secret.secret is defined
+              )
+              else tls_assets_vault_pki_role_id
+            )
+            | string
+            | trim
+            | length
+          ) > 0
+          and
+          (
+            (
+              tls_assets_vault_pki_approle_secret.secret.secret_id
+              if (
+                tls_assets_vault_pki_approle_path | default('', true) | trim | length > 0
+                and tls_assets_vault_pki_approle_secret is defined
+                and tls_assets_vault_pki_approle_secret.secret is defined
+              )
+              else tls_assets_vault_pki_secret_id
+            )
+            | string
+            | trim
+            | length
+          ) > 0
+        )
+        else tls_assets_vault_pki_token
+      }}
+  changed_when: false
+  no_log: true
+
+- name: Generate Vault PKI certificates
+  ansible.builtin.include_role:
+    name: lit.foundational.vault_pki_cert
+  vars:
+    vault_pki_cert_addr: "{{ tls_assets_vault_pki_addr }}"
+    vault_pki_cert_auth_method: "{{ tls_assets_vault_pki_auth_method_effective }}"
+    vault_pki_cert_token: "{{ tls_assets_vault_pki_token_effective }}"
+    vault_pki_cert_role_id: "{{ tls_assets_vault_pki_role_id_effective }}"
+    vault_pki_cert_secret_id: "{{ tls_assets_vault_pki_secret_id_effective }}"
+    vault_pki_cert_validate_certs: "{{ tls_assets_vault_pki_validate_certs }}"
+    vault_pki_cert_mount_point: "{{ tls_assets_vault_pki_mount_point }}"
+    vault_pki_cert_services: "{{ tls_assets_vault_pki_services }}"
+    vault_pki_cert_service_names: "{{ tls_assets_services }}"
+    vault_pki_cert_ttl: "{{ tls_assets_vault_pki_ttl }}"
+    vault_pki_cert_format: "{{ tls_assets_vault_pki_format }}"
+    vault_pki_cert_private_key_format: "{{ tls_assets_vault_pki_private_key_format }}"
+    vault_pki_cert_require_shared_ca: "{{ tls_assets_vault_pki_require_shared_ca }}"
+    vault_pki_cert_require_trust_anchor: "{{ tls_assets_vault_pki_require_trust_anchor }}"
+    vault_pki_cert_read_issuer: "{{ tls_assets_vault_pki_read_issuer }}"
+
+- name: Copy Vault PKI service certificates to target
+  ansible.builtin.template:
+    src: pem_bundle.j2
+    dest: "{{ tls_assets_target_files[item.item].cert_path }}"
+    owner: "{{ tls_assets_owner }}"
+    group: "{{ tls_assets_group }}"
+    mode: "{{ tls_assets_cert_mode }}"
+  loop: "{{ vault_pki_cert_results.results | default([]) }}"
+  vars:
+    tls_assets_pem_entries: >-
+      {{
+        [item.data.data.certificate]
+        + (item.data.data.ca_chain | default([]))
+      }}
+  no_log: true
+
+- name: Copy Vault PKI service keys to target
+  ansible.builtin.template:
+    src: pem_bundle.j2
+    dest: "{{ tls_assets_target_files[item.item].key_path }}"
+    owner: "{{ tls_assets_owner }}"
+    group: "{{ tls_assets_group }}"
+    mode: "{{ tls_assets_key_mode }}"
+  loop: "{{ vault_pki_cert_results.results | default([]) }}"
+  vars:
+    tls_assets_pem_entries:
+      - "{{ item.data.data.private_key }}"
+  no_log: true
+
+- name: Copy shared Vault PKI CA bundle to target
+  ansible.builtin.template:
+    src: pem_bundle.j2
+    dest: "{{ tls_assets_ca_cert_path }}"
+    owner: "{{ tls_assets_owner }}"
+    group: "{{ tls_assets_group }}"
+    mode: "{{ tls_assets_ca_mode }}"
+  vars:
+    tls_assets_pem_entries: "{{ vault_pki_cert_ca_entries }}"
+  no_log: true

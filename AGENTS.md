@@ -347,6 +347,32 @@ myrole_api_url_effective: "{{ myrole_api_url | default(minio_deploy_api_url_effe
 6. Helper/internal tasks in `*_cac` roles MUST NOT use the `cac_` prefix
    (example: `create_authentication_token.yml`, `delete_authentication_token.yml`).
 
+### 3.5 Service Lifecycle Role Family Layout
+
+For service/application lifecycle roles, prefer this role family layout:
+
+```text
+<service>                  # optional meta/orchestrator
+<service>_preflight        # host/input/dependency checks
+<service>_deploy           # install/runtime deployment
+<service>_config           # runtime config files/settings
+<service>_cac              # configuration-as-code/API object reconciliation, when applicable
+<service>_validate         # health/API/state validation
+<service>_ops              # status/restart/rotate/day-2 operations
+<service>_backup_restore   # backup and restore
+<service>_upgrade          # version/image upgrade flow
+<service>_destroy          # protected teardown
+```
+
+Use only applicable roles. For databases such as PostgreSQL, omit `_cac` by default unless there is real declarative
+object reconciliation.
+
+For persistent containerized service/application lifecycle roles, use `lit.foundational.podman_systemd` as the
+default execution path. Deploy roles SHOULD render Podman kube manifests and hand persistent startup, enablement,
+restart, stop, and removal to `podman_systemd` through Quadlet/systemd. `lit.foundational.kubeplay` is reserved for
+non-persistent/manual runtime actions, tests, compatibility exceptions, and emergency operations where systemd is not
+available.
+
 ## 4. Role Structure and Prechecks
 
 ### 4.0 Role Responsibility Boundaries

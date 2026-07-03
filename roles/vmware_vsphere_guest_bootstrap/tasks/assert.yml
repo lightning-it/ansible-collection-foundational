@@ -21,6 +21,10 @@
       - vmware_vsphere_guest_bootstrap_upload_chunk_size | int > 0
       - vmware_vsphere_guest_bootstrap_tools_timeout is number
       - vmware_vsphere_guest_bootstrap_shell_timeout is number
+      - vmware_vsphere_guest_bootstrap_shell_retries is number
+      - vmware_vsphere_guest_bootstrap_shell_retries | int > 0
+      - vmware_vsphere_guest_bootstrap_shell_retry_delay is number
+      - vmware_vsphere_guest_bootstrap_shell_retry_delay | int >= 0
       - vmware_vsphere_guest_bootstrap_shutdown_timeout is number
       - vmware_vsphere_guest_bootstrap_users_accounts is sequence
       - vmware_vsphere_guest_bootstrap_users_accounts is not string
@@ -33,6 +37,7 @@
       - vmware_vsphere_guest_bootstrap_disable_root_login is boolean
       - vmware_vsphere_guest_bootstrap_clean_machine_id is boolean
       - vmware_vsphere_guest_bootstrap_clean_cloud_init is boolean
+      - vmware_vsphere_guest_bootstrap_clean_network_connections is boolean
       - vmware_vsphere_guest_bootstrap_clean_ssh_host_keys is boolean
     fail_msg: "Invalid vmware_vsphere_guest_bootstrap role input."
-  no_log: true
+  no_log: "{{ vmware_vsphere_guest_bootstrap_no_log | bool }}"

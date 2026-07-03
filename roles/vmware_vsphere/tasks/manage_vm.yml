@@ -154,15 +154,7 @@
         (vmware_vsphere_vmware_guest_customization_spec | default('') | length > 0)
         | ternary(vmware_vsphere_vmware_guest_customization_spec, omit)
       }}
-    networks: >-
-      {{
-        (
-          vmware_vsphere_vmware_guest_networks
-            if vmware_vsphere_vmware_guest_networks is sequence
-            else [vmware_vsphere_vmware_guest_networks]
-        )
-        | default(omit)
-      }}
+    networks: "{{ vmware_vsphere_vmware_guest_networks | default(omit) }}"
     wait_for_ip_address: "{{ vmware_vsphere_wait_for_ip | bool }}"
     wait_for_ip_address_timeout: "{{ vmware_vsphere_wait_for_ip_timeout | int }}"
   when:
@@ -211,15 +203,7 @@
         (vmware_vsphere_vmware_guest_customization_spec | default('') | length > 0)
         | ternary(vmware_vsphere_vmware_guest_customization_spec, omit)
       }}
-    networks: >-
-      {{
-        (
-          vmware_vsphere_vmware_guest_networks
-            if vmware_vsphere_vmware_guest_networks is sequence
-            else [vmware_vsphere_vmware_guest_networks]
-        )
-        | default(omit)
-      }}
+    networks: "{{ vmware_vsphere_vmware_guest_networks | default(omit) }}"
     wait_for_ip_address: "{{ vmware_vsphere_wait_for_ip | bool }}"
     wait_for_ip_address_timeout: "{{ vmware_vsphere_wait_for_ip_timeout | int }}"
   when:
