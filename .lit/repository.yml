@@ -1,3 +1,4 @@
+---
 schema_version: 1
 managed_by: lightning-it/shared-assets
 repository: ansible-collection-foundational
@@ -6,33 +7,48 @@ repository_type: ansible_collection
 release_type: ansible_galaxy
 artifact_type: ansible_collection_tarball
 test_profiles:
-- pre-commit
-- lint
-- light
-- molecule-light
-- release-validation
-os_matrix:
-- ubuntu-latest
-product_matrix:
-- ansible-core
-- molecule
+  - pre-commit
+  - lint
+  - light
+  - molecule-light
+  - release-validation
+os_matrix: &id001
+  - ubuntu-latest
+product_matrix: &id002
+  - ansible-core
+  - molecule
 publishing_targets:
-- github-release
-- ansible-galaxy
+  - github-release
+  - ansible-galaxy
 galaxy_publish: true
 quay_publish: false
 release_evidence: true
 heavy_incus_required: false
 readme_badges:
-- ci
-- pre-commit
-- ansible-lint
-- molecule
-- release
-- galaxy
-- license
+  - ci
+  - pre-commit
+  - ansible-lint
+  - molecule
+  - release
+  - galaxy
+  - license
 workflows:
   ci: collection-ci.yml
   release: collection-publish.yml
   promote: promote-develop-to-main.yml
   backmerge: release-back-sync.yml
+collection_namespace: lit
+collection_name: foundational
+collection_version_source: galaxy.yml
+supported_platforms: *id001
+supported_products: *id002
+molecule_scenarios: &id003
+  - molecule-light
+light_test_scenarios: *id003
+heavy_incus_scenarios: []
+release_validation_scenarios:
+  - collection-sanity
+  - galaxy-build
+  - molecule-light
+required_secrets:
+  - GALAXY_API_TOKEN
