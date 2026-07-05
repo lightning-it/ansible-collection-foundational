@@ -1,12 +1,16 @@
 # lit.foundational
 
-<!-- BEGIN LIT_SHARED_RELEASE_MODEL -->
+<!-- BEGIN LIT_QUALITY_BADGES -->
 
-[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/lightning-it/ansible-collection-foundational/badge)](https://scorecard.dev/viewer/?uri=github.com/lightning-it/ansible-collection-foundational)
 [![CI](https://github.com/lightning-it/ansible-collection-foundational/actions/workflows/collection-ci.yml/badge.svg?branch=develop)](https://github.com/lightning-it/ansible-collection-foundational/actions/workflows/collection-ci.yml)
-[![Release](https://github.com/lightning-it/ansible-collection-foundational/actions/workflows/collection-publish.yml/badge.svg?branch=main)](https://github.com/lightning-it/ansible-collection-foundational/actions/workflows/collection-publish.yml)
-[![Ansible Galaxy](https://img.shields.io/badge/galaxy-lit.foundational-blue)](https://galaxy.ansible.com/ui/repo/published/lit/foundational/)
+[![Latest Release](https://img.shields.io/github/v/release/lightning-it/ansible-collection-foundational?sort=semver)](https://github.com/lightning-it/ansible-collection-foundational/releases/latest)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/lightning-it/ansible-collection-foundational/badge)](https://scorecard.dev/viewer/?uri=github.com/lightning-it/ansible-collection-foundational)
+[![Ansible Galaxy](https://img.shields.io/ansible/collection/v/lit/foundational?label=Ansible%20Galaxy)](https://galaxy.ansible.com/ui/repo/published/lit/foundational/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+
+<!-- END LIT_QUALITY_BADGES -->
+
+<!-- BEGIN LIT_SHARED_RELEASE_MODEL -->
 
 ## Release and Quality Model
 
@@ -24,6 +28,14 @@ See [RELEASE.md](./RELEASE.md) for:
 Repository classification: **Ansible Collection**.
 Required test profiles: `pre-commit, lint, light, molecule-light, release-validation`.
 Publishing targets: `github-release, ansible-galaxy`.
+
+## Supported and Tested Platforms
+
+| Platform / Product | Status | Validation |
+|---|---:|---|
+| ubuntu-latest | Supported | Molecule |
+| ansible-core | Tested where applicable | Molecule |
+| molecule | Tested where applicable | Molecule |
 
 <!-- END LIT_SHARED_RELEASE_MODEL -->
 
