@@ -1,5 +1,34 @@
 # lit.foundational
 
+<!-- BEGIN LIT_SHARED_RELEASE_MODEL -->
+
+## Release and Quality Model
+
+This repository follows the Lightning IT shared release and quality model.
+
+See [RELEASE.md](./RELEASE.md) for:
+
+- branch and release flow
+- required quality checks
+- test matrix
+- release evidence
+- artifact publishing
+- supported repository-specific release behavior
+
+Repository classification: **Ansible Collection**.
+Required test profiles: `pre-commit, lint, light, molecule-light, release-validation`.
+Publishing targets: `github-release, ansible-galaxy`.
+
+## Supported and Tested Platforms
+
+| Platform / Product | Status | Validation |
+|---|---:|---|
+| ubuntu-latest | Supported | Molecule |
+| ansible-core | Tested where applicable | Molecule |
+| molecule | Tested where applicable | Molecule |
+
+<!-- END LIT_SHARED_RELEASE_MODEL -->
+
 <!-- BEGIN LIT_QUALITY_BADGES -->
 
 [![CI](https://github.com/lightning-it/ansible-collection-foundational/actions/workflows/collection-ci.yml/badge.svg?branch=develop)](https://github.com/lightning-it/ansible-collection-foundational/actions/workflows/collection-ci.yml)
