@@ -1,8 +1,10 @@
 # lit.foundational
 
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/lightning-it/ansible-collection-foundational/badge)](https://scorecard.dev/viewer/?uri=github.com/lightning-it/ansible-collection-foundational)
+
 <!-- BEGIN LIT_SHARED_RELEASE_MODEL -->
 
-## Release and Quality Model
+## Shared Release and Quality Model
 
 This repository follows the Lightning IT shared release and quality model.
 
@@ -33,7 +35,6 @@ Publishing targets: `github-release, ansible-galaxy`.
 
 [![CI](https://github.com/lightning-it/ansible-collection-foundational/actions/workflows/collection-ci.yml/badge.svg?branch=develop)](https://github.com/lightning-it/ansible-collection-foundational/actions/workflows/collection-ci.yml)
 [![Latest Release](https://img.shields.io/github/v/release/lightning-it/ansible-collection-foundational?sort=semver)](https://github.com/lightning-it/ansible-collection-foundational/releases/latest)
-[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/lightning-it/ansible-collection-foundational/badge)](https://scorecard.dev/viewer/?uri=github.com/lightning-it/ansible-collection-foundational)
 [![Ansible Galaxy](https://img.shields.io/ansible/collection/v/lit/foundational?label=Ansible%20Galaxy)](https://galaxy.ansible.com/ui/repo/published/lit/foundational/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
