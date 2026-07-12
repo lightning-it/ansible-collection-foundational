@@ -30,7 +30,7 @@ def _valid_document(subject=SUBJECT):
     return {
         "schema_version": 1,
         "subject": subject,
-        "recovery_passphrase": "A" * 40,
+        "recovery_passphrase": "A" * 64,
     }
 
 
@@ -115,13 +115,23 @@ def test_check_mode_existing_document_is_validated(tmp_path, vault):
         {
             "schema_version": 1,
             "subject": SUBJECT,
-            "recovery_passphrase": "A" * 40,
+            "recovery_passphrase": "A" * 64,
             "unexpected": True,
         },
         {
             "schema_version": 1,
             "subject": SUBJECT,
-            "recovery_passphrase": ("A" * 40) + "\n",
+            "recovery_passphrase": ("A" * 64) + "\n",
+        },
+        {
+            "schema_version": True,
+            "subject": SUBJECT,
+            "recovery_passphrase": "A" * 64,
+        },
+        {
+            "schema_version": 1,
+            "subject": SUBJECT,
+            "recovery_passphrase": "A" * 65,
         },
     ],
 )
@@ -317,3 +327,41 @@ def test_argument_validation_rejects_unsafe_values():
         plugin._normalize_arguments(
             {"path": "/tmp/x", "subject": SUBJECT, "secret_field": "subject"}
         )
+
+
+def test_argument_validation_coerces_strict_jinja_rendered_integers():
+    result = plugin._normalize_arguments(
+        {
+            "path": "/tmp/x",
+            "subject": SUBJECT,
+            "schema_version": "1",
+            "secret_length": "64",
+        }
+    )
+
+    assert result["schema_version"] == 1
+    assert type(result["schema_version"]) is int
+    assert result["secret_length"] == 64
+    assert type(result["secret_length"]) is int
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("schema_version", True),
+        ("schema_version", " 1"),
+        ("schema_version", "+1"),
+        ("schema_version", "1.0"),
+        ("schema_version", "١"),
+        ("secret_length", False),
+        ("secret_length", "64 "),
+        ("secret_length", "+64"),
+        ("secret_length", "64.0"),
+        ("secret_length", "٦٤"),
+    ],
+)
+def test_argument_validation_rejects_noncanonical_integer_values(name, value):
+    args = {"path": "/tmp/x", "subject": SUBJECT, name: value}
+
+    with pytest.raises(AnsibleActionFail):
+        plugin._normalize_arguments(args)

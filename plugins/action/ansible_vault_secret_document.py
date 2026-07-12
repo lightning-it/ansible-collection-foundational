@@ -9,11 +9,13 @@ __metaclass__ = type
 
 import errno
 import hashlib
+import math
 import os
 import secrets
 import stat
 import string
 import time
+from collections.abc import Mapping
 
 import yaml
 
@@ -98,6 +100,8 @@ _EXPECTED_ARGS = frozenset(
     ("path", "subject", "schema_version", "secret_field", "secret_length")
 )
 _MAX_CIPHERTEXT_BYTES = 1024 * 1024
+_MAX_DOCUMENT_DEPTH = 64
+_MAX_DOCUMENT_NODES = 10000
 _RACE_RETRIES = 100
 _RACE_RETRY_SECONDS = 0.01
 _TEMP_CREATE_RETRIES = 100
@@ -146,6 +150,104 @@ def _fail(message):
     raise AnsibleActionFail(message)
 
 
+def _normalize_document_mapping(document):
+    """Return a plain JSON-safe mapping without rendering any values in errors."""
+
+    if not isinstance(document, Mapping):
+        _fail("document must be a mapping.")
+
+    node_count = [0]
+    active_containers = set()
+
+    def normalize(value, depth):
+        node_count[0] += 1
+        if node_count[0] > _MAX_DOCUMENT_NODES:
+            _fail("document contains too many values.")
+        if depth > _MAX_DOCUMENT_DEPTH:
+            _fail("document is nested too deeply.")
+
+        if value is None:
+            return None
+        if isinstance(value, bool):
+            return bool(value)
+        if isinstance(value, str):
+            return str(value)
+        if isinstance(value, int):
+            return int(value)
+        if isinstance(value, float):
+            if not math.isfinite(value):
+                _fail("document contains a non-finite floating-point value.")
+            return float(value)
+
+        if isinstance(value, Mapping):
+            container_id = id(value)
+            if container_id in active_containers:
+                _fail("document contains a recursive mapping or list.")
+            active_containers.add(container_id)
+            try:
+                normalized_mapping = {}
+                for key, item in value.items():
+                    if not isinstance(key, str):
+                        _fail("document mapping keys must be strings.")
+                    normalized_key = str(key)
+                    if normalized_key in normalized_mapping:
+                        _fail("document contains duplicate mapping keys.")
+                    normalized_mapping[normalized_key] = normalize(item, depth + 1)
+                return normalized_mapping
+            finally:
+                active_containers.remove(container_id)
+
+        if isinstance(value, list):
+            container_id = id(value)
+            if container_id in active_containers:
+                _fail("document contains a recursive mapping or list.")
+            active_containers.add(container_id)
+            try:
+                return [normalize(item, depth + 1) for item in value]
+            finally:
+                active_containers.remove(container_id)
+
+        _fail("document values must be JSON-safe scalars, mappings, or lists.")
+
+    return normalize(document, 0)
+
+
+def _documents_equal(left, right):
+    """Compare normalized documents without bool/int or container coercion."""
+
+    if type(left) is not type(right):
+        return False
+    if isinstance(left, dict):
+        return set(left) == set(right) and all(
+            _documents_equal(left[key], right[key]) for key in left
+        )
+    if isinstance(left, list):
+        return len(left) == len(right) and all(
+            _documents_equal(left_item, right_item)
+            for left_item, right_item in zip(left, right)
+        )
+    if isinstance(left, float) and left == 0.0 and right == 0.0:
+        return math.copysign(1.0, left) == math.copysign(1.0, right)
+    return left == right
+
+
+def _normalize_integer_argument(value, name):
+    """Mirror safe module int coercion for Jinja-rendered action arguments."""
+
+    if isinstance(value, bool):
+        _fail("{0} must be an integer.".format(name))
+    if isinstance(value, int):
+        return value
+    if (
+        isinstance(value, str)
+        and value
+        and value.isascii()
+        and value.isdecimal()
+    ):
+        return int(value, 10)
+    _fail("{0} must be an integer.".format(name))
+
+
 def _normalize_arguments(args):
     unknown = set(args).difference(_EXPECTED_ARGS)
     if unknown:
@@ -166,9 +268,10 @@ def _normalize_arguments(args):
     if "\r" in subject or "\n" in subject:
         _fail("subject must not contain a carriage return or newline.")
 
-    schema_version = args.get("schema_version", 1)
-    if isinstance(schema_version, bool) or not isinstance(schema_version, int):
-        _fail("schema_version must be an integer.")
+    schema_version = _normalize_integer_argument(
+        args.get("schema_version", 1),
+        "schema_version",
+    )
     if schema_version < 1:
         _fail("schema_version must be at least 1.")
 
@@ -180,9 +283,10 @@ def _normalize_arguments(args):
     if secret_field in ("schema_version", "subject"):
         _fail("secret_field conflicts with a required schema field.")
 
-    secret_length = args.get("secret_length", 64)
-    if isinstance(secret_length, bool) or not isinstance(secret_length, int):
-        _fail("secret_length must be an integer.")
+    secret_length = _normalize_integer_argument(
+        args.get("secret_length", 64),
+        "secret_length",
+    )
     if secret_length < 40:
         _fail("secret_length must be at least 40.")
 
@@ -196,10 +300,31 @@ def _normalize_arguments(args):
 
 
 class _VaultSecretDocumentStore:
-    """Filesystem and ciphertext implementation kept separate for unit testing."""
+    """Shared controller filesystem and Vault ciphertext implementation."""
 
-    def __init__(self, vault):
+    def __init__(
+        self,
+        vault,
+        max_ciphertext_bytes=_MAX_CIPHERTEXT_BYTES,
+        max_plaintext_bytes=None,
+    ):
+        if (
+            isinstance(max_ciphertext_bytes, bool)
+            or not isinstance(max_ciphertext_bytes, int)
+            or max_ciphertext_bytes < 1
+        ):
+            _fail("The internal ciphertext size limit is invalid.")
+        if max_plaintext_bytes is None:
+            max_plaintext_bytes = max_ciphertext_bytes
+        if (
+            isinstance(max_plaintext_bytes, bool)
+            or not isinstance(max_plaintext_bytes, int)
+            or max_plaintext_bytes < 1
+        ):
+            _fail("The internal plaintext size limit is invalid.")
         self._vault = vault
+        self._max_ciphertext_bytes = max_ciphertext_bytes
+        self._max_plaintext_bytes = max_plaintext_bytes
 
     def ensure(
         self,
@@ -214,6 +339,7 @@ class _VaultSecretDocumentStore:
             "subject": subject,
             "schema_version": schema_version,
             "secret_field": secret_field,
+            "secret_length": secret_length,
         }
         try:
             ciphertext = self._read_existing(path)
@@ -254,12 +380,12 @@ class _VaultSecretDocumentStore:
             created = self._exclusive_create(path, encrypted)
         except AnsibleActionFail:
             raise
-        except AnsibleError as exc:
+        except AnsibleError:
             raise AnsibleActionFail(
                 "Unable to encrypt the document with the loaded Ansible Vault identity."
-            ) from exc
-        except (TypeError, ValueError, yaml.YAMLError) as exc:
-            raise AnsibleActionFail("Unable to construct the secret document safely.") from exc
+            ) from None
+        except (TypeError, ValueError, yaml.YAMLError):
+            raise AnsibleActionFail("Unable to construct the secret document safely.") from None
         finally:
             generated_secret = None
             plaintext = None
@@ -269,6 +395,51 @@ class _VaultSecretDocumentStore:
             digest = self._load_validated(path, **validation_args)
         else:
             digest = self._load_race_winner(path, **validation_args)
+        return self._result(path, created=created, exists=True, digest=digest)
+
+    def ensure_exact(self, path, document, check_mode=False):
+        """Create an exact immutable mapping or validate the existing mapping."""
+
+        expected_document = _normalize_document_mapping(document)
+        try:
+            ciphertext = self._read_existing(path)
+        except _TransientPublicationError:
+            digest = self._load_exact_race_winner(path, expected_document)
+            return self._result(path, created=False, exists=True, digest=digest)
+
+        if ciphertext is not None:
+            digest = self._validate_exact_ciphertext(ciphertext, expected_document)
+            return self._result(path, created=False, exists=True, digest=digest)
+
+        if check_mode:
+            return self._result(path, created=False, exists=False, digest=None, changed=True)
+
+        plaintext = None
+        encrypted = None
+        try:
+            plaintext = self._serialize_document(expected_document)
+            encrypted = self._vault.encrypt(plaintext)
+            if not isinstance(encrypted, bytes):
+                encrypted = bytes(encrypted)
+            if len(encrypted) > self._max_ciphertext_bytes:
+                _fail("The encrypted document is unexpectedly large.")
+            created = self._exclusive_create(path, encrypted)
+        except AnsibleActionFail:
+            raise
+        except AnsibleError:
+            raise AnsibleActionFail(
+                "Unable to encrypt the document with the loaded Ansible Vault identity."
+            ) from None
+        except (TypeError, UnicodeError, ValueError, yaml.YAMLError):
+            raise AnsibleActionFail("Unable to construct the document safely.") from None
+        finally:
+            plaintext = None
+            encrypted = None
+
+        if created:
+            digest = self._load_exact_validated(path, expected_document)
+        else:
+            digest = self._load_exact_race_winner(path, expected_document)
         return self._result(path, created=created, exists=True, digest=digest)
 
     @staticmethod
@@ -281,7 +452,7 @@ class _VaultSecretDocumentStore:
             "ciphertext_sha256": digest,
         }
 
-    def _load_validated(self, path, subject, schema_version, secret_field):
+    def _load_validated(self, path, subject, schema_version, secret_field, secret_length):
         ciphertext = self._read_existing(path)
         if ciphertext is None:
             _fail("The encrypted document disappeared during validation.")
@@ -290,9 +461,10 @@ class _VaultSecretDocumentStore:
             subject=subject,
             schema_version=schema_version,
             secret_field=secret_field,
+            secret_length=secret_length,
         )
 
-    def _load_race_winner(self, path, subject, schema_version, secret_field):
+    def _load_race_winner(self, path, subject, schema_version, secret_field, secret_length):
         last_error = None
         for attempt in range(_RACE_RETRIES):
             try:
@@ -301,6 +473,7 @@ class _VaultSecretDocumentStore:
                     subject=subject,
                     schema_version=schema_version,
                     secret_field=secret_field,
+                    secret_length=secret_length,
                 )
             except AnsibleActionFail as exc:
                 last_error = exc
@@ -308,42 +481,99 @@ class _VaultSecretDocumentStore:
                     time.sleep(_RACE_RETRY_SECONDS)
         raise last_error
 
-    def _validate_ciphertext(self, ciphertext, subject, schema_version, secret_field):
-        plaintext = None
-        document = None
-        try:
-            plaintext = self._vault.decrypt(ciphertext)
-        except AnsibleError as exc:
-            raise AnsibleActionFail(
-                "The existing document cannot be decrypted with the loaded Ansible Vault identities."
-            ) from exc
-        except (TypeError, ValueError) as exc:
-            raise AnsibleActionFail("The existing document is not valid Ansible Vault ciphertext.") from exc
+    def _load_exact_validated(self, path, expected_document):
+        ciphertext = self._read_existing(path)
+        if ciphertext is None:
+            _fail("The encrypted document disappeared during validation.")
+        return self._validate_exact_ciphertext(ciphertext, expected_document)
 
-        try:
-            if isinstance(plaintext, bytes):
-                plaintext = plaintext.decode("utf-8", errors="strict")
-            document = yaml.load(plaintext, Loader=_UniqueKeySafeLoader)
-        except (UnicodeError, TypeError, ValueError, yaml.YAMLError) as exc:
-            raise AnsibleActionFail(
-                "The decrypted document is not valid, unambiguous UTF-8 YAML."
-            ) from exc
-        finally:
-            plaintext = None
+    def _load_exact_race_winner(self, path, expected_document):
+        last_error = None
+        for attempt in range(_RACE_RETRIES):
+            try:
+                return self._load_exact_validated(path, expected_document)
+            except AnsibleActionFail as exc:
+                last_error = exc
+                if attempt + 1 < _RACE_RETRIES:
+                    time.sleep(_RACE_RETRY_SECONDS)
+        raise last_error
 
+    def _validate_ciphertext(self, ciphertext, subject, schema_version, secret_field, secret_length):
+        document = self._decrypt_ciphertext(ciphertext)
         try:
             self._validate_document(
                 document,
                 subject=subject,
                 schema_version=schema_version,
                 secret_field=secret_field,
+                secret_length=secret_length,
             )
         finally:
             document = None
         return hashlib.sha256(ciphertext).hexdigest()
 
+    def _validate_exact_ciphertext(self, ciphertext, expected_document):
+        document = self._decrypt_ciphertext(ciphertext)
+        normalized_document = None
+        try:
+            normalized_document = _normalize_document_mapping(document)
+            if not _documents_equal(normalized_document, expected_document):
+                _fail("The existing document does not exactly match the requested document.")
+        finally:
+            document = None
+            normalized_document = None
+        return hashlib.sha256(ciphertext).hexdigest()
+
+    def _serialize_document(self, document):
+        plaintext = yaml.safe_dump(
+            document,
+            allow_unicode=True,
+            default_flow_style=False,
+            sort_keys=True,
+        )
+        if len(plaintext.encode("utf-8")) > self._max_plaintext_bytes:
+            _fail("The document is unexpectedly large.")
+
+        roundtrip_document = None
+        normalized_roundtrip = None
+        try:
+            roundtrip_document = yaml.load(plaintext, Loader=_UniqueKeySafeLoader)
+            normalized_roundtrip = _normalize_document_mapping(roundtrip_document)
+            if not _documents_equal(normalized_roundtrip, document):
+                _fail("The document cannot be represented as unambiguous YAML.")
+        finally:
+            roundtrip_document = None
+            normalized_roundtrip = None
+        return plaintext
+
+    def _decrypt_ciphertext(self, ciphertext):
+        plaintext = None
+        document = None
+        try:
+            plaintext = self._vault.decrypt(ciphertext)
+        except AnsibleError:
+            raise AnsibleActionFail(
+                "The existing document cannot be decrypted with the loaded Ansible Vault identities."
+            ) from None
+        except (TypeError, ValueError):
+            raise AnsibleActionFail(
+                "The existing document is not valid Ansible Vault ciphertext."
+            ) from None
+
+        try:
+            if isinstance(plaintext, bytes):
+                plaintext = plaintext.decode("utf-8", errors="strict")
+            document = yaml.load(plaintext, Loader=_UniqueKeySafeLoader)
+        except (UnicodeError, TypeError, ValueError, yaml.YAMLError):
+            raise AnsibleActionFail(
+                "The decrypted document is not valid, unambiguous UTF-8 YAML."
+            ) from None
+        finally:
+            plaintext = None
+        return document
+
     @staticmethod
-    def _validate_document(document, subject, schema_version, secret_field):
+    def _validate_document(document, subject, schema_version, secret_field, secret_length):
         if not isinstance(document, dict):
             _fail("The decrypted document must be a mapping with the exact expected schema.")
         if any(not isinstance(key, str) for key in document):
@@ -352,13 +582,17 @@ class _VaultSecretDocumentStore:
         expected_keys = {"schema_version", "subject", secret_field}
         if set(document) != expected_keys:
             _fail("The decrypted document does not match the exact expected schema.")
-        if document["schema_version"] != schema_version:
+        if (
+            isinstance(document["schema_version"], bool)
+            or not isinstance(document["schema_version"], int)
+            or document["schema_version"] != schema_version
+        ):
             _fail("The decrypted document has the wrong schema version.")
-        if document["subject"] != subject:
+        if not isinstance(document["subject"], str) or document["subject"] != subject:
             _fail("The decrypted document is bound to a different subject.")
 
         value = document[secret_field]
-        if not isinstance(value, str) or len(value) < 40:
+        if not isinstance(value, str) or len(value) != secret_length:
             _fail("The decrypted document does not contain a valid secret field.")
         if "\r" in value or "\n" in value:
             _fail("The decrypted document secret field contains a forbidden line break.")
@@ -415,8 +649,7 @@ class _VaultSecretDocumentStore:
                 pass
             raise
 
-    @staticmethod
-    def _validate_file_stat(file_stat):
+    def _validate_file_stat(self, file_stat):
         if not stat.S_ISREG(file_stat.st_mode):
             _fail("The existing document is a symlink or is not a regular file.")
         if file_stat.st_uid != os.geteuid():
@@ -428,7 +661,7 @@ class _VaultSecretDocumentStore:
             raise _TransientPublicationError(
                 "The existing document has an unsafe hard-link count."
             )
-        if file_stat.st_size > _MAX_CIPHERTEXT_BYTES:
+        if file_stat.st_size > self._max_ciphertext_bytes:
             _fail("The existing encrypted document is unexpectedly large.")
 
     def _read_existing(self, path):
@@ -464,7 +697,7 @@ class _VaultSecretDocumentStore:
                 if not chunk:
                     break
                 total += len(chunk)
-                if total > _MAX_CIPHERTEXT_BYTES:
+                if total > self._max_ciphertext_bytes:
                     _fail("The existing encrypted document is unexpectedly large.")
                 chunks.append(chunk)
 
@@ -489,6 +722,8 @@ class _VaultSecretDocumentStore:
             os.close(parent_fd)
 
     def _exclusive_create(self, path, ciphertext):
+        if len(ciphertext) > self._max_ciphertext_bytes:
+            _fail("The encrypted document is unexpectedly large.")
         parent_fd, name = self._open_parent(path, create=True)
         file_fd = None
         temp_name = None
@@ -606,6 +841,9 @@ class _VaultSecretDocumentStore:
             pass
         except OSError:
             pass
+
+
+_VaultDocumentStore = _VaultSecretDocumentStore
 
 
 class ActionModule(ActionBase):
