@@ -1,0 +1,37 @@
+---
+dependency:
+  name: shell
+  command: ":"
+
+driver:
+  name: default
+
+platforms:
+  - name: localhost
+    managed: false
+
+provisioner:
+  name: ansible
+  inventory:
+    host_vars:
+      localhost:
+        ansible_connection: local
+  playbooks:
+    prepare: prepare.yml
+    converge: converge.yml
+    verify: verify.yml
+    cleanup: cleanup.yml
+
+scenario:
+  name: hetzner-installimage-basic
+  test_sequence:
+    - dependency
+    - syntax
+    - prepare
+    - converge
+    - idempotence
+    - verify
+    - cleanup
+
+verifier:
+  name: ansible

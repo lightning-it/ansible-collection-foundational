@@ -1,0 +1,46 @@
+---
+dependency:
+  name: galaxy
+  options:
+    collections-path: "${MOLECULE_EPHEMERAL_DIRECTORY}/collections"
+    force: true
+
+driver:
+  name: default
+
+platforms:
+  - name: localhost
+    managed: false
+
+provisioner:
+  name: ansible
+  env:
+    ANSIBLE_COLLECTIONS_PATH: >-
+      ${MOLECULE_EPHEMERAL_DIRECTORY}/collections:${ANSIBLE_COLLECTIONS_PATH:-~/.ansible/collections}
+    SECRET_RESOLVER_AUTH_FALLBACK_SENTINEL: environment-fallback-input
+  inventory:
+    host_vars:
+      localhost:
+        ansible_connection: local
+        ansible_python_interpreter: >-
+          {{ lookup('ansible.builtin.env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/controller-venv/bin/python
+  playbooks:
+    cleanup: cleanup.yml
+    converge: converge.yml
+    prepare: prepare.yml
+    verify: verify.yml
+
+scenario:
+  name: secret-resolver-vault-integration_heavy
+  test_sequence:
+    - dependency
+    - cleanup
+    - syntax
+    - prepare
+    - converge
+    - idempotence
+    - verify
+    - cleanup
+
+verifier:
+  name: ansible

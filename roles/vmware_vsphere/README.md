@@ -28,7 +28,7 @@ None.
 
 ### Compatibility
 
-- Tested with Ansible `>=2.15` and targeting EL9 runners.
+- Tested with Ansible `>=2.16` and targeting EL9 runners.
 - Guest customization requires VMware Tools/open-vm-tools in the template.
   For RHEL templates, include `cloud-init` and `perl` as well so vSphere can
   apply hostname and static network configuration.

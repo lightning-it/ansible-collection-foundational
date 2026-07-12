@@ -1,0 +1,40 @@
+---
+dependency:
+  name: shell
+  command: ":"
+
+driver:
+  name: default
+
+platforms:
+  - name: secret-resolver-primary
+    managed: false
+  - name: secret-resolver-secondary
+    managed: false
+
+provisioner:
+  name: ansible
+  env:
+    LIT_SECRET_RESOLVER_MOLECULE_EMPTY: ""
+    LIT_SECRET_RESOLVER_MOLECULE_VALUE: __LIT_MOLECULE_ENVIRONMENT_VALUE__
+  inventory:
+    host_vars:
+      secret-resolver-primary:
+        ansible_connection: local
+      secret-resolver-secondary:
+        ansible_connection: local
+  playbooks:
+    converge: converge.yml
+    verify: verify.yml
+
+scenario:
+  name: secret-resolver-basic
+  test_sequence:
+    - dependency
+    - syntax
+    - converge
+    - idempotence
+    - verify
+
+verifier:
+  name: ansible

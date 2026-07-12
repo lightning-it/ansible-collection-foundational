@@ -1,0 +1,26 @@
+{
+  "blockdevices": [
+    {
+      "name": "lit-system",
+      "kname": "lit-system",
+      "path": "/dev/lit-system",
+      "type": "disk",
+      "size": 256060514304,
+      "model": "Synthetic SSD",
+      "serial": "MOLECULE-SYSTEM-001",
+      "rota": false,
+      "ro": false
+    },
+    {
+      "name": "lit-preserve",
+      "kname": "lit-preserve",
+      "path": "/dev/lit-preserve",
+      "type": "disk",
+      "size": 4000787030016,
+      "model": "Synthetic HDD",
+      "serial": "MOLECULE-PRESERVE-001",
+      "rota": true,
+      "ro": false
+    }
+  ]
+}

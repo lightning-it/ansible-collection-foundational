@@ -1,0 +1,441 @@
+---
+- name: Record whether encrypted partitions are requested
+  ansible.builtin.set_fact:
+    hetzner_installimage_encryption_requested: >-
+      {{
+        hetzner_installimage_layout.partitions
+        | selectattr('crypt', 'defined')
+        | selectattr('crypt', 'equalto', true)
+        | list
+        | length > 0
+      }}
+  changed_when: false
+
+- name: Inspect installimage executable
+  ansible.builtin.stat:
+    path: "{{ hetzner_installimage_binary }}"
+    follow: true
+    get_checksum: true
+    checksum_algorithm: sha256
+  register: hetzner_installimage_binary_stat
+  changed_when: false
+
+- name: Inspect operating-system image
+  ansible.builtin.stat:
+    path: "{{ hetzner_installimage_image }}"
+    follow: true
+    get_checksum: true
+    checksum_algorithm: sha256
+  register: hetzner_installimage_image_stat
+  changed_when: false
+
+- name: Inspect installimage functions source
+  ansible.builtin.stat:
+    path: "{{ hetzner_installimage_functions_path }}"
+    follow: true
+  register: hetzner_installimage_functions_stat
+  changed_when: false
+  when: hetzner_installimage_encryption_requested | bool
+
+- name: Inspect optional post-install script
+  ansible.builtin.stat:
+    path: "{{ hetzner_installimage_post_install_script_path }}"
+    follow: true
+    get_checksum: true
+    checksum_algorithm: sha256
+  register: hetzner_installimage_post_install_script_stat
+  changed_when: false
+  when: hetzner_installimage_post_install_script_path | length > 0
+
+- name: Inspect Rescue SSH public keys for first-boot takeover
+  ansible.builtin.stat:
+    path: "{{ hetzner_installimage_rescue_ssh_public_keys_path }}"
+    follow: false
+    get_checksum: true
+    checksum_algorithm: sha256
+  register: hetzner_installimage_rescue_ssh_public_keys_stat
+  changed_when: false
+  when: hetzner_installimage_take_over_rescue_ssh_public_keys | bool
+
+- name: Inspect firmware boot mode
+  ansible.builtin.stat:
+    path: "{{ hetzner_installimage_firmware_efi_path }}"
+    follow: true
+  register: hetzner_installimage_firmware_efi_stat
+  changed_when: false
+
+- name: Validate Rescue installation artifacts
+  ansible.builtin.assert:
+    that:
+      - hetzner_installimage_binary_stat.stat.exists
+      - hetzner_installimage_binary_stat.stat.isreg
+      - hetzner_installimage_binary_stat.stat.executable
+      - hetzner_installimage_binary_stat.stat.uid | int == 0
+      - hetzner_installimage_binary_stat.stat.checksum | default('', true) | length == 64
+      - hetzner_installimage_image_stat.stat.exists
+      - hetzner_installimage_image_stat.stat.isreg
+      - hetzner_installimage_image_stat.stat.checksum | default('', true) | length == 64
+      - >-
+        hetzner_installimage_expected_image_sha256 | length == 0
+        or
+        hetzner_installimage_expected_image_sha256 | lower
+        == hetzner_installimage_image_stat.stat.checksum | lower
+      - >-
+        not (hetzner_installimage_encryption_requested | bool)
+        or hetzner_installimage_functions_stat.stat.exists | default(false)
+      - >-
+        hetzner_installimage_post_install_script_path | length == 0
+        or hetzner_installimage_post_install_script_stat.stat.exists | default(false)
+      - >-
+        hetzner_installimage_post_install_script_path | length == 0
+        or hetzner_installimage_post_install_script_stat.stat.isreg | default(false)
+      - >-
+        hetzner_installimage_post_install_script_path | length == 0
+        or hetzner_installimage_post_install_script_stat.stat.executable | default(false)
+      - >-
+        hetzner_installimage_post_install_script_path | length == 0
+        or hetzner_installimage_post_install_script_stat.stat.uid | default(-1) | int == 0
+      - >-
+        hetzner_installimage_post_install_script_path | length == 0
+        or hetzner_installimage_post_install_script_stat.stat.mode | default('') in ['0700', '0750', '0755']
+      - >-
+        not (hetzner_installimage_take_over_rescue_ssh_public_keys | bool)
+        or hetzner_installimage_rescue_ssh_public_keys_stat.stat.exists | default(false)
+      - >-
+        not (hetzner_installimage_take_over_rescue_ssh_public_keys | bool)
+        or hetzner_installimage_rescue_ssh_public_keys_stat.stat.isreg | default(false)
+      - >-
+        not (hetzner_installimage_take_over_rescue_ssh_public_keys | bool)
+        or hetzner_installimage_rescue_ssh_public_keys_stat.stat.uid | default(-1) | int == 0
+      - >-
+        not (hetzner_installimage_take_over_rescue_ssh_public_keys | bool)
+        or hetzner_installimage_rescue_ssh_public_keys_stat.stat.size | default(0) | int > 0
+      - >-
+        not (hetzner_installimage_take_over_rescue_ssh_public_keys | bool)
+        or hetzner_installimage_rescue_ssh_public_keys_stat.stat.checksum | default('', true) | length == 64
+    fail_msg: >-
+      Rescue installimage, image/functions, optional post-install script, expected
+      image checksum, or first-boot SSH public-key file is missing or unsafe.
+    quiet: true
+  changed_when: false
+
+- name: Read installimage crypt implementation markers
+  ansible.builtin.slurp:
+    src: "{{ hetzner_installimage_functions_path }}"
+  register: hetzner_installimage_functions_source
+  changed_when: false
+  when: hetzner_installimage_encryption_requested | bool
+
+- name: Validate installimage encryption feature markers
+  ansible.builtin.assert:
+    that:
+      - item in (hetzner_installimage_functions_source.content | b64decode)
+    fail_msg: >-
+      The Rescue installimage source does not expose required encryption marker {{ item }}.
+    quiet: true
+  loop: "{{ hetzner_installimage_required_crypt_markers }}"
+  loop_control:
+    label: "{{ item }}"
+  changed_when: false
+  when: hetzner_installimage_encryption_requested | bool
+
+- name: Read Rescue IPv4 addresses
+  ansible.builtin.command:
+    argv:
+      - "{{ hetzner_installimage_ip_path }}"
+      - -j
+      - -4
+      - address
+      - show
+  register: hetzner_installimage_ip_address
+  changed_when: false
+
+- name: Read Rescue default IPv4 route
+  ansible.builtin.command:
+    argv:
+      - "{{ hetzner_installimage_ip_path }}"
+      - -j
+      - -4
+      - route
+      - show
+      - default
+  register: hetzner_installimage_ip_route
+  changed_when: false
+
+- name: Read Rescue network links
+  ansible.builtin.command:
+    argv:
+      - "{{ hetzner_installimage_ip_path }}"
+      - -j
+      - link
+      - show
+  register: hetzner_installimage_ip_link
+  changed_when: false
+
+- name: Normalize Rescue network discovery
+  ansible.builtin.set_fact:
+    hetzner_installimage_live_ipv4_records: >-
+      {{
+        hetzner_installimage_ip_address.stdout
+        | from_json
+        | map(attribute='addr_info')
+        | flatten
+        | selectattr('family', 'equalto', 'inet')
+        | list
+      }}
+    hetzner_installimage_live_default_route: >-
+      {{ (hetzner_installimage_ip_route.stdout | from_json | first) | default({}) }}
+    hetzner_installimage_live_links: "{{ hetzner_installimage_ip_link.stdout | from_json }}"
+    hetzner_installimage_live_boot_mode: >-
+      {{ (hetzner_installimage_firmware_efi_stat.stat.exists | bool) | ternary('uefi', 'bios') }}
+  changed_when: false
+
+- name: Select expected Rescue address and primary link
+  ansible.builtin.set_fact:
+    hetzner_installimage_live_primary_address: >-
+      {{
+        (
+          hetzner_installimage_live_ipv4_records
+          | selectattr('local', 'equalto', hetzner_installimage_expected_identity.public_ipv4)
+          | first
+        )
+        | default({})
+      }}
+    hetzner_installimage_live_primary_link: >-
+      {{
+        (
+          hetzner_installimage_live_links
+          | selectattr('ifname', 'equalto', hetzner_installimage_live_default_route.dev | default(''))
+          | first
+        )
+        | default({})
+      }}
+  changed_when: false
+
+- name: Validate Rescue network and firmware identity
+  ansible.builtin.assert:
+    that:
+      - >-
+        hetzner_installimage_live_primary_address.local | default('')
+        == hetzner_installimage_expected_identity.public_ipv4
+      - >-
+        hetzner_installimage_live_primary_address.prefixlen | default(0) | int
+        == hetzner_installimage_expected_identity.prefix_length | int
+      - >-
+        hetzner_installimage_live_default_route.gateway | default('')
+        == hetzner_installimage_expected_identity.gateway_ipv4
+      - hetzner_installimage_live_default_route.dev | default('', true) | length > 0
+      - >-
+        hetzner_installimage_live_primary_link.address | default('') | lower
+        == hetzner_installimage_expected_identity.primary_mac | lower
+      - hetzner_installimage_live_boot_mode == hetzner_installimage_expected_identity.boot_mode
+    fail_msg: >-
+      Rescue network or firmware identity differs from the approved inventory identity.
+    quiet: true
+  changed_when: false
+
+- name: Read optional hardware system UUID
+  ansible.builtin.slurp:
+    src: "{{ hetzner_installimage_system_uuid_path }}"
+  register: hetzner_installimage_system_uuid_source
+  changed_when: false
+  when: hetzner_installimage_expected_identity.system_uuid | default('', true) | length > 0
+
+- name: Normalize optional hardware system UUID
+  ansible.builtin.set_fact:
+    hetzner_installimage_live_system_uuid: >-
+      {{
+        (
+          hetzner_installimage_system_uuid_source.content
+          | b64decode
+          | trim
+          | lower
+        )
+        if (hetzner_installimage_system_uuid_source is not skipped)
+        else ''
+      }}
+  changed_when: false
+
+- name: Validate optional hardware system UUID
+  ansible.builtin.assert:
+    that:
+      - >-
+        hetzner_installimage_expected_identity.system_uuid | default('', true) | length == 0
+        or
+        hetzner_installimage_live_system_uuid
+        == hetzner_installimage_expected_identity.system_uuid | lower
+    fail_msg: "Hardware system UUID differs from the expected inventory identity."
+    quiet: true
+  changed_when: false
+
+- name: Read physical disk inventory
+  ansible.builtin.command:
+    argv:
+      - "{{ hetzner_installimage_lsblk_path }}"
+      - --bytes
+      - --json
+      - --nodeps
+      - --output
+      - NAME,KNAME,PATH,TYPE,SIZE,MODEL,SERIAL,ROTA,RO
+  register: hetzner_installimage_lsblk
+  changed_when: false
+
+- name: Initialize normalized physical disk inventory
+  ansible.builtin.set_fact:
+    hetzner_installimage_live_disks: []
+  changed_when: false
+
+- name: Normalize physical disk inventory
+  ansible.builtin.set_fact:
+    hetzner_installimage_live_disks: >-
+      {{
+        hetzner_installimage_live_disks
+        +
+        [
+          {
+            'name': item.name | default('', true) | trim,
+            'path': item.path | default('', true) | trim,
+            'serial': item.serial | default('', true) | trim,
+            'model': item.model | default('', true) | regex_replace('\\s+', ' ') | trim,
+            'size_bytes': item.size | int,
+            'rotational': item.rota | bool,
+            'read_only': item.ro | bool
+          }
+        ]
+      }}
+  loop: >-
+    {{
+      (hetzner_installimage_lsblk.stdout | from_json).blockdevices
+      | selectattr('type', 'equalto', 'disk')
+      | list
+    }}
+  loop_control:
+    label: "{{ item.path | default(item.name | default('<unknown>')) }}"
+  changed_when: false
+
+- name: Validate live physical disk identities
+  ansible.builtin.assert:
+    that:
+      - hetzner_installimage_live_disks | length == hetzner_installimage_expected_disks | length
+      - >-
+        hetzner_installimage_live_disks
+        | map(attribute='serial')
+        | select('equalto', '')
+        | list
+        | length == 0
+      - >-
+        hetzner_installimage_live_disks
+        | map(attribute='serial')
+        | unique
+        | list
+        | length == hetzner_installimage_live_disks | length
+      - >-
+        hetzner_installimage_live_disks
+        | map(attribute='serial')
+        | sort
+        | list
+        ==
+        hetzner_installimage_expected_disks
+        | map(attribute='serial')
+        | sort
+        | list
+      - >-
+        hetzner_installimage_live_disks
+        | selectattr('read_only', 'equalto', true)
+        | list
+        | length == 0
+    fail_msg: >-
+      The complete live physical-disk set does not match expected serials, or a disk is read-only.
+    quiet: true
+  changed_when: false
+
+- name: Validate expected disk metadata against live disks
+  vars:
+    hetzner_installimage_matching_live_disk: >-
+      {{
+        (
+          hetzner_installimage_live_disks
+          | selectattr('serial', 'equalto', item.serial)
+          | first
+        )
+        | default({})
+      }}
+    hetzner_installimage_expected_model_normalized: >-
+      {{ item.model | default('', true) | regex_replace('\\s+', ' ') | trim }}
+  ansible.builtin.assert:
+    that:
+      - hetzner_installimage_matching_live_disk.serial | default('') == item.serial
+      - hetzner_installimage_matching_live_disk.size_bytes | default(0) | int == item.size_bytes | int
+      - hetzner_installimage_matching_live_disk.rotational | default(false) | bool == item.rotational | bool
+      - >-
+        hetzner_installimage_expected_model_normalized | length == 0
+        or
+        hetzner_installimage_matching_live_disk.model | default('')
+        == hetzner_installimage_expected_model_normalized
+    fail_msg: "Live disk metadata differs from inventory for serial {{ item.serial }}."
+    quiet: true
+  loop: "{{ hetzner_installimage_expected_disks }}"
+  loop_control:
+    label: "{{ item.serial }}"
+  changed_when: false
+
+- name: Initialize resolved disk purpose lists
+  ansible.builtin.set_fact:
+    hetzner_installimage_system_disks: []
+    hetzner_installimage_preserved_disks: []
+  changed_when: false
+
+- name: Resolve disk purposes by serial
+  vars:
+    hetzner_installimage_resolved_disk: >-
+      {{
+        hetzner_installimage_live_disks
+        | selectattr('serial', 'equalto', item.serial)
+        | first
+      }}
+  ansible.builtin.set_fact:
+    hetzner_installimage_system_disks: >-
+      {{
+        hetzner_installimage_system_disks
+        + [hetzner_installimage_resolved_disk]
+        if item.purpose == 'system'
+        else hetzner_installimage_system_disks
+      }}
+    hetzner_installimage_preserved_disks: >-
+      {{
+        hetzner_installimage_preserved_disks
+        + [hetzner_installimage_resolved_disk]
+        if item.purpose == 'preserve'
+        else hetzner_installimage_preserved_disks
+      }}
+  loop: "{{ hetzner_installimage_expected_disks }}"
+  loop_control:
+    label: "{{ item.serial }} -> {{ item.purpose }}"
+  changed_when: false
+
+- name: Check selected disks for active mounts
+  ansible.builtin.command:
+    argv:
+      - "{{ hetzner_installimage_lsblk_path }}"
+      - --noheadings
+      - --output
+      - MOUNTPOINTS
+      - "{{ item.path }}"
+  register: hetzner_installimage_system_disk_mounts
+  changed_when: false
+  loop: "{{ hetzner_installimage_system_disks }}"
+  loop_control:
+    label: "{{ item.path }} ({{ item.serial }})"
+
+- name: Refuse to erase a disk with an active mount
+  ansible.builtin.assert:
+    that:
+      - item.stdout | trim | length == 0
+    fail_msg: >-
+      Selected system disk {{ item.item.path }} has an active mount or swap target;
+      deactivate it before planning installation.
+    quiet: true
+  loop: "{{ hetzner_installimage_system_disk_mounts.results }}"
+  loop_control:
+    label: "{{ item.item.path }}"
+  changed_when: false

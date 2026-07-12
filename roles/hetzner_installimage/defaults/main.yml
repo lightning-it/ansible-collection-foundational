@@ -1,0 +1,63 @@
+---
+hetzner_installimage_action: plan
+hetzner_installimage_allowed_actions:
+  - plan
+  - install
+
+hetzner_installimage_binary: /root/.oldroot/nfs/install/installimage
+hetzner_installimage_functions_path: /root/.oldroot/nfs/install/functions.sh
+hetzner_installimage_image: /root/.oldroot/nfs/images/Ubuntu-2404-noble-amd64-base.tar.zst
+hetzner_installimage_expected_image_sha256: ""
+hetzner_installimage_post_install_script_path: ""
+hetzner_installimage_take_over_rescue_ssh_public_keys: true
+hetzner_installimage_rescue_ssh_public_keys_path: /root/.ssh/robot_user_keys
+hetzner_installimage_post_mount_sanitizer_path: /post-mount
+hetzner_installimage_post_mount_sanitizer_version: 1
+hetzner_installimage_post_mount_success_marker_path: /run/lit-installimage-post-mount-sanitized
+hetzner_installimage_installed_config_validation_path: /mnt/installimage.conf
+
+hetzner_installimage_hostname: "{{ inventory_hostname }}"
+hetzner_installimage_expected_identity:
+  public_ipv4: ""
+  gateway_ipv4: ""
+  prefix_length: 26
+  primary_mac: ""
+  boot_mode: bios
+  system_uuid: ""
+
+# Describe every physical disk. Only purpose=system disks become DRIVE entries;
+# purpose=preserve disks are identity-checked and intentionally excluded.
+hetzner_installimage_expected_disks: []
+
+hetzner_installimage_layout:
+  force_gpt: true
+  bootloader: grub
+  ipv4_only: true
+  software_raid:
+    enabled: false
+    level: 1
+  partitions: []
+  logical_volumes: []
+
+# Resolve this before invoking the role. The role never generates or persists a
+# recovery password and never includes it in the approval-plan hash.
+hetzner_installimage_crypt_password: ""
+
+# Destructive installation requires all three independent gates.
+hetzner_installimage_allow_destructive: false
+hetzner_installimage_approved_plan_sha256: ""
+hetzner_installimage_confirmation: ""
+
+hetzner_installimage_no_log: true
+hetzner_installimage_show_plan: true
+
+# Rescue-environment paths. Keeping these configurable permits fixture-only
+# Molecule coverage without exposing real block devices to the test scenario.
+hetzner_installimage_lsblk_path: /usr/bin/lsblk
+hetzner_installimage_ip_path: /usr/sbin/ip
+hetzner_installimage_firmware_efi_path: /sys/firmware/efi
+hetzner_installimage_system_uuid_path: /sys/class/dmi/id/product_uuid
+hetzner_installimage_required_crypt_markers:
+  - CRYPTPASSWORD
+  - PART_CRYPT
+  - encrypt_partitions

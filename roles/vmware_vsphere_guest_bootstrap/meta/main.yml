@@ -6,7 +6,7 @@ galaxy_info:
   description: Bootstrap Linux vSphere guests through VMware Tools so clones expose Ansible SSH access.
   company: Lightning IT
   license: MIT
-  min_ansible_version: "2.15"
+  min_ansible_version: "2.16"
 
   platforms:
     - name: EL

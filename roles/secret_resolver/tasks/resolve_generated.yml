@@ -1,0 +1,13 @@
+---
+- name: Generate an explicitly permitted secret
+  ansible.builtin.include_tasks: generate.yml
+  when: __secret_resolver_request.generation.enabled | default(false) | bool
+  no_log: true
+
+- name: Categorize disabled generation
+  ansible.builtin.set_fact:
+    __secret_resolver_attempt_found: false
+    __secret_resolver_attempt_failure: invalid_configuration
+  changed_when: false
+  no_log: true
+  when: not (__secret_resolver_request.generation.enabled | default(false) | bool)

@@ -2,3 +2,6 @@
 # Curated collection-level example that pulls in per-role examples.
 - name: Run terragrunt example
   import_playbook: terragrunt.yml
+
+- name: Run secret resolver example
+  import_playbook: secret_resolver.yml

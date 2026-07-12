@@ -1,0 +1,16 @@
+---
+# Public variables intentionally use the collection-wide lit_secret_resolver_
+# prefix. Effective defaults use the role prefix so ansible-lint can distinguish
+# role-owned state from the documented public API.
+secret_resolver_provider_default: runtime
+secret_resolver_provider_order_default: []
+secret_resolver_allow_fallback_default: false
+secret_resolver_fallback_on_default:
+  - secret_not_found
+  - secret_key_missing
+secret_resolver_phase_default: operational
+
+secret_resolver_vault_mount_point_default: secret
+secret_resolver_vault_auth_method_default: token
+secret_resolver_vault_validate_certs_default: true
+secret_resolver_vault_token_validate_default: true

@@ -1,0 +1,100 @@
+---
+- name: Normalize secret resolver public configuration
+  ansible.builtin.set_fact:
+    __secret_resolver_provider: >-
+      {{ lit_secret_resolver_provider | default(secret_resolver_provider_default) }}
+    __secret_resolver_configured_provider_order: >-
+      {{ lit_secret_resolver_provider_order | default(secret_resolver_provider_order_default) }}
+    __secret_resolver_allow_fallback: >-
+      {{ lit_secret_resolver_allow_fallback | default(secret_resolver_allow_fallback_default) | bool }}
+    __secret_resolver_fallback_on: >-
+      {{ lit_secret_resolver_fallback_on | default(secret_resolver_fallback_on_default) }}
+    __secret_resolver_phase: >-
+      {{ lit_secret_resolver_phase | default(secret_resolver_phase_default) }}
+    __secret_resolver_requests: "{{ lit_secret_resolver_requests | default([]) }}"
+    __secret_resolver_vault_addr: >-
+      {{
+        lit_secret_resolver_vault_addr
+        | default(lookup('ansible.builtin.env', 'VAULT_ADDR', default=''), true)
+        | string
+        | trim
+      }}
+    __secret_resolver_vault_namespace: >-
+      {{
+        lit_secret_resolver_vault_namespace
+        | default(lookup('ansible.builtin.env', 'VAULT_NAMESPACE', default=''), true)
+        | string
+        | trim
+      }}
+    __secret_resolver_vault_mount_point: >-
+      {{ lit_secret_resolver_vault_mount_point | default(secret_resolver_vault_mount_point_default) | string | trim }}
+    __secret_resolver_vault_auth_method: >-
+      {{ lit_secret_resolver_vault_auth_method | default(secret_resolver_vault_auth_method_default) }}
+    __secret_resolver_vault_validate_certs: >-
+      {{ lit_secret_resolver_vault_validate_certs | default(secret_resolver_vault_validate_certs_default) | bool }}
+    __secret_resolver_vault_token_validate: >-
+      {{ lit_secret_resolver_vault_token_validate | default(secret_resolver_vault_token_validate_default) | bool }}
+  changed_when: false
+  no_log: true
+
+- name: Build effective global provider order
+  ansible.builtin.set_fact:
+    __secret_resolver_provider_order: >-
+      {{
+        __secret_resolver_configured_provider_order
+        if (__secret_resolver_configured_provider_order | length > 0)
+        else [__secret_resolver_provider]
+      }}
+  changed_when: false
+
+- name: Reject an invalid primary provider
+  ansible.builtin.fail:
+    msg: >-
+      secret_resolver configuration failed: category=invalid_configuration;
+      the primary provider is not supported.
+  when: __secret_resolver_provider not in secret_resolver_allowed_providers
+
+- name: Reject invalid provider order entries
+  ansible.builtin.fail:
+    msg: >-
+      secret_resolver configuration failed: category=invalid_configuration;
+      provider_order contains an unsupported or duplicate provider.
+  when: >-
+    (__secret_resolver_provider_order | difference(secret_resolver_allowed_providers) | length > 0)
+    or
+    (__secret_resolver_provider_order | unique | length != __secret_resolver_provider_order | length)
+
+- name: Reject fallback without an explicit provider chain
+  ansible.builtin.fail:
+    msg: >-
+      secret_resolver configuration failed: category=invalid_configuration;
+      fallback requires an explicit provider_order containing at least two providers.
+  when:
+    - __secret_resolver_allow_fallback
+    - __secret_resolver_configured_provider_order | length < 2
+
+- name: Reject invalid fallback categories
+  ansible.builtin.fail:
+    msg: >-
+      secret_resolver configuration failed: category=invalid_configuration;
+      fallback_on contains an unsupported failure category.
+  when: __secret_resolver_fallback_on | difference(secret_resolver_allowed_failure_categories) | length > 0
+
+- name: Reject duplicate normalized request names
+  ansible.builtin.fail:
+    msg: >-
+      secret_resolver configuration failed: category=invalid_configuration;
+      normalized request names must be unique.
+  when: >-
+    (__secret_resolver_requests | map(attribute='name') | list | unique | length)
+    !=
+    (__secret_resolver_requests | length)
+
+- name: Validate each secret request policy
+  ansible.builtin.include_tasks: validate_request.yml
+  loop: "{{ __secret_resolver_requests }}"
+  loop_control:
+    loop_var: __secret_resolver_request_to_validate
+    index_var: __secret_resolver_request_index
+    label: "request #{{ __secret_resolver_request_index + 1 }}"
+  no_log: true

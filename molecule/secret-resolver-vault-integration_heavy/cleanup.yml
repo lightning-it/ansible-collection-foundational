@@ -1,0 +1,24 @@
+---
+- name: Remove disposable secret resolver Vault service
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+    secret_resolver_vault_venv: >-
+      {{ lookup('ansible.builtin.env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/controller-venv
+  tasks:
+    - name: Remove the disposable Vault container
+      community.docker.docker_container:
+        name: lit-foundational-secret-resolver-vault
+        force_kill: true
+        state: absent
+      register: secret_resolver_vault_cleanup
+      retries: 5
+      delay: 2
+      until: not (secret_resolver_vault_cleanup.failed | default(false) | bool)
+
+    - name: Remove the isolated controller Python environment
+      ansible.builtin.file:
+        path: "{{ secret_resolver_vault_venv }}"
+        state: absent
