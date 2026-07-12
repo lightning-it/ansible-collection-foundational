@@ -9,6 +9,7 @@ import yaml
 
 from ansible.errors import AnsibleActionFail
 from ansible.parsing.vault import VaultLib, VaultSecret
+from ansible.utils.unsafe_proxy import AnsibleUnsafeText
 
 from plugins.action import ansible_vault_document as plugin
 from plugins.action import ansible_vault_secret_document as secret_plugin
@@ -72,6 +73,34 @@ def test_exact_document_is_created_once_and_rerun_is_unchanged(tmp_path, vault):
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
     assert stat.S_IMODE(path.parent.stat().st_mode) == 0o700
     assert yaml.safe_load(vault.decrypt(path.read_bytes())) == _document()
+    assert SECRET_SENTINEL not in repr(created)
+
+
+def test_ansible_unsafe_strings_are_normalized_to_exact_builtin_strings(
+    tmp_path,
+    vault,
+):
+    path = tmp_path / "private" / "unsafe.vault.yml"
+    document = {
+        AnsibleUnsafeText("schema_version"): 1,
+        AnsibleUnsafeText("subject"): AnsibleUnsafeText("service01.example.test"),
+        AnsibleUnsafeText("password"): AnsibleUnsafeText(SECRET_SENTINEL),
+    }
+
+    normalized = secret_plugin._normalize_document_mapping(document)
+    created = _store(vault).ensure_exact(str(path), document)
+    persisted = yaml.safe_load(vault.decrypt(path.read_bytes()))
+
+    assert all(type(key) is str for key in normalized)
+    assert all(type(value) in (int, str) for value in normalized.values())
+    assert type(normalized["subject"]) is str
+    assert type(normalized["password"]) is str
+    assert persisted == {
+        "schema_version": 1,
+        "subject": "service01.example.test",
+        "password": SECRET_SENTINEL,
+    }
+    assert created["created"] is True
     assert SECRET_SENTINEL not in repr(created)
 
 

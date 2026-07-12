@@ -171,7 +171,11 @@ def _normalize_document_mapping(document):
         if isinstance(value, bool):
             return bool(value)
         if isinstance(value, str):
-            return str(value)
+            # AnsibleUnsafeText.__str__ intentionally preserves its subclass,
+            # which PyYAML refuses to represent. Invoke the built-in str
+            # implementation directly so no Ansible/Jinja proxy reaches the
+            # serializer while the exact string value remains unchanged.
+            return str.__str__(value)
         if isinstance(value, int):
             return int(value)
         if isinstance(value, float):
@@ -189,7 +193,7 @@ def _normalize_document_mapping(document):
                 for key, item in value.items():
                     if not isinstance(key, str):
                         _fail("document mapping keys must be strings.")
-                    normalized_key = str(key)
+                    normalized_key = str.__str__(key)
                     if normalized_key in normalized_mapping:
                         _fail("document contains duplicate mapping keys.")
                     normalized_mapping[normalized_key] = normalize(item, depth + 1)
