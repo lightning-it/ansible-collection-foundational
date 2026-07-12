@@ -1,0 +1,23 @@
+---
+- name: Prepare generated-secret write-back
+  ansible.builtin.set_fact:
+    __secret_resolver_persist_operation: write_back
+    __secret_resolver_persist_policy: "{{ __secret_resolver_request.write_back }}"
+    __secret_resolver_persist_target: >-
+      {{
+        __secret_resolver_request.write_back.hashicorp_vault
+        | default(__secret_resolver_request.hashicorp_vault)
+      }}
+    __secret_resolver_persist_value: "{{ __secret_resolver_request_value }}"
+  changed_when: false
+  no_log: true
+
+- name: Persist generated secret to HashiCorp Vault
+  ansible.builtin.include_tasks: persist_hashicorp_vault.yml
+
+- name: Record generated-secret write-back metadata
+  ansible.builtin.set_fact:
+    __secret_resolver_request_written_back: "{{ __secret_resolver_persist_changed | bool }}"
+    __secret_resolver_request_persistence_state: "{{ __secret_resolver_persist_state }}"
+  changed_when: false
+  no_log: true

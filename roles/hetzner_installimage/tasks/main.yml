@@ -1,0 +1,14 @@
+---
+- name: Prechecks
+  ansible.builtin.import_tasks: assert.yml
+  tags: always
+
+- name: Discover Rescue host identity and disks
+  ansible.builtin.import_tasks: discover.yml
+
+- name: Build immutable installation plan
+  ansible.builtin.import_tasks: plan.yml
+
+- name: Execute approved installation
+  ansible.builtin.import_tasks: install.yml
+  when: hetzner_installimage_action == 'install'

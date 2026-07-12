@@ -1,0 +1,118 @@
+---
+- name: Ensure private Hetzner installimage fixture directory exists
+  ansible.builtin.file:
+    path: "{{ hetzner_installimage_molecule_root }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Inspect synthetic Rescue SSH public-key ownership marker
+  ansible.builtin.stat:
+    path: "{{ hetzner_installimage_molecule_root }}/created-robot-user-keys"
+  register: hetzner_installimage_molecule_robot_keys_marker_before
+
+- name: Inspect Rescue SSH public-key fixture path
+  ansible.builtin.stat:
+    path: /root/.ssh/robot_user_keys
+  register: hetzner_installimage_molecule_existing_robot_keys
+
+- name: Refuse to replace an unowned Rescue SSH public-key file
+  ansible.builtin.assert:
+    that:
+      - >-
+        not (hetzner_installimage_molecule_existing_robot_keys.stat.exists | bool)
+        or hetzner_installimage_molecule_robot_keys_marker_before.stat.exists | bool
+    fail_msg: >-
+      Molecule refuses to replace an existing /root/.ssh/robot_user_keys file.
+    quiet: true
+
+- name: Inspect root-level installimage fixture paths
+  ansible.builtin.stat:
+    path: "{{ item }}"
+    follow: false
+  register: hetzner_installimage_molecule_existing_installimage_paths
+  loop:
+    - /autosetup
+    - /autosetup.bak-molecule
+    - /post-install
+    - /post-mount
+    - /run/lit-installimage-post-mount-sanitized
+
+- name: Refuse to replace root-level installimage files
+  ansible.builtin.assert:
+    that:
+      - >-
+        hetzner_installimage_molecule_existing_installimage_paths.results
+        | selectattr('stat.exists', 'equalto', true)
+        | list
+        | length == 0
+    fail_msg: >-
+      Molecule refuses to replace pre-existing /autosetup*, /post-install,
+      /post-mount, or sanitizer marker paths.
+    quiet: true
+
+- name: Remove stale transient fixture results
+  ansible.builtin.file:
+    path: "{{ hetzner_installimage_molecule_root }}/{{ item }}"
+    state: absent
+  loop:
+    - force-failure
+    - fold
+    - installed
+    - config-path
+    - post-install-path
+    - installimage-called
+
+- name: Install synthetic executable fixtures
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "{{ hetzner_installimage_molecule_root }}/{{ item }}"
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - ip-stub
+    - lsblk-stub
+    - installimage-stub
+    - functions.sh
+    - post-install.sh
+
+- name: Install synthetic data fixtures
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "{{ hetzner_installimage_molecule_root }}/{{ item }}"
+    owner: root
+    group: root
+    mode: "0600"
+  loop:
+    - lsblk.json
+    - image.tar.zst
+
+- name: Ensure Rescue SSH directory exists for fixture
+  ansible.builtin.file:
+    path: /root/.ssh
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Install synthetic Rescue SSH public keys
+  ansible.builtin.copy:
+    src: robot_user_keys
+    dest: /root/.ssh/robot_user_keys
+    owner: root
+    group: root
+    mode: "0600"
+  when: not (hetzner_installimage_molecule_existing_robot_keys.stat.exists | bool)
+
+- name: Mark ownership of synthetic Rescue SSH public-key fixture
+  ansible.builtin.file:
+    path: "{{ hetzner_installimage_molecule_root }}/created-robot-user-keys"
+    state: touch
+    owner: root
+    group: root
+    mode: "0600"
+    modification_time: preserve
+    access_time: preserve
+  when: not (hetzner_installimage_molecule_existing_robot_keys.stat.exists | bool)

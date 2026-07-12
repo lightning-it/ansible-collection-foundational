@@ -1,0 +1,5 @@
+---
+minor_changes:
+  - >-
+    Add the controller-only ``ansible_vault_document`` action plugin for atomic, immutable, type-exact persistence
+    of structured mappings with Ansible's already-loaded Vault identities and no plaintext filesystem staging.

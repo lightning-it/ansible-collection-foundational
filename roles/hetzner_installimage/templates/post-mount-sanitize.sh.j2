@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# lit.foundational.hetzner_installimage sanitizer v{{ hetzner_installimage_post_mount_sanitizer_version }}
+set -euo pipefail
+
+if [ -z "${FOLD:-}" ] || [ "${FOLD#/}" = "${FOLD}" ]; then
+  printf 'FOLD must be an absolute installimage target path\n' >&2
+  exit 1
+fi
+
+installimage_config="${FOLD}/install.conf"
+success_marker={{ hetzner_installimage_post_mount_success_marker_path | quote }}
+if [ ! -f "${installimage_config}" ]; then
+  printf 'installimage config not found at %s\n' "${installimage_config}" >&2
+  exit 1
+fi
+
+password_line_count="$(grep -c '^CRYPTPASSWORD ' "${installimage_config}" || true)"
+if [ "${password_line_count}" -ne 1 ]; then
+  printf 'expected exactly one CRYPTPASSWORD line, found %s\n' "${password_line_count}" >&2
+  exit 1
+fi
+
+sed -i -E 's/^CRYPTPASSWORD .*/CRYPTPASSWORD [REDACTED]/' "${installimage_config}"
+
+password_line_count="$(grep -c '^CRYPTPASSWORD ' "${installimage_config}" || true)"
+redacted_line_count="$(grep -Fxc 'CRYPTPASSWORD [REDACTED]' "${installimage_config}" || true)"
+if [ "${password_line_count}" -ne 1 ] || [ "${redacted_line_count}" -ne 1 ]; then
+  printf 'installimage recovery password redaction failed\n' >&2
+  exit 1
+fi
+
+printf 'sanitized-v%s\n' {{ hetzner_installimage_post_mount_sanitizer_version | quote }} > "${success_marker}"
+chmod 0600 "${success_marker}"

@@ -1,0 +1,48 @@
+---
+- name: Derive persistent HashiCorp Vault target
+  ansible.builtin.set_fact:
+    __secret_resolver_validation_target: >-
+      {{
+        __secret_resolver_persistence_policy.hashicorp_vault
+        | default(__secret_resolver_request_to_validate.hashicorp_vault | default({}))
+      }}
+  changed_when: false
+  no_log: true
+
+- name: Reject an invalid persistent HashiCorp Vault target
+  ansible.builtin.fail:
+    msg: >-
+      secret_resolver request '{{ __secret_resolver_request_to_validate.name }}' failed validation:
+      category=invalid_configuration; {{ __secret_resolver_persistence_operation }} needs a valid Vault path and key.
+  when: >-
+    (__secret_resolver_persistence_policy.provider
+     | default(__secret_resolver_persistence_policy.target_provider | default('hashicorp_vault'))
+     != 'hashicorp_vault')
+    or (__secret_resolver_validation_target.path | default('')
+        is not match(secret_resolver_vault_path_pattern))
+    or
+    (
+      (__secret_resolver_validation_target.path | default('')).split('/')
+      | intersect(['', '.', '..'])
+      | length > 0
+    )
+    or ('//' in (__secret_resolver_validation_target.path | default('')))
+    or ((__secret_resolver_validation_target.path | default('')).startswith('data/'))
+    or ((__secret_resolver_validation_target.path | default('')).startswith('metadata/'))
+    or (__secret_resolver_validation_target.key | default('')
+        is not match(secret_resolver_vault_key_pattern))
+    or
+    (
+      __secret_resolver_validation_target.mount_point is defined
+      and
+      (
+        __secret_resolver_validation_target.mount_point is not match(secret_resolver_vault_path_pattern)
+        or
+        (
+          __secret_resolver_validation_target.mount_point.split('/')
+          | intersect(['', '.', '..'])
+          | length > 0
+        )
+        or '//' in __secret_resolver_validation_target.mount_point
+      )
+    )

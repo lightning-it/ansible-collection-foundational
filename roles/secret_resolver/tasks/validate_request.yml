@@ -1,0 +1,518 @@
+---
+- name: Derive request policy for validation
+  ansible.builtin.set_fact:
+    __secret_resolver_validation_order: >-
+      {{
+        [__secret_resolver_request_to_validate.migration.source_provider | default('')]
+        if (__secret_resolver_request_to_validate.migration.enabled | default(false) | bool)
+        else
+        (
+          __secret_resolver_request_to_validate.provider_order
+          | default(__secret_resolver_provider_order)
+        )
+      }}
+    __secret_resolver_validation_allow_fallback: >-
+      {{
+        false
+        if (__secret_resolver_request_to_validate.migration.enabled | default(false) | bool)
+        else
+        (
+          __secret_resolver_request_to_validate.allow_fallback
+          | default(__secret_resolver_allow_fallback)
+          | bool
+        )
+      }}
+    __secret_resolver_validation_fallback_on: >-
+      {{
+        []
+        if (__secret_resolver_request_to_validate.migration.enabled | default(false) | bool)
+        else
+        (
+          __secret_resolver_request_to_validate.fallback_on
+          | default(__secret_resolver_fallback_on)
+        )
+      }}
+  changed_when: false
+  no_log: true
+
+- name: Reject an invalid normalized request name
+  ansible.builtin.fail:
+    msg: >-
+      secret_resolver request #{{ __secret_resolver_request_index + 1 }} failed validation:
+      category=invalid_configuration; name must be a safe Ansible dictionary key.
+  when: __secret_resolver_request_to_validate.name is not match(secret_resolver_name_pattern)
+
+- name: Reject an incomplete migration policy
+  ansible.builtin.fail:
+    msg: >-
+      secret_resolver request '{{ __secret_resolver_request_to_validate.name }}' failed validation:
+      category=invalid_configuration; enabled migration requires source_provider and target_provider.
+  when:
+    - __secret_resolver_request_to_validate.migration.enabled | default(false) | bool
+    - >-
+      (__secret_resolver_request_to_validate.migration.source_provider | default('') | length == 0)
+      or (__secret_resolver_request_to_validate.migration.target_provider | default('') | length == 0)
+
+- name: Reject an invalid request provider order
+  ansible.builtin.fail:
+    msg: >-
+      secret_resolver request '{{ __secret_resolver_request_to_validate.name }}' failed validation:
+      category=invalid_configuration; provider_order contains an unsupported or duplicate provider.
+  when: >-
+    (__secret_resolver_validation_order | length == 0)
+    or
+    (__secret_resolver_validation_order | difference(secret_resolver_allowed_providers) | length > 0)
+    or
+    (__secret_resolver_validation_order | unique | length != __secret_resolver_validation_order | length)
+
+- name: Reject request fallback without a provider chain
+  ansible.builtin.fail:
+    msg: >-
+      secret_resolver request '{{ __secret_resolver_request_to_validate.name }}' failed validation:
+      category=invalid_configuration; fallback requires at least two explicitly ordered providers.
+  when:
+    - __secret_resolver_validation_allow_fallback
+    - __secret_resolver_validation_order | length < 2
+
+- name: Reject invalid request fallback categories
+  ansible.builtin.fail:
+    msg: >-
+      secret_resolver request '{{ __secret_resolver_request_to_validate.name }}' failed validation:
+      category=invalid_configuration; fallback_on contains an unsupported category.
+  when: >-
+    __secret_resolver_validation_fallback_on
+    | difference(secret_resolver_allowed_failure_categories)
+    | length > 0
+
+- name: Reject a missing provider configuration
+  ansible.builtin.fail:
+    msg: >-
+      secret_resolver request '{{ __secret_resolver_request_to_validate.name }}' failed validation:
+      category=invalid_configuration; a configured provider has no provider-specific request block.
+  loop: "{{ __secret_resolver_validation_order }}"
+  loop_control:
+    loop_var: __secret_resolver_provider_to_validate
+    label: "provider policy"
+  when: >-
+    (
+      __secret_resolver_provider_to_validate != 'generated'
+      and __secret_resolver_provider_to_validate not in __secret_resolver_request_to_validate
+    )
+    or
+    (
+      __secret_resolver_provider_to_validate == 'generated'
+      and not (__secret_resolver_request_to_validate.generation.enabled | default(false) | bool)
+    )
+
+- name: Reject an unsafe variable reference
+  ansible.builtin.fail:
+    msg: >-
+      secret_resolver request '{{ __secret_resolver_request_to_validate.name }}' failed validation:
+      category=invalid_configuration; provider variable names must be plain identifiers.
+  when: >-
+    (
+      __secret_resolver_request_to_validate.runtime is defined
+      and __secret_resolver_request_to_validate.runtime.variable is not match(secret_resolver_name_pattern)
+    )
+    or
+    (
+      __secret_resolver_request_to_validate.ansible_vault is defined
+      and __secret_resolver_request_to_validate.ansible_vault.variable is not match(secret_resolver_name_pattern)
+    )
+    or
+    (
+      __secret_resolver_request_to_validate.environment is defined
+      and __secret_resolver_request_to_validate.environment.variable
+      is not match(secret_resolver_environment_name_pattern)
+    )
+
+- name: Reject an empty 1Password selector
+  ansible.builtin.fail:
+    msg: >-
+      secret_resolver request '{{ __secret_resolver_request_to_validate.name }}' failed validation:
+      category=invalid_configuration; 1Password item, field, and optional selectors cannot be empty.
+  when:
+    - __secret_resolver_request_to_validate.onepassword is defined
+    - >-
+      (__secret_resolver_request_to_validate.onepassword.item | trim | length == 0)
+      or (__secret_resolver_request_to_validate.onepassword.field | trim | length == 0)
+      or
+      (
+        __secret_resolver_request_to_validate.onepassword.vault is defined
+        and __secret_resolver_request_to_validate.onepassword.vault | trim | length == 0
+      )
+      or
+      (
+        __secret_resolver_request_to_validate.onepassword.account is defined
+        and __secret_resolver_request_to_validate.onepassword.account | trim | length == 0
+      )
+      or
+      (
+        __secret_resolver_request_to_validate.onepassword.section is defined
+        and __secret_resolver_request_to_validate.onepassword.section | trim | length == 0
+      )
+
+- name: Reject an unsafe HashiCorp Vault read location
+  ansible.builtin.fail:
+    msg: >-
+      secret_resolver request '{{ __secret_resolver_request_to_validate.name }}' failed validation:
+      category=invalid_configuration; the Vault path, key, or mount point is invalid.
+  when:
+    - __secret_resolver_request_to_validate.hashicorp_vault is defined
+    - >-
+      (__secret_resolver_request_to_validate.hashicorp_vault.path is not match(secret_resolver_vault_path_pattern))
+      or
+      (
+        __secret_resolver_request_to_validate.hashicorp_vault.path.split('/')
+        | intersect(['', '.', '..'])
+        | length > 0
+      )
+      or ('//' in __secret_resolver_request_to_validate.hashicorp_vault.path)
+      or (__secret_resolver_request_to_validate.hashicorp_vault.path.startswith('data/'))
+      or (__secret_resolver_request_to_validate.hashicorp_vault.path.startswith('metadata/'))
+      or (__secret_resolver_request_to_validate.hashicorp_vault.key is not match(secret_resolver_vault_key_pattern))
+      or
+      (
+        __secret_resolver_request_to_validate.hashicorp_vault.mount_point is defined
+        and
+        (
+          __secret_resolver_request_to_validate.hashicorp_vault.mount_point
+          is not match(secret_resolver_vault_path_pattern)
+          or
+          (
+            __secret_resolver_request_to_validate.hashicorp_vault.mount_point.split('/')
+            | intersect(['', '.', '..'])
+            | length > 0
+          )
+          or '//' in __secret_resolver_request_to_validate.hashicorp_vault.mount_point
+        )
+      )
+
+- name: Reject missing or unsafe global HashiCorp Vault configuration
+  ansible.builtin.fail:
+    msg: >-
+      secret_resolver request '{{ __secret_resolver_request_to_validate.name }}' failed validation:
+      category=invalid_configuration; Vault requests require an address and valid default mount point.
+  when:
+    - >-
+      ('hashicorp_vault' in __secret_resolver_validation_order)
+      or (__secret_resolver_request_to_validate.write_back.enabled | default(false) | bool)
+      or (__secret_resolver_request_to_validate.migration.enabled | default(false) | bool)
+    - >-
+      (__secret_resolver_vault_addr | length == 0)
+      or (__secret_resolver_vault_mount_point is not match(secret_resolver_vault_path_pattern))
+      or (__secret_resolver_vault_mount_point.split('/') | intersect(['', '.', '..']) | length > 0)
+      or ('//' in __secret_resolver_vault_mount_point)
+      or (lit_secret_resolver_vault_timeout is defined and lit_secret_resolver_vault_timeout | int < 1)
+      or (lit_secret_resolver_vault_retries is defined and lit_secret_resolver_vault_retries | int < 0)
+      or
+      (
+        lit_secret_resolver_vault_auth_mount_point is defined
+        and
+        (
+          lit_secret_resolver_vault_auth_mount_point is not match(secret_resolver_vault_path_pattern)
+          or
+          (
+            lit_secret_resolver_vault_auth_mount_point.split('/')
+            | intersect(['', '.', '..'])
+            | length > 0
+          )
+          or '//' in lit_secret_resolver_vault_auth_mount_point
+        )
+      )
+
+- name: Reject invalid value length constraints
+  ansible.builtin.fail:
+    msg: >-
+      secret_resolver request '{{ __secret_resolver_request_to_validate.name }}' failed validation:
+      category=invalid_configuration; validation lengths must be non-negative and ordered.
+  when:
+    - __secret_resolver_request_to_validate.validation is defined
+    - >-
+      (__secret_resolver_request_to_validate.validation.min_length | default(0) | int < 0)
+      or (__secret_resolver_request_to_validate.validation.max_length | default(0) | int < 0)
+      or
+      (
+        __secret_resolver_request_to_validate.validation.min_length is defined
+        and __secret_resolver_request_to_validate.validation.max_length is defined
+        and
+        __secret_resolver_request_to_validate.validation.min_length
+        > __secret_resolver_request_to_validate.validation.max_length
+      )
+
+- name: Validate the configured value regular expression safely
+  when: __secret_resolver_request_to_validate.validation.pattern is defined
+  block:
+    - name: Compile the complete-value regular expression
+      ansible.builtin.set_fact:
+        __secret_resolver_pattern_probe: >-
+          {{
+            ''
+            is match(
+              '\\A(?:'
+              ~ __secret_resolver_request_to_validate.validation.pattern
+              ~ ')\\Z'
+            )
+          }}
+      changed_when: false
+      no_log: true
+  rescue:
+    - name: Clear the rescued regular-expression validation objects
+      ansible.builtin.set_fact:
+        "{{ 'ansible_failed_result' }}": {}
+        "{{ 'ansible_failed_task' }}": {}
+      changed_when: false
+      no_log: true
+
+    - name: Reject an invalid value regular expression
+      ansible.builtin.fail:
+        msg: >-
+          secret_resolver request '{{ __secret_resolver_request_to_validate.name }}' failed validation:
+          category=invalid_configuration; validation.pattern is not a valid regular expression.
+
+- name: Reject contradictory default and generation policy
+  ansible.builtin.fail:
+    msg: >-
+      secret_resolver request '{{ __secret_resolver_request_to_validate.name }}' failed validation:
+      category=invalid_configuration; default and generation cannot both be enabled because
+      precedence is ambiguous.
+  when:
+    - '''default'' in __secret_resolver_request_to_validate'
+    - __secret_resolver_request_to_validate.generation.enabled | default(false) | bool
+
+- name: Reject a default in migration mode
+  ansible.builtin.fail:
+    msg: >-
+      secret_resolver request '{{ __secret_resolver_request_to_validate.name }}' failed validation:
+      category=invalid_configuration; migration must resolve the configured source and cannot use a default.
+  when:
+    - __secret_resolver_request_to_validate.migration.enabled | default(false) | bool
+    - '''default'' in __secret_resolver_request_to_validate'
+
+- name: Reject invalid generation constraints
+  ansible.builtin.fail:
+    msg: >-
+      secret_resolver request '{{ __secret_resolver_request_to_validate.name }}' failed validation:
+      category=invalid_configuration; generation length or character constraints are invalid.
+  when:
+    - __secret_resolver_request_to_validate.generation.enabled | default(false) | bool
+    - >-
+      (__secret_resolver_request_to_validate.generation.length | default(32) | int < 1)
+      or (__secret_resolver_request_to_validate.generation.min_lower | default(0) | int < 0)
+      or (__secret_resolver_request_to_validate.generation.min_upper | default(0) | int < 0)
+      or (__secret_resolver_request_to_validate.generation.min_numeric | default(0) | int < 0)
+      or (__secret_resolver_request_to_validate.generation.min_special | default(0) | int < 0)
+      or
+      (
+        __secret_resolver_request_to_validate.generation.characters is not defined
+        and __secret_resolver_request_to_validate.generation.type | default('password') == 'password'
+        and
+        (
+          (
+            not (__secret_resolver_request_to_validate.generation.lower | default(true) | bool)
+            and __secret_resolver_request_to_validate.generation.min_lower | default(0) | int > 0
+          )
+          or
+          (
+            not (__secret_resolver_request_to_validate.generation.upper | default(true) | bool)
+            and __secret_resolver_request_to_validate.generation.min_upper | default(0) | int > 0
+          )
+          or
+          (
+            not (__secret_resolver_request_to_validate.generation.numbers | default(true) | bool)
+            and __secret_resolver_request_to_validate.generation.min_numeric | default(0) | int > 0
+          )
+          or
+          (
+            not (__secret_resolver_request_to_validate.generation.special | default(true) | bool)
+            and __secret_resolver_request_to_validate.generation.min_special | default(0) | int > 0
+          )
+        )
+      )
+      or
+      (
+        __secret_resolver_request_to_validate.generation.type | default('password') != 'uuid'
+        and
+        (
+          (__secret_resolver_request_to_validate.generation.min_lower | default(0) | int)
+          + (__secret_resolver_request_to_validate.generation.min_upper | default(0) | int)
+          + (__secret_resolver_request_to_validate.generation.min_numeric | default(0) | int)
+          + (__secret_resolver_request_to_validate.generation.min_special | default(0) | int)
+          > (__secret_resolver_request_to_validate.generation.length | default(32) | int)
+        )
+      )
+      or
+      (
+        __secret_resolver_request_to_validate.generation.characters is defined
+        and
+        (
+          __secret_resolver_request_to_validate.generation.characters
+          | list
+          | unique
+          | length < 2
+        )
+      )
+      or
+      (
+        __secret_resolver_request_to_validate.generation.type | default('password') in ['hex', 'uuid']
+        and __secret_resolver_request_to_validate.generation.characters is defined
+      )
+      or
+      (
+        (
+          __secret_resolver_request_to_validate.generation.characters is defined
+          or __secret_resolver_request_to_validate.generation.type | default('password') in ['hex', 'uuid']
+        )
+        and
+        (
+          __secret_resolver_request_to_validate.generation.min_lower | default(0) | int > 0
+          or __secret_resolver_request_to_validate.generation.min_upper | default(0) | int > 0
+          or __secret_resolver_request_to_validate.generation.min_numeric | default(0) | int > 0
+          or __secret_resolver_request_to_validate.generation.min_special | default(0) | int > 0
+        )
+      )
+      or
+      (
+        __secret_resolver_request_to_validate.generation.type | default('password') != 'password'
+        and
+        (
+          __secret_resolver_request_to_validate.generation.min_special | default(0) | int > 0
+          or __secret_resolver_request_to_validate.generation.special_characters is defined
+        )
+      )
+      or
+      (
+        __secret_resolver_request_to_validate.generation.type | default('password') == 'password'
+        and __secret_resolver_request_to_validate.generation.special_characters is defined
+        and
+        (
+          __secret_resolver_request_to_validate.generation.special_characters | length == 0
+          or not (__secret_resolver_request_to_validate.generation.special | default(true) | bool)
+        )
+      )
+      or
+      (
+        __secret_resolver_request_to_validate.generation.type | default('password') == 'password'
+        and __secret_resolver_request_to_validate.generation.characters is not defined
+        and not (__secret_resolver_request_to_validate.generation.lower | default(true) | bool)
+        and not (__secret_resolver_request_to_validate.generation.upper | default(true) | bool)
+        and not (__secret_resolver_request_to_validate.generation.numbers | default(true) | bool)
+        and not (__secret_resolver_request_to_validate.generation.special | default(true) | bool)
+      )
+      or
+      (
+        __secret_resolver_request_to_validate.generation.type | default('password') == 'password'
+        and __secret_resolver_request_to_validate.generation.characters is not defined
+        and not (__secret_resolver_request_to_validate.generation.lower | default(true) | bool)
+        and not (__secret_resolver_request_to_validate.generation.upper | default(true) | bool)
+        and not (__secret_resolver_request_to_validate.generation.numbers | default(true) | bool)
+        and (__secret_resolver_request_to_validate.generation.special | default(true) | bool)
+        and __secret_resolver_request_to_validate.generation.special_characters is defined
+        and
+        (
+          __secret_resolver_request_to_validate.generation.special_characters
+          | list
+          | unique
+          | length < 2
+        )
+      )
+
+- name: Reject write-back without generation
+  ansible.builtin.fail:
+    msg: >-
+      secret_resolver request '{{ __secret_resolver_request_to_validate.name }}' failed validation:
+      category=invalid_configuration; write-back is allowed only for generated values.
+  when:
+    - __secret_resolver_request_to_validate.write_back.enabled | default(false) | bool
+    - not (__secret_resolver_request_to_validate.generation.enabled | default(false) | bool)
+
+- name: Reject non-idempotent generation write-back ordering
+  ansible.builtin.fail:
+    msg: >-
+      secret_resolver request '{{ __secret_resolver_request_to_validate.name }}' failed validation:
+      category=invalid_configuration; generated write-back requires hashicorp_vault as the first read provider
+      and the same KV path and key for retrieval and persistence.
+  when:
+    - __secret_resolver_request_to_validate.write_back.enabled | default(false) | bool
+    - >-
+      (__secret_resolver_validation_order | first != 'hashicorp_vault')
+      or (__secret_resolver_request_to_validate.hashicorp_vault is not defined)
+      or
+      (
+        __secret_resolver_request_to_validate.write_back.hashicorp_vault is defined
+        and
+        (
+          __secret_resolver_request_to_validate.write_back.hashicorp_vault.path
+          != __secret_resolver_request_to_validate.hashicorp_vault.path
+          or __secret_resolver_request_to_validate.write_back.hashicorp_vault.key
+             != __secret_resolver_request_to_validate.hashicorp_vault.key
+          or
+          (
+            __secret_resolver_request_to_validate.write_back.hashicorp_vault.mount_point
+            | default(__secret_resolver_vault_mount_point)
+          )
+          !=
+          (
+            __secret_resolver_request_to_validate.hashicorp_vault.mount_point
+            | default(__secret_resolver_vault_mount_point)
+          )
+        )
+      )
+
+- name: Reject generation that requires unavailable persistence
+  ansible.builtin.fail:
+    msg: >-
+      secret_resolver request '{{ __secret_resolver_request_to_validate.name }}' failed validation:
+      category=invalid_configuration; persistence_required needs enabled write-back.
+  when:
+    - __secret_resolver_request_to_validate.generation.persistence_required | default(false) | bool
+    - not (__secret_resolver_request_to_validate.write_back.enabled | default(false) | bool)
+
+- name: Reject contradictory write-back and migration
+  ansible.builtin.fail:
+    msg: >-
+      secret_resolver request '{{ __secret_resolver_request_to_validate.name }}' failed validation:
+      category=invalid_configuration; write-back and migration are separate mutually exclusive operations.
+  when:
+    - __secret_resolver_request_to_validate.write_back.enabled | default(false) | bool
+    - __secret_resolver_request_to_validate.migration.enabled | default(false) | bool
+
+- name: Reject invalid migration policy
+  ansible.builtin.fail:
+    msg: >-
+      secret_resolver request '{{ __secret_resolver_request_to_validate.name }}' failed validation:
+      category=invalid_configuration; migration requires bootstrap phase and distinct supported
+      source and target providers.
+  when:
+    - __secret_resolver_request_to_validate.migration.enabled | default(false) | bool
+    - >-
+      (__secret_resolver_phase != 'bootstrap')
+      or (__secret_resolver_request_to_validate.migration.source_provider | default('')
+          not in secret_resolver_allowed_migration_source_providers)
+      or (__secret_resolver_request_to_validate.migration.target_provider | default('') != 'hashicorp_vault')
+      or
+      (__secret_resolver_request_to_validate.migration.source_provider
+       == __secret_resolver_request_to_validate.migration.target_provider)
+      or
+      (__secret_resolver_request_to_validate.migration.source_provider
+       not in __secret_resolver_request_to_validate)
+      or (__secret_resolver_request_to_validate.generation.enabled | default(false) | bool)
+
+- name: Validate optional persistence target
+  ansible.builtin.include_tasks: validate_persistence_target.yml
+  vars:
+    __secret_resolver_persistence_policy: >-
+      {{
+        __secret_resolver_request_to_validate.migration
+        if (__secret_resolver_request_to_validate.migration.enabled | default(false) | bool)
+        else __secret_resolver_request_to_validate.write_back
+      }}
+    __secret_resolver_persistence_operation: >-
+      {{
+        'migration'
+        if (__secret_resolver_request_to_validate.migration.enabled | default(false) | bool)
+        else 'write-back'
+      }}
+  when: >-
+    (__secret_resolver_request_to_validate.write_back.enabled | default(false) | bool)
+    or (__secret_resolver_request_to_validate.migration.enabled | default(false) | bool)

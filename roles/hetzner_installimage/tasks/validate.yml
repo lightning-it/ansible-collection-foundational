@@ -1,0 +1,92 @@
+---
+- name: Validate installimage command completion
+  ansible.builtin.assert:
+    that:
+      - hetzner_installimage_execution.rc | int == 0
+    fail_msg: >-
+      Hetzner installimage failed. The private configuration was removed; inspect the
+      Rescue console and sanitized installimage logs before creating a new approval plan.
+    quiet: true
+  changed_when: false
+
+- name: Inspect post-mount sanitizer success marker
+  ansible.builtin.stat:
+    path: "{{ hetzner_installimage_post_mount_success_marker_path }}"
+    follow: false
+  register: hetzner_installimage_post_mount_success_marker_stat
+  changed_when: false
+  when: hetzner_installimage_encryption_requested | bool
+
+- name: Read post-mount sanitizer success marker
+  ansible.builtin.slurp:
+    src: "{{ hetzner_installimage_post_mount_success_marker_path }}"
+  register: hetzner_installimage_post_mount_success_marker
+  changed_when: false
+  when:
+    - hetzner_installimage_encryption_requested | bool
+    - hetzner_installimage_post_mount_success_marker_stat.stat.exists | default(false)
+
+- name: Validate post-mount sanitizer success marker
+  ansible.builtin.assert:
+    that:
+      - hetzner_installimage_post_mount_success_marker_stat.stat.exists
+      - hetzner_installimage_post_mount_success_marker_stat.stat.isreg | default(false)
+      - hetzner_installimage_post_mount_success_marker_stat.stat.uid | default(-1) | int == 0
+      - hetzner_installimage_post_mount_success_marker_stat.stat.mode | default('') == '0600'
+      - >-
+        hetzner_installimage_post_mount_success_marker.content | default('')
+        | b64decode
+        | trim
+        == 'sanitized-v' ~ (hetzner_installimage_post_mount_sanitizer_version | string)
+    fail_msg: >-
+      installimage returned without a valid post-mount password-sanitizer success marker.
+    quiet: true
+  changed_when: false
+  when: hetzner_installimage_encryption_requested | bool
+
+- name: Inspect installed installimage configuration when accessible
+  ansible.builtin.stat:
+    path: "{{ hetzner_installimage_installed_config_validation_path }}"
+    follow: true
+  register: hetzner_installimage_installed_config_stat
+  changed_when: false
+  when: hetzner_installimage_encryption_requested | bool
+
+- name: Read installed installimage configuration for password validation
+  ansible.builtin.slurp:
+    src: "{{ hetzner_installimage_installed_config_validation_path }}"
+  register: hetzner_installimage_installed_config
+  changed_when: false
+  no_log: true
+  when:
+    - hetzner_installimage_encryption_requested | bool
+    - hetzner_installimage_installed_config_stat.stat.exists | default(false)
+
+- name: Validate installed installimage configuration is redacted
+  ansible.builtin.assert:
+    that:
+      - >-
+        (
+          hetzner_installimage_installed_config.content
+          | b64decode
+          | regex_findall('(?m)^CRYPTPASSWORD .*$')
+        ) == ['CRYPTPASSWORD [REDACTED]']
+    fail_msg: >-
+      The accessible installed installimage configuration does not contain exactly
+      one redacted CRYPTPASSWORD line.
+    quiet: true
+  changed_when: false
+  no_log: true
+  when:
+    - hetzner_installimage_encryption_requested | bool
+    - hetzner_installimage_installed_config_stat.stat.exists | default(false)
+
+- name: Record completed installation without authorizing reboot
+  ansible.builtin.set_fact:
+    hetzner_installimage_result:
+      action: install
+      plan_sha256: "{{ hetzner_installimage_plan.sha256 }}"
+      install_complete: true
+      reboot_performed: false
+      next_step: "Run and verify post-install Ubuntu bootstrap before any reboot."
+  changed_when: false

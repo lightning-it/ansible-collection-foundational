@@ -1,0 +1,48 @@
+---
+secret_resolver_allowed_providers:
+  - hashicorp_vault
+  - ansible_vault
+  - onepassword
+  - environment
+  - runtime
+  - generated
+
+secret_resolver_allowed_migration_source_providers:
+  - ansible_vault
+  - onepassword
+  - environment
+  - runtime
+
+secret_resolver_allowed_failure_categories:
+  - provider_unavailable
+  - authentication_failed
+  - authorization_failed
+  - secret_not_found
+  - secret_key_missing
+  - dependency_missing
+  - invalid_response
+  - tls_failed
+  - validation_failed
+
+secret_resolver_absence_categories:
+  - secret_not_found
+  - secret_key_missing
+
+secret_resolver_corrective_actions:
+  provider_unavailable: Check the controller route, service health, address, and timeout.
+  authentication_failed: Check the controller authentication context and injected credentials.
+  authorization_failed: Grant the controller identity read or write access to the configured location.
+  secret_not_found: Create the secret, configure a default, or enable generation explicitly.
+  secret_key_missing: Add the configured key or correct the request key.
+  invalid_configuration: Correct the request and provider configuration.
+  dependency_missing: Install the documented dependency in the controller or execution environment.
+  invalid_response: Check provider compatibility and the configured secret shape.
+  tls_failed: Correct the CA trust or certificate configuration; do not disable verification routinely.
+  validation_failed: Correct the supplied value so it satisfies the request constraints.
+  write_back_failed: Check the target, overwrite policy, CAS conflict, and write permission.
+  migration_failed: Check the explicit migration target, policy, and write permission.
+
+secret_resolver_name_pattern: '^[A-Za-z_][A-Za-z0-9_]*$'
+secret_resolver_environment_name_pattern: '^[A-Za-z_][A-Za-z0-9_]*$'
+secret_resolver_vault_path_pattern: '^[A-Za-z0-9][A-Za-z0-9_.\/-]*$'
+secret_resolver_vault_key_pattern: '^[A-Za-z0-9][A-Za-z0-9_.-]*$'
