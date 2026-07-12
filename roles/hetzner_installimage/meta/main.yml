@@ -1,0 +1,25 @@
+---
+galaxy_info:
+  role_name: hetzner_installimage
+  namespace: lit
+  author: Lightning IT
+  description: Safely plan and run Hetzner Rescue installimage installations.
+  company: Lightning IT
+  license: MIT
+  min_ansible_version: "2.15"
+
+  platforms:
+    - name: Debian
+      versions:
+        - all
+    - name: Ubuntu
+      versions:
+        - all
+
+  galaxy_tags:
+    - baremetal
+    - hetzner
+    - install
+    - rescue
+
+dependencies: []

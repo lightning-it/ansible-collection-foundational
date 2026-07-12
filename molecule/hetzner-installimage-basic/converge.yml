@@ -1,0 +1,69 @@
+---
+- name: Converge safe Hetzner installimage plan
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    hetzner_installimage_molecule_root: /tmp/lit-hetzner-installimage-test
+    hetzner_installimage_action: plan
+    hetzner_installimage_binary: /tmp/lit-hetzner-installimage-test/installimage-stub
+    hetzner_installimage_functions_path: /tmp/lit-hetzner-installimage-test/functions.sh
+    hetzner_installimage_image: /tmp/lit-hetzner-installimage-test/image.tar.zst
+    hetzner_installimage_post_install_script_path: /tmp/lit-hetzner-installimage-test/post-install.sh
+    hetzner_installimage_lsblk_path: /tmp/lit-hetzner-installimage-test/lsblk-stub
+    hetzner_installimage_ip_path: /tmp/lit-hetzner-installimage-test/ip-stub
+    hetzner_installimage_firmware_efi_path: /tmp/lit-hetzner-installimage-test/no-efi
+    hetzner_installimage_installed_config_validation_path: >-
+      /tmp/lit-hetzner-installimage-test/installed/installimage.conf
+    hetzner_installimage_hostname: molecule.example.com
+    hetzner_installimage_expected_identity:
+      public_ipv4: 192.0.2.10
+      gateway_ipv4: 192.0.2.1
+      prefix_length: 24
+      primary_mac: "02:00:00:00:00:10"
+      boot_mode: bios
+      system_uuid: ""
+    hetzner_installimage_expected_disks:
+      - serial: MOLECULE-SYSTEM-001
+        model: Synthetic SSD
+        size_bytes: 256060514304
+        rotational: false
+        purpose: system
+      - serial: MOLECULE-PRESERVE-001
+        model: Synthetic HDD
+        size_bytes: 4000787030016
+        rotational: true
+        purpose: preserve
+    hetzner_installimage_layout:
+      force_gpt: true
+      bootloader: grub
+      ipv4_only: true
+      software_raid:
+        enabled: false
+        level: 1
+      partitions:
+        - mountpoint: /boot
+          filesystem: ext4
+          size: 2G
+          crypt: false
+        - mountpoint: lvm
+          filesystem: vg0
+          size: all
+          crypt: true
+      logical_volumes:
+        - volume_group: vg0
+          name: root
+          mountpoint: /
+          filesystem: ext4
+          size: 64G
+        - volume_group: vg0
+          name: swap
+          mountpoint: swap
+          filesystem: swap
+          size: 8G
+    hetzner_installimage_show_plan: false
+  pre_tasks:
+    - name: Ensure fixture state when Molecule skips prepare for unmanaged localhost
+      ansible.builtin.include_tasks: includes/prepare-fixtures.yml
+  roles:
+    - role: lit.foundational.hetzner_installimage

@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+case "$*" in
+  "-j -4 address show")
+    printf '%s\n' '[{"ifname":"eth-test","addr_info":[{"family":"inet","local":"192.0.2.10","prefixlen":24}]}]'
+    ;;
+  "-j -4 route show default")
+    printf '%s\n' '[{"dst":"default","gateway":"192.0.2.1","dev":"eth-test"}]'
+    ;;
+  "-j link show")
+    printf '%s\n' '[{"ifname":"eth-test","address":"02:00:00:00:00:10"}]'
+    ;;
+  *)
+    printf 'Unexpected ip-stub arguments: %s\n' "$*" >&2
+    exit 2
+    ;;
+esac

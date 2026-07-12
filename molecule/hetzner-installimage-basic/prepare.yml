@@ -1,0 +1,10 @@
+---
+- name: Prepare fixture-only Hetzner installimage test
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    hetzner_installimage_molecule_root: /tmp/lit-hetzner-installimage-test
+  tasks:
+    - name: Ensure fixture-only Hetzner installimage test state
+      ansible.builtin.include_tasks: includes/prepare-fixtures.yml
