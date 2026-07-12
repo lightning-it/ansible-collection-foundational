@@ -1,0 +1,94 @@
+---
+- name: Build cryptographic generation options
+  ansible.builtin.set_fact:
+    __secret_resolver_generation_options: >-
+      {{
+        {
+          'length': (
+            32
+            if (__secret_resolver_request.generation.type | default('password') == 'uuid')
+            else (__secret_resolver_request.generation.length | default(32) | int)
+          ),
+          'lower': (
+            __secret_resolver_request.generation.lower | default(true) | bool
+            if (__secret_resolver_request.generation.type | default('password') == 'password')
+            else (__secret_resolver_request.generation.type | default('password') == 'alphanumeric')
+          ),
+          'upper': (
+            __secret_resolver_request.generation.upper | default(true) | bool
+            if (__secret_resolver_request.generation.type | default('password') == 'password')
+            else (__secret_resolver_request.generation.type | default('password') == 'alphanumeric')
+          ),
+          'numbers': (
+            __secret_resolver_request.generation.numbers | default(true) | bool
+            if (__secret_resolver_request.generation.type | default('password') == 'password')
+            else (__secret_resolver_request.generation.type | default('password') == 'alphanumeric')
+          ),
+          'special': (
+            __secret_resolver_request.generation.special | default(true) | bool
+            if (__secret_resolver_request.generation.type | default('password') == 'password')
+            else false
+          ),
+          'min_lower': (__secret_resolver_request.generation.min_lower | default(0) | int),
+          'min_upper': (__secret_resolver_request.generation.min_upper | default(0) | int),
+          'min_numeric': (__secret_resolver_request.generation.min_numeric | default(0) | int),
+          'min_special': (__secret_resolver_request.generation.min_special | default(0) | int)
+        }
+        | combine(
+            {
+              'override_special': __secret_resolver_request.generation.special_characters
+            }
+            if (__secret_resolver_request.generation.special_characters is defined)
+            else {}
+          )
+        | combine(
+            {
+              'override_all': __secret_resolver_request.generation.characters
+            }
+            if (__secret_resolver_request.generation.characters is defined)
+            else
+            (
+              {'override_all': '0123456789abcdef'}
+              if (__secret_resolver_request.generation.type | default('password') in ['hex', 'uuid'])
+              else {}
+            )
+          )
+      }}
+  changed_when: false
+  no_log: true
+
+- name: Generate cryptographic random material
+  ansible.builtin.set_fact:
+    __secret_resolver_generated_raw: >-
+      {{
+        lookup(
+          'community.general.random_string',
+          **__secret_resolver_generation_options
+        )
+      }}
+  changed_when: true
+  no_log: true
+
+- name: Format generated value
+  ansible.builtin.set_fact:
+    __secret_resolver_attempt_value: >-
+      {{
+        (
+          __secret_resolver_generated_raw[0:8]
+          ~ '-'
+          ~ __secret_resolver_generated_raw[8:12]
+          ~ '-4'
+          ~ __secret_resolver_generated_raw[13:16]
+          ~ '-a'
+          ~ __secret_resolver_generated_raw[17:20]
+          ~ '-'
+          ~ __secret_resolver_generated_raw[20:32]
+        )
+        if (__secret_resolver_request.generation.type | default('password') == 'uuid')
+        else __secret_resolver_generated_raw
+      }}
+    __secret_resolver_attempt_found: true
+    __secret_resolver_attempt_generated: true
+    __secret_resolver_attempt_failure: null
+  changed_when: false
+  no_log: true

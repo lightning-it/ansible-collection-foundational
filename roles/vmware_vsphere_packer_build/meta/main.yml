@@ -6,7 +6,7 @@ galaxy_info:
   description: Build vSphere source images with Packer from inventory-driven values.
   company: Lightning IT
   license: MIT
-  min_ansible_version: "2.15"
+  min_ansible_version: "2.16"
   platforms:
     - name: EL
       versions:

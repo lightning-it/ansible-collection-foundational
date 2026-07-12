@@ -1,0 +1,39 @@
+---
+- name: Evaluate resolved value constraints without disclosure
+  ansible.builtin.set_fact:
+    __secret_resolver_value_validation_error: >-
+      {%- if __secret_resolver_value_to_validate is none -%}
+      null_not_allowed
+      {%- elif
+        (
+          __secret_resolver_value_to_validate is string
+          or __secret_resolver_value_to_validate is mapping
+          or __secret_resolver_value_to_validate is sequence
+        )
+        and (__secret_resolver_value_to_validate | length == 0)
+        and not (__secret_resolver_request.validation.allow_empty | default(false) | bool)
+      -%}
+      empty_not_allowed
+      {%- elif
+        __secret_resolver_request.validation.min_length is defined
+        and (__secret_resolver_value_to_validate | string | length)
+            < (__secret_resolver_request.validation.min_length | int)
+      -%}
+      minimum_length_not_met
+      {%- elif
+        __secret_resolver_request.validation.max_length is defined
+        and (__secret_resolver_value_to_validate | string | length)
+            > (__secret_resolver_request.validation.max_length | int)
+      -%}
+      maximum_length_exceeded
+      {%- elif
+        __secret_resolver_request.validation.pattern is defined
+        and (__secret_resolver_value_to_validate | string)
+            is not match('\\A(?:' ~ __secret_resolver_request.validation.pattern ~ ')\\Z')
+      -%}
+      pattern_not_matched
+      {%- else -%}
+      valid
+      {%- endif -%}
+  changed_when: false
+  no_log: true

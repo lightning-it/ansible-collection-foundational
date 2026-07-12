@@ -46,6 +46,13 @@ It provides generic building blocks and orchestration helpers for consistent, re
 
 ### Key roles
 
+- `lit.foundational.secret_resolver`
+  Resolves controller-side secret requests into provider-independent values:
+  - supports HashiCorp Vault/HCP Vault, Ansible Vault, 1Password, environment,
+    runtime, and generated providers,
+  - keeps fallback explicit and disabled by default,
+  - supports Vault KV v2 write-back and controlled bootstrap migration.
+
 - `lit.foundational.terragrunt`
   Terragrunt wrapper that:
   - prepares a per-cluster working directory on the control host,
@@ -84,6 +91,26 @@ Add this to your collection `galaxy.yml`:
 dependencies:
   community.general: ">=11.4.9,<12.0.0"
 ```
+
+### Secret resolver
+
+The secret resolver uses `community.general` for cryptographic generation and
+optional 1Password lookups, and `community.hashi_vault` for HashiCorp
+Vault/HCP Vault KV version 2 access. These collection dependencies are declared
+by this collection:
+
+```yaml
+dependencies:
+  community.general: ">=11.4.9,<12.0.0"
+  community.hashi_vault: ">=6.2.1,<7.0.0"
+```
+
+Vault access also requires the `hvac` Python package in the controller or
+execution-environment interpreter. 1Password access requires an authenticated
+`op` 2.x CLI on the controller PATH. Neither dependency is installed on
+managed hosts, and the role does not install them automatically. Runtime,
+environment, and already-decrypted Ansible Vault resolution require no
+external provider client.
 
 ---
 

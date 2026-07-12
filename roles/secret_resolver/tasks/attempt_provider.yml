@@ -1,0 +1,117 @@
+---
+- name: Decide whether the provider attempt is eligible
+  ansible.builtin.set_fact:
+    __secret_resolver_attempt_should_run: >-
+      {{
+        not __secret_resolver_request_resolved
+        and
+        (
+          (__secret_resolver_request_attempt_count | int == 0)
+          or
+          (
+            __secret_resolver_attempt_provider == 'generated'
+            and (__secret_resolver_request.generation.enabled | default(false) | bool)
+            and (__secret_resolver_request_last_failure in secret_resolver_absence_categories)
+          )
+          or
+          (
+            __secret_resolver_request_allow_fallback
+            and (__secret_resolver_request_last_failure in __secret_resolver_request_fallback_on)
+          )
+        )
+      }}
+  changed_when: false
+  no_log: true
+
+- name: Initialize provider attempt state
+  ansible.builtin.set_fact:
+    __secret_resolver_attempt_found: false
+    __secret_resolver_attempt_value: null
+    __secret_resolver_attempt_generated: false
+    __secret_resolver_attempt_failure: invalid_response
+  changed_when: false
+  no_log: true
+  when: __secret_resolver_attempt_should_run
+
+- name: Resolve current provider
+  ansible.builtin.include_tasks: "resolve_{{ __secret_resolver_attempt_provider }}.yml"
+  no_log: true
+  when: __secret_resolver_attempt_should_run
+
+- name: Validate provider candidate
+  ansible.builtin.include_tasks: validate_resolved_value.yml
+  vars:
+    __secret_resolver_value_to_validate: "{{ __secret_resolver_attempt_value }}"
+  when:
+    - __secret_resolver_attempt_should_run
+    - __secret_resolver_attempt_found
+  no_log: true
+
+- name: Convert an invalid candidate to a categorized provider failure
+  ansible.builtin.set_fact:
+    __secret_resolver_attempt_found: false
+    __secret_resolver_attempt_failure: validation_failed
+  changed_when: false
+  no_log: true
+  when:
+    - __secret_resolver_attempt_should_run
+    - __secret_resolver_attempt_found
+    - __secret_resolver_value_validation_error != 'valid'
+
+- name: Accept a valid provider candidate
+  ansible.builtin.set_fact:
+    __secret_resolver_request_resolved: true
+    __secret_resolver_request_value: "{{ __secret_resolver_attempt_value }}"
+    __secret_resolver_request_provider: "{{ __secret_resolver_attempt_provider }}"
+    __secret_resolver_request_generated: "{{ __secret_resolver_attempt_generated | bool }}"
+    __secret_resolver_request_fallback_used: >-
+      {{
+        __secret_resolver_request_attempt_count | int > 0
+        and __secret_resolver_attempt_provider != 'generated'
+      }}
+    __secret_resolver_request_last_failure: null
+  changed_when: false
+  no_log: true
+  when:
+    - __secret_resolver_attempt_should_run
+    - __secret_resolver_attempt_found
+
+- name: Record provider attempt audit state
+  ansible.builtin.set_fact:
+    __secret_resolver_request_attempt_count: "{{ __secret_resolver_request_attempt_count | int + 1 }}"
+    __secret_resolver_request_attempted_providers: >-
+      {{ __secret_resolver_request_attempted_providers + [__secret_resolver_attempt_provider] }}
+    __secret_resolver_request_attempt_failures: >-
+      {{
+        __secret_resolver_request_attempt_failures
+        +
+        (
+          [
+            {
+              'provider': __secret_resolver_attempt_provider,
+              'category': __secret_resolver_attempt_failure
+            }
+          ]
+          if not __secret_resolver_attempt_found
+          else []
+        )
+      }}
+    __secret_resolver_request_fallback_attempted: >-
+      {{
+        __secret_resolver_request_fallback_attempted
+        or
+        (
+          __secret_resolver_request_attempt_count | int > 0
+          and __secret_resolver_attempt_provider != 'generated'
+        )
+      }}
+    __secret_resolver_request_last_provider: "{{ __secret_resolver_attempt_provider }}"
+    __secret_resolver_request_last_failure: >-
+      {{
+        __secret_resolver_request_last_failure
+        if __secret_resolver_attempt_found
+        else __secret_resolver_attempt_failure
+      }}
+  changed_when: false
+  no_log: true
+  when: __secret_resolver_attempt_should_run

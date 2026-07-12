@@ -1,0 +1,407 @@
+---
+argument_specs:
+  main:
+    short_description: Resolve controller-side secrets into a provider-independent dictionary.
+    description:
+      - Resolves explicit secret requests on the Ansible controller or execution environment.
+      - Publishes secret values separately from non-sensitive resolution metadata.
+    options:
+      lit_secret_resolver_provider:
+        description: Primary provider used when a request does not define its own provider order.
+        type: str
+        choices:
+          - hashicorp_vault
+          - ansible_vault
+          - onepassword
+          - environment
+          - runtime
+          - generated
+        default: runtime
+      lit_secret_resolver_provider_order:
+        description: Ordered provider chain; fallback still requires explicit enablement.
+        type: list
+        elements: str
+        default: []
+      lit_secret_resolver_allow_fallback:
+        description: Whether an eligible primary-provider failure may continue to the next provider.
+        type: bool
+        default: false
+      lit_secret_resolver_fallback_on:
+        description: Explicit failure categories that permit fallback when fallback is enabled.
+        type: list
+        elements: str
+        choices:
+          - provider_unavailable
+          - authentication_failed
+          - authorization_failed
+          - secret_not_found
+          - secret_key_missing
+          - dependency_missing
+          - invalid_response
+          - tls_failed
+          - validation_failed
+        default:
+          - secret_not_found
+          - secret_key_missing
+      lit_secret_resolver_phase:
+        description: Explicit lifecycle phase; migration is restricted to bootstrap.
+        type: str
+        choices:
+          - bootstrap
+          - operational
+        default: operational
+      lit_secret_resolver_vault_addr:
+        description: HashiCorp Vault or HCP Vault address; VAULT_ADDR is used when omitted.
+        type: str
+        required: false
+      lit_secret_resolver_vault_namespace:
+        description: Optional Vault Enterprise or HCP Vault namespace; VAULT_NAMESPACE is used when omitted.
+        type: str
+        required: false
+      lit_secret_resolver_vault_mount_point:
+        description: Default KV version 2 engine mount point.
+        type: str
+        default: secret
+      lit_secret_resolver_vault_auth_method:
+        description: Authentication method supported by community.hashi_vault KV modules.
+        type: str
+        choices:
+          - token
+          - approle
+          - jwt
+        default: token
+      lit_secret_resolver_vault_auth_mount_point:
+        description: Optional non-default authentication-method mount point.
+        type: str
+        required: false
+      lit_secret_resolver_vault_validate_certs:
+        description: Whether Vault TLS certificates must be validated.
+        type: bool
+        default: true
+      lit_secret_resolver_vault_ca_cert:
+        description: Optional controller-side CA certificate path.
+        type: str
+        required: false
+      lit_secret_resolver_vault_timeout:
+        description: Optional Vault connection timeout in seconds; must be at least 1.
+        type: int
+        required: false
+      lit_secret_resolver_vault_retries:
+        description: Optional number of Vault connection retries; must be non-negative.
+        type: int
+        required: false
+      lit_secret_resolver_vault_token_validate:
+        description: Whether token authentication performs a lookup-self validation.
+        type: bool
+        default: true
+      lit_secret_resolver_vault_token:
+        description: Optional securely injected Vault token; provider environment mechanisms are preferred.
+        type: str
+        required: false
+        no_log: true
+      lit_secret_resolver_vault_role_id:
+        description: Optional securely injected AppRole or JWT role identifier.
+        type: str
+        required: false
+        no_log: true
+      lit_secret_resolver_vault_secret_id:
+        description: Optional securely injected AppRole Secret ID.
+        type: str
+        required: false
+        no_log: true
+      lit_secret_resolver_vault_jwt:
+        description: Optional securely injected JWT assertion.
+        type: str
+        required: false
+        no_log: true
+      lit_secret_resolver_requests:
+        description: Explicit normalized secret requests.
+        type: list
+        elements: dict
+        default: []
+        options:
+          name:
+            description: Normalized key published in lit_secret_resolver_result.
+            type: str
+            required: true
+          required:
+            description: Whether an unresolved absence must fail the role.
+            type: bool
+            default: true
+          description:
+            description: Human-readable non-secret purpose of the request.
+            type: str
+            required: false
+          sensitive:
+            description: Marks the request as sensitive; values are protected regardless of this setting.
+            type: bool
+            default: true
+          tags:
+            description: Optional non-secret request classification tags.
+            type: list
+            elements: str
+            default: []
+          provider_order:
+            description: Optional request-specific ordered provider chain; ignored by explicit migration.
+            type: list
+            elements: str
+            required: false
+          allow_fallback:
+            description: Optional request-specific fallback override; ignored by explicit migration.
+            type: bool
+            required: false
+          fallback_on:
+            description: Optional request-specific eligible fallback categories; ignored by explicit migration.
+            type: list
+            elements: str
+            choices:
+              - provider_unavailable
+              - authentication_failed
+              - authorization_failed
+              - secret_not_found
+              - secret_key_missing
+              - dependency_missing
+              - invalid_response
+              - tls_failed
+              - validation_failed
+            required: false
+          default:
+            description: Optional secret default used only after an ordinary absence.
+            type: raw
+            required: false
+            no_log: true
+          validation:
+            description: Constraints applied to every resolved, generated, or default value.
+            type: dict
+            required: false
+            options:
+              allow_empty:
+                description: Whether an explicitly defined empty string, mapping, or sequence is valid.
+                type: bool
+                default: false
+              min_length:
+                description: Optional minimum string representation length.
+                type: int
+                required: false
+              max_length:
+                description: Optional maximum string representation length.
+                type: int
+                required: false
+              pattern:
+                description: Optional regular expression that the complete string value must match.
+                type: str
+                required: false
+          hashicorp_vault:
+            description: HashiCorp Vault or HCP Vault KV version 2 location.
+            type: dict
+            required: false
+            options:
+              path:
+                description: KV version 2 path relative to the engine mount point.
+                type: str
+                required: true
+              key:
+                description: Key within the KV version 2 secret document.
+                type: str
+                required: true
+              mount_point:
+                description: Optional request-specific KV version 2 engine mount point.
+                type: str
+                required: false
+          ansible_vault:
+            description: Already-decrypted Ansible variable location.
+            type: dict
+            required: false
+            options:
+              variable:
+                description: Exact variable name to read without expression evaluation.
+                type: str
+                required: true
+          onepassword:
+            description: 1Password item field location accessed on the controller.
+            type: dict
+            required: false
+            options:
+              item:
+                description: Item name or item ID.
+                type: str
+                required: true
+              field:
+                description: Field ID or label.
+                type: str
+                required: true
+              vault:
+                description: Optional vault name or vault ID.
+                type: str
+                required: false
+              account:
+                description: Optional account ID.
+                type: str
+                required: false
+              section:
+                description: Optional field section label.
+                type: str
+                required: false
+          environment:
+            description: Controller-side environment variable location.
+            type: dict
+            required: false
+            options:
+              variable:
+                description: Exact controller environment variable name.
+                type: str
+                required: true
+          runtime:
+            description: Already-present Ansible runtime variable location.
+            type: dict
+            required: false
+            options:
+              variable:
+                description: Exact Ansible variable name to read without expression evaluation.
+                type: str
+                required: true
+          generation:
+            description: Opt-in cryptographic secret generation policy.
+            type: dict
+            required: false
+            options:
+              enabled:
+                description: Whether generation is permitted after configured retrieval attempts.
+                type: bool
+                default: false
+              type:
+                description: Generated secret format.
+                type: str
+                choices:
+                  - password
+                  - alphanumeric
+                  - hex
+                  - uuid
+                default: password
+              length:
+                description: Output length; UUID always uses the standard 36-character representation.
+                type: int
+                default: 32
+              lower:
+                description: Whether password generation may contain lowercase letters.
+                type: bool
+                default: true
+              upper:
+                description: Whether password generation may contain uppercase letters.
+                type: bool
+                default: true
+              numbers:
+                description: Whether password generation may contain digits.
+                type: bool
+                default: true
+              special:
+                description: Whether password generation may contain special characters.
+                type: bool
+                default: true
+              min_lower:
+                description: Minimum lowercase characters in generated passwords.
+                type: int
+                default: 0
+              min_upper:
+                description: Minimum uppercase characters in generated passwords.
+                type: int
+                default: 0
+              min_numeric:
+                description: Minimum digits in generated passwords.
+                type: int
+                default: 0
+              min_special:
+                description: Minimum special characters in generated passwords.
+                type: int
+                default: 0
+              special_characters:
+                description: Optional allowed special-character set.
+                type: str
+                required: false
+              characters:
+                description: Optional complete character set overriding password character classes.
+                type: str
+                required: false
+              persistence_required:
+                description: Whether generation must be coupled to successful persistent write-back.
+                type: bool
+                default: false
+          write_back:
+            description: Optional generated-value persistence policy.
+            type: dict
+            required: false
+            options:
+              enabled:
+                description: Whether a generated value is written to a persistent provider.
+                type: bool
+                default: false
+              provider:
+                description: Persistent target provider.
+                type: str
+                choices:
+                  - hashicorp_vault
+                default: hashicorp_vault
+              overwrite:
+                description: Whether a different existing target key may be replaced.
+                type: bool
+                default: false
+              hashicorp_vault:
+                description: Optional explicit write target, which must exactly match the request read location.
+                type: dict
+                required: false
+                options:
+                  path:
+                    description: Target KV version 2 path.
+                    type: str
+                    required: true
+                  key:
+                    description: Target key within the KV version 2 document.
+                    type: str
+                    required: true
+                  mount_point:
+                    description: Optional target KV version 2 engine mount point.
+                    type: str
+                    required: false
+          migration:
+            description: Explicit source-to-target copy policy that never deletes or rotates the source.
+            type: dict
+            required: false
+            options:
+              enabled:
+                description: Whether this request performs controlled migration.
+                type: bool
+                default: false
+              source_provider:
+                description: Provider from which the migration value must be resolved.
+                type: str
+                choices:
+                  - ansible_vault
+                  - onepassword
+                  - environment
+                  - runtime
+                required: false
+              target_provider:
+                description: Persistent migration target provider.
+                type: str
+                required: false
+              overwrite:
+                description: Whether a different existing target key may be replaced.
+                type: bool
+                default: false
+              hashicorp_vault:
+                description: Optional migration target overriding the request read location.
+                type: dict
+                required: false
+                options:
+                  path:
+                    description: Target KV version 2 path.
+                    type: str
+                    required: true
+                  key:
+                    description: Target key within the KV version 2 document.
+                    type: str
+                    required: true
+                  mount_point:
+                    description: Optional target KV version 2 engine mount point.
+                    type: str
+                    required: false

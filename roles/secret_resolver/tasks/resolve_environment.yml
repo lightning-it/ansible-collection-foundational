@@ -1,0 +1,22 @@
+---
+- name: Read the controller environment without conflating undefined and empty
+  ansible.builtin.set_fact:
+    __secret_resolver_environment_candidate: >-
+      {{
+        lookup(
+          'ansible.builtin.env',
+          __secret_resolver_request.environment.variable,
+          default=none
+        )
+      }}
+  changed_when: false
+  no_log: true
+
+- name: Normalize the environment provider result
+  ansible.builtin.set_fact:
+    __secret_resolver_attempt_found: >-
+      {{ __secret_resolver_environment_candidate is not none }}
+    __secret_resolver_attempt_value: "{{ __secret_resolver_environment_candidate }}"
+    __secret_resolver_attempt_failure: secret_not_found
+  changed_when: false
+  no_log: true
