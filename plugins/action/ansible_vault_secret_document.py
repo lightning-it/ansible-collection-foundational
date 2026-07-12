@@ -100,6 +100,7 @@ _EXPECTED_ARGS = frozenset(
 _MAX_CIPHERTEXT_BYTES = 1024 * 1024
 _RACE_RETRIES = 100
 _RACE_RETRY_SECONDS = 0.01
+_TEMP_CREATE_RETRIES = 100
 
 
 class _UniqueKeySafeLoader(yaml.SafeLoader):
@@ -135,6 +136,10 @@ _UniqueKeySafeLoader.add_constructor(
     yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
     _construct_unique_mapping,
 )
+
+
+class _TransientPublicationError(AnsibleActionFail):
+    """An atomic hard-link publication is not fully settled yet."""
 
 
 def _fail(message):
@@ -205,13 +210,20 @@ class _VaultSecretDocumentStore:
         secret_length=64,
         check_mode=False,
     ):
-        ciphertext = self._read_existing(path)
+        validation_args = {
+            "subject": subject,
+            "schema_version": schema_version,
+            "secret_field": secret_field,
+        }
+        try:
+            ciphertext = self._read_existing(path)
+        except _TransientPublicationError:
+            digest = self._load_race_winner(path, **validation_args)
+            return self._result(path, created=False, exists=True, digest=digest)
         if ciphertext is not None:
             digest = self._validate_ciphertext(
                 ciphertext,
-                subject=subject,
-                schema_version=schema_version,
-                secret_field=secret_field,
+                **validation_args,
             )
             return self._result(path, created=False, exists=True, digest=digest)
 
@@ -253,11 +265,6 @@ class _VaultSecretDocumentStore:
             plaintext = None
             encrypted = None
 
-        validation_args = {
-            "subject": subject,
-            "schema_version": schema_version,
-            "secret_field": secret_field,
-        }
         if created:
             digest = self._load_validated(path, **validation_args)
         else:
@@ -418,7 +425,9 @@ class _VaultSecretDocumentStore:
         if not mode & stat.S_IRUSR or mode & 0o077 or mode & 0o7000:
             _fail("The existing document has insecure permissions.")
         if file_stat.st_nlink != 1:
-            _fail("The existing document has an unsafe hard-link count.")
+            raise _TransientPublicationError(
+                "The existing document has an unsafe hard-link count."
+            )
         if file_stat.st_size > _MAX_CIPHERTEXT_BYTES:
             _fail("The existing encrypted document is unexpectedly large.")
 
@@ -482,66 +491,117 @@ class _VaultSecretDocumentStore:
     def _exclusive_create(self, path, ciphertext):
         parent_fd, name = self._open_parent(path, create=True)
         file_fd = None
-        created_stat = None
+        temp_name = None
+        temp_stat = None
         try:
-            flags = (
-                os.O_WRONLY
-                | os.O_CREAT
-                | os.O_EXCL
-                | os.O_NOFOLLOW
-                | getattr(os, "O_CLOEXEC", 0)
-            )
-            try:
-                file_fd = os.open(name, flags, 0o600, dir_fd=parent_fd)
-            except FileExistsError:
-                return False
-            except OSError as exc:
-                raise AnsibleActionFail(
-                    "The encrypted document cannot be created securely."
-                ) from exc
-
-            created_stat = os.fstat(file_fd)
+            temp_name, file_fd = self._open_exclusive_temp(parent_fd)
+            temp_stat = os.fstat(file_fd)
             os.fchmod(file_fd, 0o600)
-            view = memoryview(ciphertext)
-            try:
-                while view:
-                    written = os.write(file_fd, view)
-                    if written <= 0:
-                        raise OSError("short write while persisting ciphertext")
-                    view = view[written:]
-            finally:
-                view.release()
+            self._write_ciphertext(file_fd, ciphertext)
             os.fsync(file_fd)
-            if stat.S_IMODE(os.fstat(file_fd).st_mode) != 0o600:
-                _fail("The new encrypted document does not have mode 0600.")
-            os.close(file_fd)
-            file_fd = None
+            final_temp_stat = os.fstat(file_fd)
+            if stat.S_IMODE(final_temp_stat.st_mode) != 0o600:
+                _fail("The staged encrypted document does not have mode 0600.")
+            if final_temp_stat.st_size != len(ciphertext):
+                _fail("The staged encrypted document was not written completely.")
+            named_temp_stat = os.stat(
+                temp_name,
+                dir_fd=parent_fd,
+                follow_symlinks=False,
+            )
+            if (temp_stat.st_dev, temp_stat.st_ino) != (
+                named_temp_stat.st_dev,
+                named_temp_stat.st_ino,
+            ):
+                _fail("The staged encrypted document changed before publication.")
+
+            try:
+                self._link_no_replace(parent_fd, temp_name, name)
+                created = True
+            except FileExistsError:
+                created = False
+
+            self._unlink_owned_temp(parent_fd, temp_name, temp_stat)
+            temp_name = None
             os.fsync(parent_fd)
-            return True
+            return created
         except AnsibleActionFail:
-            self._remove_failed_create(parent_fd, name, created_stat)
             raise
         except (OSError, TypeError, ValueError) as exc:
-            self._remove_failed_create(parent_fd, name, created_stat)
             raise AnsibleActionFail(
                 "The encrypted document could not be persisted atomically."
             ) from exc
         finally:
             if file_fd is not None:
                 os.close(file_fd)
+            if temp_name is not None:
+                self._remove_owned_temp(parent_fd, temp_name, temp_stat)
             os.close(parent_fd)
 
     @staticmethod
-    def _remove_failed_create(parent_fd, name, created_stat):
-        if created_stat is None:
+    def _open_exclusive_temp(parent_fd):
+        flags = (
+            os.O_WRONLY
+            | os.O_CREAT
+            | os.O_EXCL
+            | os.O_NOFOLLOW
+            | getattr(os, "O_CLOEXEC", 0)
+        )
+        for unused in range(_TEMP_CREATE_RETRIES):
+            temp_name = ".ansible-vault-secret-{0}.tmp".format(secrets.token_hex(16))
+            try:
+                return temp_name, os.open(temp_name, flags, 0o600, dir_fd=parent_fd)
+            except FileExistsError:
+                continue
+            except OSError as exc:
+                raise AnsibleActionFail(
+                    "A staged encrypted document cannot be created securely."
+                ) from exc
+        _fail("A unique staged encrypted document name could not be allocated.")
+
+    @staticmethod
+    def _write_ciphertext(file_fd, ciphertext):
+        view = memoryview(ciphertext)
+        try:
+            while view:
+                written = os.write(file_fd, view)
+                if written <= 0:
+                    raise OSError("short write while persisting ciphertext")
+                view = view[written:]
+        finally:
+            view.release()
+
+    @staticmethod
+    def _link_no_replace(parent_fd, temp_name, target_name):
+        os.link(
+            temp_name,
+            target_name,
+            src_dir_fd=parent_fd,
+            dst_dir_fd=parent_fd,
+            follow_symlinks=False,
+        )
+
+    @staticmethod
+    def _unlink_owned_temp(parent_fd, temp_name, temp_stat):
+        current_stat = os.stat(temp_name, dir_fd=parent_fd, follow_symlinks=False)
+        if (temp_stat.st_dev, temp_stat.st_ino) != (
+            current_stat.st_dev,
+            current_stat.st_ino,
+        ):
+            _fail("The staged encrypted document changed during publication.")
+        os.unlink(temp_name, dir_fd=parent_fd)
+
+    @staticmethod
+    def _remove_owned_temp(parent_fd, temp_name, temp_stat):
+        if temp_stat is None:
             return
         try:
-            current_stat = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
-            if (created_stat.st_dev, created_stat.st_ino) == (
+            current_stat = os.stat(temp_name, dir_fd=parent_fd, follow_symlinks=False)
+            if (temp_stat.st_dev, temp_stat.st_ino) == (
                 current_stat.st_dev,
                 current_stat.st_ino,
             ):
-                os.unlink(name, dir_fd=parent_fd)
+                os.unlink(temp_name, dir_fd=parent_fd)
         except FileNotFoundError:
             pass
         except OSError:

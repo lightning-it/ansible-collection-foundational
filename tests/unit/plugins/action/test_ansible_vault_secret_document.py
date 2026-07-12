@@ -1,5 +1,7 @@
 import concurrent.futures
+import os
 import stat
+import threading
 
 import pytest
 import yaml
@@ -184,6 +186,110 @@ def test_concurrent_creation_has_one_winner_and_one_ciphertext(tmp_path, vault):
     assert all(result["exists"] for result in results)
     assert len({result["ciphertext_sha256"] for result in results}) == 1
     assert _store(vault).ensure(str(path), SUBJECT)["changed"] is False
+
+
+def test_initial_reader_never_observes_partially_written_staging_file(tmp_path, vault):
+    path = tmp_path / "private" / "host.vault.yml"
+    partial_write_reached = threading.Event()
+    continue_write = threading.Event()
+
+    class PausedStagingStore(plugin._VaultSecretDocumentStore):
+        @staticmethod
+        def _write_ciphertext(file_fd, ciphertext):
+            midpoint = len(ciphertext) // 2
+            plugin._VaultSecretDocumentStore._write_ciphertext(
+                file_fd,
+                ciphertext[:midpoint],
+            )
+            partial_write_reached.set()
+            assert continue_write.wait(timeout=5)
+            plugin._VaultSecretDocumentStore._write_ciphertext(
+                file_fd,
+                ciphertext[midpoint:],
+            )
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        paused_future = executor.submit(
+            PausedStagingStore(vault).ensure,
+            str(path),
+            SUBJECT,
+        )
+        assert partial_write_reached.wait(timeout=5)
+        reader_future = executor.submit(_store(vault).ensure, str(path), SUBJECT)
+        reader_result = reader_future.result(timeout=5)
+        continue_write.set()
+        paused_result = paused_future.result(timeout=5)
+
+    assert sum(result["created"] for result in (reader_result, paused_result)) == 1
+    assert sum(result["changed"] for result in (reader_result, paused_result)) == 1
+    assert reader_result["ciphertext_sha256"] == paused_result["ciphertext_sha256"]
+    assert sorted(item.name for item in path.parent.iterdir()) == [path.name]
+
+
+def test_initial_reader_retries_brief_hard_link_publication_window(tmp_path, vault):
+    path = tmp_path / "private" / "host.vault.yml"
+    target_linked = threading.Event()
+    unlink_staging_file = threading.Event()
+
+    class PausedUnlinkStore(plugin._VaultSecretDocumentStore):
+        @staticmethod
+        def _unlink_owned_temp(parent_fd, temp_name, temp_stat):
+            target_linked.set()
+            assert unlink_staging_file.wait(timeout=5)
+            plugin._VaultSecretDocumentStore._unlink_owned_temp(
+                parent_fd,
+                temp_name,
+                temp_stat,
+            )
+
+    transient_link_count_seen = threading.Event()
+
+    class PublicationWindowReader(plugin._VaultSecretDocumentStore):
+        def _read_existing(self, document_path):
+            try:
+                return super()._read_existing(document_path)
+            except plugin._TransientPublicationError:
+                transient_link_count_seen.set()
+                raise
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        publisher_future = executor.submit(
+            PausedUnlinkStore(vault).ensure,
+            str(path),
+            SUBJECT,
+        )
+        assert target_linked.wait(timeout=5)
+        reader_future = executor.submit(
+            PublicationWindowReader(vault).ensure,
+            str(path),
+            SUBJECT,
+        )
+        assert transient_link_count_seen.wait(timeout=5)
+        unlink_staging_file.set()
+        publisher_result = publisher_future.result(timeout=5)
+        reader_result = reader_future.result(timeout=5)
+
+    assert publisher_result["created"] is True
+    assert reader_result["created"] is False
+    assert reader_result["changed"] is False
+    assert publisher_result["ciphertext_sha256"] == reader_result["ciphertext_sha256"]
+    assert sorted(item.name for item in path.parent.iterdir()) == [path.name]
+
+
+def test_concurrent_creation_stress_leaves_no_staging_files(tmp_path, vault):
+    for iteration in range(8):
+        path = tmp_path / "stress-{0}".format(iteration) / "host.vault.yml"
+
+        def create_document(unused_index):
+            return _store(vault).ensure(str(path), SUBJECT)
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=12) as executor:
+            results = list(executor.map(create_document, range(24)))
+
+        assert sum(result["created"] for result in results) == 1
+        assert sum(result["changed"] for result in results) == 1
+        assert len({result["ciphertext_sha256"] for result in results}) == 1
+        assert os.listdir(path.parent) == [path.name]
 
 
 def test_success_result_never_contains_secret_or_ciphertext(tmp_path, vault):
