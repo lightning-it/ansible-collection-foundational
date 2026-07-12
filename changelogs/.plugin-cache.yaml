@@ -5,6 +5,10 @@ objects:
       description: Ensure VLAN filtering and VLAN membership on a linux bridge.
       name: bridge_vlan_membership
       version_added: null
+    hetzner_installimage:
+      description: Plan or execute a guarded Hetzner installimage installation.
+      name: hetzner_installimage
+      version_added: null
     oob_redfish_control:
       description: Perform Redfish actions (power/boot/virtual media).
       name: oob_redfish_control
@@ -12,6 +16,10 @@ objects:
     oob_redfish_inventory:
       description: Discover Redfish IDs and basic inventory.
       name: oob_redfish_inventory
+      version_added: null
+    secret_resolver:
+      description: Resolve controller-side secrets into a provider-independent dictionary.
+      name: secret_resolver
       version_added: null
 plugins:
   become: {}
@@ -23,10 +31,20 @@ plugins:
   httpapi: {}
   inventory: {}
   lookup: {}
-  module: {}
+  module:
+    ansible_vault_document:
+      description: Persist an exact immutable mapping as Ansible Vault ciphertext
+      name: ansible_vault_document
+      namespace: ''
+      version_added: 1.27.0
+    ansible_vault_secret_document:
+      description: Create an immutable local Ansible Vault secret document
+      name: ansible_vault_secret_document
+      namespace: ''
+      version_added: 1.27.0
   netconf: {}
   shell: {}
   strategy: {}
   test: {}
   vars: {}
-version: 1.26.0
+version: 1.27.0
