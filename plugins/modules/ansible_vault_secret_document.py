@@ -1,5 +1,5 @@
 # Copyright: (c) 2026, Lightning IT
-# SPDX-License-Identifier: MIT
+# GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 """Documentation stub for the controller-local action plugin."""
 
@@ -60,7 +60,7 @@ notes:
   - This documentation stub has no remote implementation; all behavior is provided by the matching action plugin.
   - Check mode never generates or encrypts a secret for an absent document.
 author:
-  - Lightning IT
+  - Lightning IT (@lightning-it)
 """
 
 EXAMPLES = r"""

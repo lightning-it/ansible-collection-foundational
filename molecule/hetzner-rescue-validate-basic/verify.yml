@@ -1,0 +1,189 @@
+---
+- name: Verify Rescue extended-SMART validation-only safety
+  hosts: all
+  gather_facts: false
+  vars_files:
+    - resources
+  tasks:
+    - name: Validate extended SMART without authorizing execution
+      ansible.builtin.include_role:
+        name: lit.foundational.hetzner_rescue_validate
+        tasks_from: extended_smart
+
+    - name: Require an observation-only extended SMART plan
+      ansible.builtin.assert:
+        that:
+          - hetzner_rescue_validate_result.validated | bool
+          - hetzner_rescue_validate_result.validate_only | bool
+          - hetzner_rescue_validate_result.extended_smart | bool
+          - not (hetzner_rescue_validate_result.changed | bool)
+        quiet: true
+      changed_when: false
+
+    - name: Reject an unsupported controller DNS record type through the entrypoint schema
+      block:
+        - name: Submit an unsupported controller DNS record type
+          ansible.builtin.include_role:
+            name: lit.foundational.hetzner_rescue_validate
+            tasks_from: controller_preflight
+          vars:
+            hetzner_rescue_validate_controller_dns_records:
+              - name: rescue.example.com
+                type: AAAA
+                value: 2001:db8::10
+
+        - name: Fail when the unsupported DNS record type passed validation
+          ansible.builtin.fail:
+            msg: An unsupported DNS record type unexpectedly passed entrypoint validation.
+
+      rescue:
+        - name: Require controller preflight argument-spec rejection
+          ansible.builtin.assert:
+            that:
+              - ansible_failed_task.name is search("arg spec 'controller_preflight'")
+            quiet: true
+
+    - name: Reject duplicate standalone data-plane peers before probing
+      block:
+        - name: Submit duplicate standalone data-plane peers
+          ansible.builtin.include_role:
+            name: lit.foundational.hetzner_rescue_validate
+            tasks_from: data_plane
+          vars:
+            hetzner_rescue_validate_data_plane:
+              enabled: true
+              parent_interface: enp1s0
+              vlan_interface: rescue900
+              vlan_id: 900
+              mtu: 1400
+              address: 192.0.2.10
+              prefix_length: 24
+              gateway: 192.0.2.1
+              peer_ipv4_addresses:
+                - 192.0.2.11
+                - 192.0.2.11
+
+        - name: Fail when duplicate peers passed data-plane validation
+          ansible.builtin.fail:
+            msg: Duplicate standalone data-plane peers unexpectedly passed validation.
+
+      rescue:
+        - name: Require standalone data-plane precheck rejection
+          ansible.builtin.assert:
+            that:
+              - ansible_failed_task.name == 'Require a complete standalone Rescue data-plane declaration'
+            quiet: true
+
+    - name: Build a partial fleet inventory fixture
+      ansible.builtin.set_fact:
+        hetzner_rescue_validate_molecule_partial_inventory_contract: >-
+          {{
+            hetzner_rescue_validate_inventory_contract
+            | combine({'selected_hosts': ['localhost']}, recursive=true)
+          }}
+        cacheable: false
+      changed_when: false
+      no_log: true
+
+    - name: Reject a partial fleet inventory contract
+      block:
+        - name: Submit a partial fleet selection
+          ansible.builtin.include_role:
+            name: lit.foundational.hetzner_rescue_validate
+            tasks_from: inventory_contract
+          vars:
+            hetzner_rescue_validate_inventory_contract: >-
+              {{ hetzner_rescue_validate_molecule_partial_inventory_contract }}
+
+        - name: Fail when a partial fleet passed inventory validation
+          ansible.builtin.fail:
+            msg: A partial fleet unexpectedly passed inventory-contract validation.
+
+      rescue:
+        - name: Require inventory fleet-contract rejection
+          ansible.builtin.assert:
+            that:
+              - >-
+                ansible_failed_task.name
+                == 'Validate inventory fleet identity key and service-host contracts'
+            quiet: true
+
+    - name: Snapshot the unsafe controller trust parent
+      ansible.builtin.stat:
+        path: /etc
+        follow: false
+        get_attributes: false
+        get_checksum: false
+        get_mime: false
+      register: hetzner_rescue_validate_molecule_unsafe_parent_before
+      changed_when: false
+
+    - name: Snapshot the unsafe controller trust file
+      ansible.builtin.stat:
+        path: /etc/passwd
+        follow: false
+        get_attributes: false
+        get_checksum: true
+        checksum_algorithm: sha256
+        get_mime: false
+      register: hetzner_rescue_validate_molecule_unsafe_file_before
+      changed_when: false
+
+    - name: Reject a non-private controller trust parent before keyscan
+      block:
+        - name: Submit a system file as the known-hosts destination
+          ansible.builtin.include_role:
+            name: lit.foundational.hetzner_rescue_validate
+            tasks_from: controller_trust
+          vars:
+            hetzner_rescue_validate_known_hosts_path: /etc/passwd
+            hetzner_rescue_validate_public_ipv4: 192.0.2.10
+            hetzner_rescue_validate_ssh_ed25519_sha256: >-
+              SHA256:0123456789012345678901234567890123456789012
+
+        - name: Fail when the unsafe trust parent passed validation
+          ansible.builtin.fail:
+            msg: A non-private controller trust parent unexpectedly passed validation.
+
+      rescue:
+        - name: Require canonical known-hosts directory rejection
+          ansible.builtin.assert:
+            that:
+              - ansible_failed_task.name == 'Require a canonical owner-only known-hosts directory'
+            quiet: true
+
+    - name: Resnapshot the unsafe controller trust parent
+      ansible.builtin.stat:
+        path: /etc
+        follow: false
+        get_attributes: false
+        get_checksum: false
+        get_mime: false
+      register: hetzner_rescue_validate_molecule_unsafe_parent_after
+      changed_when: false
+
+    - name: Resnapshot the unsafe controller trust file
+      ansible.builtin.stat:
+        path: /etc/passwd
+        follow: false
+        get_attributes: false
+        get_checksum: true
+        checksum_algorithm: sha256
+        get_mime: false
+      register: hetzner_rescue_validate_molecule_unsafe_file_after
+      changed_when: false
+
+    - name: Require the rejected controller paths to remain unchanged
+      ansible.builtin.assert:
+        that:
+          - >-
+            hetzner_rescue_validate_molecule_unsafe_parent_after.stat.mode
+            == hetzner_rescue_validate_molecule_unsafe_parent_before.stat.mode
+          - >-
+            hetzner_rescue_validate_molecule_unsafe_file_after.stat.mode
+            == hetzner_rescue_validate_molecule_unsafe_file_before.stat.mode
+          - >-
+            hetzner_rescue_validate_molecule_unsafe_file_after.stat.checksum
+            == hetzner_rescue_validate_molecule_unsafe_file_before.stat.checksum
+        quiet: true
+      changed_when: false

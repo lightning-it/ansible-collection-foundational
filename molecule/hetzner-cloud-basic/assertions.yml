@@ -1,0 +1,58 @@
+---
+- name: Assert the Hetzner Cloud validation-only plan
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Assert the validation-only plan metadata
+      ansible.builtin.assert:
+        that:
+          - hetzner_cloud_plan.default_state == 'present'
+          - hetzner_cloud_plan.ipv4_only
+          - hetzner_cloud_plan.validate_only
+          - not hetzner_cloud_plan.destructive_allowed
+          - hetzner_cloud_plan.generated_firewall.enabled
+          - hetzner_cloud_plan.generated_firewall.name == 'molecule-secure-ipv4'
+          - hetzner_cloud_result.validated
+          - not hetzner_cloud_result.changed
+          - hetzner_cloud_result.resources == hetzner_cloud_plan.resource_counts
+        quiet: true
+
+    - name: Assert representative resource counts
+      ansible.builtin.assert:
+        that:
+          - hetzner_cloud_plan.resource_counts.ssh_keys | int == 1
+          - hetzner_cloud_plan.resource_counts.firewalls | int == 1
+          - hetzner_cloud_plan.resource_counts.networks | int == 1
+          - hetzner_cloud_plan.resource_counts.subnetworks | int == 1
+          - hetzner_cloud_plan.resource_counts.primary_ips | int == 1
+          - hetzner_cloud_plan.resource_counts.floating_ips | int == 1
+          - hetzner_cloud_plan.resource_counts.placement_groups | int == 1
+          - hetzner_cloud_plan.resource_counts.servers | int == 1
+          - hetzner_cloud_plan.resource_counts.server_networks | int == 1
+          - hetzner_cloud_plan.resource_counts.firewall_resources | int == 1
+          - hetzner_cloud_plan.resource_counts.reverse_dns | int == 1
+        quiet: true
+
+    - name: Assert the generated secure IPv4 firewall rules
+      ansible.builtin.assert:
+        that:
+          - hetzner_cloud_plan.generated_firewall.rules | length == 3
+          - hetzner_cloud_plan.generated_firewall.rules[0].direction == 'in'
+          - hetzner_cloud_plan.generated_firewall.rules[0].protocol == 'tcp'
+          - hetzner_cloud_plan.generated_firewall.rules[0].port == '22'
+          - hetzner_cloud_plan.generated_firewall.rules[0].source_ips == ['192.0.2.0/24']
+          - hetzner_cloud_plan.generated_firewall.rules[1].direction == 'in'
+          - hetzner_cloud_plan.generated_firewall.rules[1].protocol == 'udp'
+          - hetzner_cloud_plan.generated_firewall.rules[1].port == '51820'
+          - hetzner_cloud_plan.generated_firewall.rules[1].source_ips == ['0.0.0.0/0']
+          - hetzner_cloud_plan.generated_firewall.rules[2].direction == 'in'
+          - hetzner_cloud_plan.generated_firewall.rules[2].protocol == 'icmp'
+          - hetzner_cloud_plan.generated_firewall.rules[2].source_ips == ['0.0.0.0/0']
+          - >-
+            hetzner_cloud_plan.generated_firewall.rules
+            | map(attribute='source_ips')
+            | flatten
+            | select('search', ':')
+            | list
+            | length == 0
+        quiet: true

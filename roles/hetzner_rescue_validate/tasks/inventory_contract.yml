@@ -1,0 +1,21 @@
+---
+- name: Validate the rendered inventory contract
+  ansible.builtin.import_tasks: inventory_contract_assert.yml
+  tags: always
+
+- name: Publish sanitized inventory-contract validation result
+  ansible.builtin.set_fact:
+    hetzner_rescue_validate_result:
+      changed: false
+      validated: true
+      validate_only: true
+      inventory_contract: true
+      fleet_host_count: "{{ hetzner_rescue_validate_inventory_contract.expected_fleet | length }}"
+      prerequisite_host_count: "{{ hetzner_rescue_validate_inventory_contract.prerequisite_hosts | length }}"
+      robot_input_rule_count: "{{ hetzner_rescue_validate_inventory_contract.robot_firewall.input_rules | length }}"
+      robot_output_rule_count: "{{ hetzner_rescue_validate_inventory_contract.robot_firewall.output_rules | length }}"
+      deploy_key_count: "{{ hetzner_rescue_validate_inventory_contract.ssh_public_keys.deploy | length }}"
+      breakglass_key_count: "{{ hetzner_rescue_validate_inventory_contract.ssh_public_keys.breakglass | length }}"
+    cacheable: false
+  changed_when: false
+  no_log: true

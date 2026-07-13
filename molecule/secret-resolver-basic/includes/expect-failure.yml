@@ -16,16 +16,16 @@
         apply:
           no_log: true
       vars:
-        lit_secret_resolver_provider: >-
+        secret_resolver_provider: >-
           {{ secret_resolver_molecule_failure_case.provider | default('runtime') }}
-        lit_secret_resolver_provider_order: >-
+        secret_resolver_provider_order: >-
           {{ secret_resolver_molecule_failure_case.provider_order | default([]) }}
-        lit_secret_resolver_allow_fallback: >-
+        secret_resolver_allow_fallback: >-
           {{ secret_resolver_molecule_failure_case.allow_fallback | default(false) }}
-        lit_secret_resolver_phase: >-
+        secret_resolver_phase: >-
           {{ secret_resolver_molecule_failure_case.phase | default('operational') }}
-        lit_secret_resolver_vault_addr: https://vault.molecule.invalid
-        lit_secret_resolver_requests: "{{ secret_resolver_molecule_failure_case.requests }}"
+        secret_resolver_vault_addr: https://vault.molecule.invalid
+        secret_resolver_requests: "{{ secret_resolver_molecule_failure_case.requests }}"
       no_log: true
   rescue:
     - name: Record the expected failure without retaining failure details

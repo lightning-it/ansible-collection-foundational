@@ -1,0 +1,90 @@
+---
+- name: Authorize and prepare the gated live Hetzner Cloud test
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - live-vars
+  tasks:
+    - name: Enforce explicit live-test authorization and unique identity
+      ansible.builtin.assert:
+        that:
+          - hetzner_cloud_live_enabled | lower == 'true'
+          - hetzner_cloud_live_token_present | bool
+          - hetzner_cloud_live_test_id is match('^[a-z0-9][a-z0-9-]{7,23}$')
+          - '''mgmt01'' not in hetzner_cloud_live_test_id'
+          - '''mgmt01'' not in hetzner_cloud_live_name'
+        fail_msg: >-
+          Live tests require HCLOUD_LIVE_TEST=true, HCLOUD_TOKEN, and a unique 8-24 character
+          HCLOUD_LIVE_TEST_ID containing only lowercase letters, digits, and hyphens.
+        quiet: true
+      changed_when: false
+      no_log: true
+
+    - name: Discover any colliding live-test resources
+      no_log: true
+      block:
+        - name: Read colliding SSH keys
+          hetzner.hcloud.ssh_key_info:
+            name: "{{ hetzner_cloud_live_name }}-key"
+          register: hetzner_cloud_live_collision_ssh_keys
+
+        - name: Read colliding firewalls
+          hetzner.hcloud.firewall_info:
+            name: "{{ hetzner_cloud_live_name }}-firewall"
+          register: hetzner_cloud_live_collision_firewalls
+
+        - name: Read colliding Networks
+          hetzner.hcloud.network_info:
+            name: "{{ hetzner_cloud_live_name }}-network"
+          register: hetzner_cloud_live_collision_networks
+
+        - name: Read colliding Primary IPv4 resources
+          hetzner.hcloud.primary_ip_info:
+            name: "{{ hetzner_cloud_live_name }}-primary"
+          register: hetzner_cloud_live_collision_primary_ips
+
+        - name: Read colliding servers
+          hetzner.hcloud.server_info:
+            name: "{{ hetzner_cloud_live_name }}-server"
+          register: hetzner_cloud_live_collision_servers
+
+        - name: Read colliding Floating IPv4 resources
+          hetzner.hcloud.floating_ip_info:
+            name: "{{ hetzner_cloud_live_name }}-floating"
+          register: hetzner_cloud_live_collision_floating_ips
+
+        - name: Refuse to adopt any colliding Hetzner Cloud resource
+          ansible.builtin.assert:
+            that:
+              - hetzner_cloud_live_collision_ssh_keys.hcloud_ssh_key_info | length == 0
+              - hetzner_cloud_live_collision_firewalls.hcloud_firewall_info | length == 0
+              - hetzner_cloud_live_collision_networks.hcloud_network_info | length == 0
+              - hetzner_cloud_live_collision_primary_ips.hcloud_primary_ip_info | length == 0
+              - hetzner_cloud_live_collision_servers.hcloud_server_info | length == 0
+              - hetzner_cloud_live_collision_floating_ips.hcloud_floating_ip_info | length == 0
+            fail_msg: >-
+              A requested live-test name already exists. Refusing to adopt it or authorize cleanup; choose a new
+              HCLOUD_LIVE_TEST_ID and inspect the collision manually.
+            quiet: true
+
+    - name: Create an isolated ephemeral SSH-key directory
+      ansible.builtin.file:
+        path: "{{ hetzner_cloud_live_key_directory }}"
+        state: directory
+        owner: "{{ lookup('ansible.builtin.env', 'USER') | default(omit, true) }}"
+        mode: "0700"
+
+    - name: Generate a disposable SSH key for the live server
+      community.crypto.openssh_keypair:
+        path: "{{ hetzner_cloud_live_key_path }}"
+        type: ed25519
+        mode: "0600"
+        state: present
+      no_log: true
+
+    - name: Record successful collision preflight for guarded cleanup
+      ansible.builtin.copy:
+        dest: "{{ hetzner_cloud_live_owner_marker }}"
+        content: "{{ hetzner_cloud_live_test_id }}\n"
+        mode: "0600"

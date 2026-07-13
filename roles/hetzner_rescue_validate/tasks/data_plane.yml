@@ -1,0 +1,32 @@
+---
+- name: Validate standalone Rescue data-plane inputs
+  ansible.builtin.import_tasks: data_plane_assert.yml
+  tags: always
+
+- name: Publish validation-only Rescue data-plane plan
+  ansible.builtin.set_fact:
+    hetzner_rescue_validate_result:
+      changed: false
+      validated: true
+      validate_only: true
+      data_plane: true
+      peer_count: "{{ hetzner_rescue_validate_data_plane.peer_ipv4_addresses | length }}"
+    cacheable: false
+  when: hetzner_rescue_validate_only | bool
+  changed_when: false
+
+- name: Exercise the temporary Rescue data plane
+  ansible.builtin.include_tasks: data_plane_probe.yml
+  when: not (hetzner_rescue_validate_only | bool)
+
+- name: Publish Rescue data-plane observation result
+  ansible.builtin.set_fact:
+    hetzner_rescue_validate_result:
+      changed: true
+      validated: true
+      validate_only: false
+      data_plane: true
+      peer_count: "{{ hetzner_rescue_validate_data_plane.peer_ipv4_addresses | length }}"
+    cacheable: false
+  when: not (hetzner_rescue_validate_only | bool)
+  changed_when: false

@@ -1,0 +1,137 @@
+---
+- name: Guest Floating IP prechecks
+  ansible.builtin.import_tasks: assert_guest_floating_ip.yml
+  tags: always
+
+- name: Read guest runtime IPv4 addresses
+  ansible.builtin.command:
+    argv:
+      - ip
+      - -j
+      - -4
+      - address
+      - show
+  register: hetzner_cloud_guest_runtime_addresses_command
+  changed_when: false
+
+- name: Inspect persistent guest network configuration directories
+  ansible.builtin.stat:
+    path: "{{ hetzner_cloud_guest_config_path }}"
+  loop: "{{ hetzner_cloud_guest_persistent_config_paths }}"
+  loop_control:
+    loop_var: hetzner_cloud_guest_config_path
+    label: "{{ hetzner_cloud_guest_config_path }}"
+  register: hetzner_cloud_guest_config_path_stats
+
+- name: Find persistent guest network configuration files
+  ansible.builtin.find:
+    paths:
+      - "{{ hetzner_cloud_guest_config_path_stat.hetzner_cloud_guest_config_path }}"
+    patterns: "{{ hetzner_cloud_guest_persistent_config_patterns }}"
+    file_type: file
+    recurse: true
+    hidden: true
+  loop: "{{ hetzner_cloud_guest_config_path_stats.results }}"
+  loop_control:
+    loop_var: hetzner_cloud_guest_config_path_stat
+    label: "{{ hetzner_cloud_guest_config_path_stat.hetzner_cloud_guest_config_path }}"
+  when: hetzner_cloud_guest_config_path_stat.stat.isdir | default(false) | bool
+  register: hetzner_cloud_guest_config_file_search
+
+- name: Read persistent guest network configuration files
+  ansible.builtin.slurp:
+    src: "{{ hetzner_cloud_guest_config_file.path }}"
+  loop: >-
+    {{
+      hetzner_cloud_guest_config_file_search.results
+      | selectattr('files', 'defined')
+      | map(attribute='files')
+      | flatten
+    }}
+  loop_control:
+    loop_var: hetzner_cloud_guest_config_file
+    label: "{{ hetzner_cloud_guest_config_file.path }}"
+  register: hetzner_cloud_guest_persistent_config_contents
+  no_log: true
+
+- name: Normalize detected guest network state
+  ansible.builtin.set_fact:
+    hetzner_cloud_guest_runtime_ipv4_addresses: >-
+      {{
+        hetzner_cloud_guest_runtime_addresses_command.stdout
+        | from_json
+        | map(attribute='addr_info')
+        | flatten
+        | map(attribute='local')
+        | list
+      }}
+    hetzner_cloud_guest_persistent_config_text: >-
+      {{
+        hetzner_cloud_guest_persistent_config_contents.results
+        | default([])
+        | selectattr('content', 'defined')
+        | map(attribute='content')
+        | map('b64decode')
+        | join('\n')
+      }}
+    hetzner_cloud_guest_floating_ip_status: {}
+    cacheable: false
+  changed_when: false
+  no_log: true
+
+- name: Publish guest Floating IPv4 configuration status
+  ansible.builtin.set_fact:
+    hetzner_cloud_guest_floating_ip_status: >-
+      {{
+        hetzner_cloud_guest_floating_ip_status
+        | combine(
+            {
+              hetzner_cloud_guest_floating_ip.name: {
+                'address': hetzner_cloud_guest_floating_ip.address,
+                'runtime_configured': (
+                  hetzner_cloud_guest_floating_ip.address in hetzner_cloud_guest_runtime_ipv4_addresses
+                ),
+                'persistent_config_detected': (
+                  hetzner_cloud_guest_persistent_config_text
+                  is search(
+                    '(^|[^0-9.])'
+                    ~ (hetzner_cloud_guest_floating_ip.address | regex_escape)
+                    ~ '([^0-9.]|$)'
+                  )
+                ),
+                'manual_configuration_required': (
+                  hetzner_cloud_guest_floating_ip.address not in hetzner_cloud_guest_runtime_ipv4_addresses
+                  or
+                  (
+                    hetzner_cloud_guest_require_persistent | bool
+                    and
+                    not (
+                      hetzner_cloud_guest_persistent_config_text
+                      is search(
+                        '(^|[^0-9.])'
+                        ~ (hetzner_cloud_guest_floating_ip.address | regex_escape)
+                        ~ '([^0-9.]|$)'
+                      )
+                    )
+                  )
+                )
+              }
+            }
+          )
+      }}
+    cacheable: false
+  loop: "{{ hetzner_cloud_guest_floating_ips }}"
+  loop_control:
+    loop_var: hetzner_cloud_guest_floating_ip
+    label: "{{ hetzner_cloud_guest_floating_ip.name }}"
+  changed_when: false
+  no_log: true
+
+- name: Clear guest persistent network configuration contents
+  ansible.builtin.set_fact:
+    hetzner_cloud_guest_persistent_config_contents:
+      results: []
+    hetzner_cloud_guest_persistent_config_text: ""
+    cacheable: false
+  changed_when: false
+  no_log: true

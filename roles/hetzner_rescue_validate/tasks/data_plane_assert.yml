@@ -1,0 +1,69 @@
+---
+- name: Require a complete standalone Rescue data-plane declaration
+  ansible.builtin.assert:
+    that:
+      - hetzner_rescue_validate_only | bool or not ansible_check_mode
+      - hetzner_rescue_validate_data_plane.enabled | bool
+      - hetzner_rescue_validate_ip_path | trim | length > 0
+      - hetzner_rescue_validate_ping_path | trim | length > 0
+      - hetzner_rescue_validate_data_plane.parent_interface is match('^[A-Za-z0-9_.-]{1,15}$')
+      - hetzner_rescue_validate_data_plane.vlan_interface is match('^[A-Za-z0-9_.-]{1,15}$')
+      - hetzner_rescue_validate_data_plane.vlan_interface != hetzner_rescue_validate_data_plane.parent_interface
+      - hetzner_rescue_validate_data_plane.vlan_id | int >= 1
+      - hetzner_rescue_validate_data_plane.vlan_id | int <= 4094
+      - hetzner_rescue_validate_data_plane.mtu | int >= 1280
+      - hetzner_rescue_validate_data_plane.mtu | int <= 9216
+      - hetzner_rescue_validate_data_plane.address is match('^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$')
+      - >-
+        hetzner_rescue_validate_data_plane.address.split('.')
+        | map('int')
+        | select('gt', 255)
+        | list
+        | length == 0
+      - hetzner_rescue_validate_data_plane.prefix_length | int >= 1
+      - hetzner_rescue_validate_data_plane.prefix_length | int <= 32
+      - >-
+        hetzner_rescue_validate_data_plane.gateway | default('', true) | length == 0
+        or
+        (
+          hetzner_rescue_validate_data_plane.gateway is match('^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$')
+          and
+          (
+            hetzner_rescue_validate_data_plane.gateway.split('.')
+            | map('int')
+            | select('gt', 255)
+            | list
+            | length == 0
+          )
+          and hetzner_rescue_validate_data_plane.gateway != hetzner_rescue_validate_data_plane.address
+        )
+      - >-
+        hetzner_rescue_validate_data_plane.peer_ipv4_addresses
+        | reject('match', '^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$')
+        | list
+        | length == 0
+      - >-
+        hetzner_rescue_validate_data_plane.peer_ipv4_addresses
+        | map('split', '.')
+        | flatten
+        | map('int')
+        | select('gt', 255)
+        | list
+        | length == 0
+      - >-
+        hetzner_rescue_validate_data_plane.peer_ipv4_addresses | unique | length
+        == hetzner_rescue_validate_data_plane.peer_ipv4_addresses | length
+      - >-
+        hetzner_rescue_validate_data_plane.address
+        not in hetzner_rescue_validate_data_plane.peer_ipv4_addresses
+      - >-
+        hetzner_rescue_validate_data_plane.gateway | default('', true) | length == 0
+        or
+        hetzner_rescue_validate_data_plane.gateway
+        not in hetzner_rescue_validate_data_plane.peer_ipv4_addresses
+    fail_msg: >-
+      Standalone data-plane validation requires one enabled, collision-free IPv4 VLAN declaration with unique
+      interfaces, a valid VLAN ID and MTU, and a unique peer list that excludes the local address and gateway.
+    quiet: true
+  changed_when: false
+  tags: always

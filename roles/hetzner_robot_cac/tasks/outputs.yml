@@ -1,0 +1,29 @@
+---
+- name: Publish secret-free Hetzner Robot operation summary
+  ansible.builtin.set_fact:
+    hetzner_robot_cac_result:
+      changed: >-
+        {{
+          (hetzner_robot_cac_server_metadata_present_operations.changed | default(false) | bool)
+          or (hetzner_robot_cac_firewall_present_operations.changed | default(false) | bool)
+          or (hetzner_robot_cac_firewall_absent_operations.changed | default(false) | bool)
+          or (hetzner_robot_cac_vswitch_present_operations.changed | default(false) | bool)
+          or (hetzner_robot_cac_vswitch_absent_operations.changed | default(false) | bool)
+          or (hetzner_robot_cac_reverse_dns_present_operations.changed | default(false) | bool)
+          or (hetzner_robot_cac_reverse_dns_absent_operations.changed | default(false) | bool)
+          or (hetzner_robot_cac_ssh_key_present_operations.changed | default(false) | bool)
+          or (hetzner_robot_cac_ssh_key_absent_operations.changed | default(false) | bool)
+          or (hetzner_robot_cac_failover_ip_present_operations.changed | default(false) | bool)
+          or (hetzner_robot_cac_failover_ip_absent_operations.changed | default(false) | bool)
+        }}
+      validated: true
+      resources: "{{ hetzner_robot_cac_plan.resource_counts }}"
+      states:
+        server_metadata: present-only
+        firewalls: present-or-disabled
+        vswitches: present-or-cancelled
+        reverse_dns: present-or-absent
+        ssh_keys: present-or-absent
+        failover_ips: routed-or-unrouted
+    cacheable: false
+  changed_when: false

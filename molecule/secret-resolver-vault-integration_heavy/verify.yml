@@ -18,12 +18,12 @@
           )
       }}
     secret_resolver_vault_test_token: molecule-root-token
-    lit_secret_resolver_provider: hashicorp_vault
-    lit_secret_resolver_vault_addr: "{{ secret_resolver_vault_test_addr }}"
-    lit_secret_resolver_vault_token: "{{ secret_resolver_vault_test_token }}"
-    lit_secret_resolver_vault_validate_certs: false
-    lit_secret_resolver_vault_timeout: 2
-    lit_secret_resolver_vault_retries: 0
+    secret_resolver_provider: hashicorp_vault
+    secret_resolver_vault_addr: "{{ secret_resolver_vault_test_addr }}"
+    secret_resolver_vault_token: "{{ secret_resolver_vault_test_token }}"
+    secret_resolver_vault_validate_certs: false
+    secret_resolver_vault_timeout: 2
+    secret_resolver_vault_retries: 0
   tasks:
     - name: Exercise a provider-rejected persistence write
       block:
@@ -31,9 +31,9 @@
           ansible.builtin.include_role:
             name: lit.foundational.secret_resolver
           vars:
-            lit_secret_resolver_vault_token: molecule-readonly-token
-            lit_secret_resolver_vault_token_validate: false
-            lit_secret_resolver_requests:
+            secret_resolver_vault_token: molecule-readonly-token
+            secret_resolver_vault_token_validate: false
+            secret_resolver_requests:
               - name: rejected_write_back
                 hashicorp_vault:
                   path: integration/write-denied
@@ -57,8 +57,8 @@
             that:
               - '''category=write_back_failed'' in ansible_failed_result.msg'
               - '''molecule-readonly-token'' not in ansible_failed_result.msg'
-              - lit_secret_resolver_result == {}
-              - lit_secret_resolver_metadata == {}
+              - secret_resolver_result == {}
+              - secret_resolver_metadata == {}
             quiet: true
           no_log: true
 
@@ -80,12 +80,12 @@
             true
           )
       }}
-    lit_secret_resolver_provider: hashicorp_vault
-    lit_secret_resolver_vault_addr: "{{ secret_resolver_vault_test_addr }}"
-    lit_secret_resolver_vault_token: molecule-root-token
-    lit_secret_resolver_vault_validate_certs: false
-    lit_secret_resolver_vault_timeout: 2
-    lit_secret_resolver_vault_retries: 0
+    secret_resolver_provider: hashicorp_vault
+    secret_resolver_vault_addr: "{{ secret_resolver_vault_test_addr }}"
+    secret_resolver_vault_token: molecule-root-token
+    secret_resolver_vault_validate_certs: false
+    secret_resolver_vault_timeout: 2
+    secret_resolver_vault_retries: 0
   tasks:
     - name: Execute ordinary generated write prediction in real check mode
       ansible.builtin.command:

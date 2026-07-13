@@ -39,9 +39,11 @@ jobs:
       )
     name: Publish collection release
     runs-on: ubuntu-latest
+    environment: ansible-collections
     env:
       RELEASE_BOT_APP_ID: ${{ secrets.RELEASE_BOT_APP_ID }}
       RELEASE_BOT_PRIVATE_KEY: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+      GALAXY_API_TOKEN: ${{ secrets.ANSIBLE_GALAXY_API_KEY }}
 
     steps:
       - name: Create GitHub App token
@@ -109,7 +111,6 @@ jobs:
                 && contains(github.event.pull_request.body, 'Galaxy publishing: `true`')
               )
             }}
-          GALAXY_API_TOKEN: ${{ secrets.GALAXY_API_TOKEN }}
         run: |
           set -euo pipefail
 

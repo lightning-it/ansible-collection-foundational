@@ -1,0 +1,112 @@
+---
+- name: Validate Hetzner Robot operations safety interface
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    hetzner_robot_ops_test_server_number: 1234567
+  tasks:
+    - name: Run safe no-operation default
+      ansible.builtin.include_role:
+        name: lit.foundational.hetzner_robot_ops
+
+    - name: Preserve sanitized no-operation output
+      ansible.builtin.set_fact:
+        hetzner_robot_ops_test_noop_result: "{{ hetzner_robot_ops_result }}"
+
+    - name: Verify boot operation fails closed without exact confirmation
+      block:
+        - name: Attempt rescue activation without boot confirmation
+          ansible.builtin.include_role:
+            name: lit.foundational.hetzner_robot_ops
+          vars:
+            hetzner_robot_ops_action: activate_rescue
+            hetzner_robot_ops_hetzner_user: molecule-user
+            hetzner_robot_ops_hetzner_password: molecule-password
+            hetzner_robot_ops_server_number: "{{ hetzner_robot_ops_test_server_number }}"
+            hetzner_robot_ops_server_ip: 192.0.2.10
+            hetzner_robot_ops_rescue_authorized_keys:
+              - SHA256:molecule-placeholder
+
+        - name: Reject unexpectedly permitted rescue activation
+          ansible.builtin.fail:
+            msg: Rescue activation unexpectedly passed without confirmation.
+      rescue:
+        - name: Require rejection at the boot confirmation gate
+          ansible.builtin.assert:
+            that:
+              - ansible_failed_task.name == 'Validate boot operation confirmation'
+            quiet: true
+
+        - name: Record rejected rescue activation
+          ansible.builtin.set_fact:
+            hetzner_robot_ops_test_boot_gate_rejected: true
+
+    - name: Verify reset operation fails closed without exact confirmation
+      block:
+        - name: Attempt reset without reset confirmation
+          ansible.builtin.include_role:
+            name: lit.foundational.hetzner_robot_ops
+          vars:
+            hetzner_robot_ops_action: reset
+            hetzner_robot_ops_hetzner_user: molecule-user
+            hetzner_robot_ops_hetzner_password: molecule-password
+            hetzner_robot_ops_server_number: "{{ hetzner_robot_ops_test_server_number }}"
+            hetzner_robot_ops_server_ip: 192.0.2.10
+
+        - name: Reject unexpectedly permitted reset
+          ansible.builtin.fail:
+            msg: Reset unexpectedly passed without confirmation.
+      rescue:
+        - name: Require rejection at the reset confirmation gate
+          ansible.builtin.assert:
+            that:
+              - ansible_failed_task.name == 'Validate reset operation confirmation'
+            quiet: true
+
+        - name: Record rejected reset
+          ansible.builtin.set_fact:
+            hetzner_robot_ops_test_reset_gate_rejected: true
+
+    - name: Verify manual reset requires its additional confirmation
+      block:
+        - name: Attempt manual reset without manual confirmation
+          ansible.builtin.include_role:
+            name: lit.foundational.hetzner_robot_ops
+          vars:
+            hetzner_robot_ops_action: reset
+            hetzner_robot_ops_hetzner_user: molecule-user
+            hetzner_robot_ops_hetzner_password: molecule-password
+            hetzner_robot_ops_server_number: "{{ hetzner_robot_ops_test_server_number }}"
+            hetzner_robot_ops_server_ip: 192.0.2.10
+            hetzner_robot_ops_reset_type: manual
+            hetzner_robot_ops_reset_confirmation: "RESET {{ hetzner_robot_ops_test_server_number }}"
+
+        - name: Reject unexpectedly permitted manual reset
+          ansible.builtin.fail:
+            msg: Manual reset unexpectedly passed without its additional confirmation.
+      rescue:
+        - name: Require rejection at the manual reset confirmation gate
+          ansible.builtin.assert:
+            that:
+              - ansible_failed_task.name == 'Validate manual reset operation confirmation'
+            quiet: true
+
+        - name: Record rejected manual reset
+          ansible.builtin.set_fact:
+            hetzner_robot_ops_test_manual_gate_rejected: true
+
+    - name: Write validation coverage without secrets
+      ansible.builtin.copy:
+        content: >-
+          {{
+            {
+              'boot_gate_rejected': hetzner_robot_ops_test_boot_gate_rejected | default(false),
+              'manual_gate_rejected': hetzner_robot_ops_test_manual_gate_rejected | default(false),
+              'noop_result': hetzner_robot_ops_test_noop_result,
+              'reset_gate_rejected': hetzner_robot_ops_test_reset_gate_rejected | default(false)
+            }
+            | to_nice_json
+          }}
+        dest: /tmp/lit-foundational-hetzner-robot-ops-validation.json
+        mode: "0600"

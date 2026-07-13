@@ -91,10 +91,10 @@ def test_ansible_unsafe_strings_are_normalized_to_exact_builtin_strings(
     created = _store(vault).ensure_exact(str(path), document)
     persisted = yaml.safe_load(vault.decrypt(path.read_bytes()))
 
-    assert all(type(key) is str for key in normalized)
-    assert all(type(value) in (int, str) for value in normalized.values())
-    assert type(normalized["subject"]) is str
-    assert type(normalized["password"]) is str
+    assert all(key.__class__ is str for key in normalized)
+    assert all(value.__class__ in (int, str) for value in normalized.values())
+    assert normalized["subject"].__class__ is str
+    assert normalized["password"].__class__ is str
     assert persisted == {
         "schema_version": 1,
         "subject": "service01.example.test",
@@ -123,8 +123,8 @@ def test_generic_cap_supports_large_exact_documents_on_create_read_and_race_path
     assert created["created"] is True
     assert rerun["changed"] is False
     assert race_digest == created["ciphertext_sha256"]
-    assert store._max_ciphertext_bytes == 64 * 1024 * 1024
-    assert store._max_plaintext_bytes == 64 * 1024 * 1024
+    assert store._max_ciphertext_bytes == 128 * 1024 * 1024
+    assert store._max_plaintext_bytes == 128 * 1024 * 1024
     with pytest.raises(AnsibleActionFail):
         secret_plugin._VaultSecretDocumentStore(vault).ensure_exact(str(path), document)
 

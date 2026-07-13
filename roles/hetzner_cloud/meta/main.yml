@@ -1,0 +1,18 @@
+---
+galaxy_info:
+  role_name: hetzner_cloud
+  namespace: lit
+  author: Lightning IT
+  description: Declaratively manage IPv4-only Hetzner Cloud infrastructure.
+  company: Lightning IT
+  license: MIT
+  min_ansible_version: "2.18"
+
+  galaxy_tags:
+    - cloud
+    - firewall
+    - hetzner
+    - infrastructure
+    - networking
+
+dependencies: []

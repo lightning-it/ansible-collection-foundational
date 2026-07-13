@@ -1,0 +1,83 @@
+---
+- name: Remove absent Robot reverse DNS entries
+  community.hrobot.reverse_dns:
+    hetzner_user: "{{ hetzner_robot_cac_user }}"
+    hetzner_password: "{{ hetzner_robot_cac_password }}"
+    rate_limit_retry_timeout: "{{ hetzner_robot_cac_rate_limit_retry_timeout }}"
+    ip: "{{ item.ip }}"
+    state: absent
+  loop: "{{ hetzner_robot_cac_reverse_dns }}"
+  loop_control:
+    label: "{{ item.ip | default('reverse DNS') }}"
+  when: (item.state | default(hetzner_robot_cac_state)) == 'absent'
+  register: hetzner_robot_cac_reverse_dns_absent_operations
+  no_log: true
+
+- name: Unroute absent Robot failover IPs
+  community.hrobot.failover_ip:
+    hetzner_user: "{{ hetzner_robot_cac_user }}"
+    hetzner_password: "{{ hetzner_robot_cac_password }}"
+    rate_limit_retry_timeout: "{{ hetzner_robot_cac_rate_limit_retry_timeout }}"
+    failover_ip: "{{ item.failover_ip }}"
+    timeout: "{{ item.timeout | default(180) }}"
+    state: unrouted
+  loop: "{{ hetzner_robot_cac_failover_ips }}"
+  loop_control:
+    label: "{{ item.failover_ip | default('failover IP') }}"
+  when: (item.state | default(hetzner_robot_cac_state)) == 'absent'
+  register: hetzner_robot_cac_failover_ip_absent_operations
+  no_log: true
+
+- name: Disable absent Robot firewalls
+  community.hrobot.firewall:
+    hetzner_user: "{{ hetzner_robot_cac_user }}"
+    hetzner_password: "{{ hetzner_robot_cac_password }}"
+    rate_limit_retry_timeout: "{{ hetzner_robot_cac_rate_limit_retry_timeout }}"
+    server_number: "{{ item.server_number | default(omit) }}"
+    server_ip: "{{ item.server_ip | default(omit) }}"
+    port: "{{ item.port | default('main') }}"
+    timeout: "{{ item.timeout | default(180) }}"
+    update_timeout: "{{ item.update_timeout | default(30) }}"
+    wait_delay: "{{ item.wait_delay | default(10) }}"
+    wait_for_configured: "{{ item.wait_for_configured | default(true) }}"
+    state: absent
+  loop: "{{ hetzner_robot_cac_firewalls }}"
+  loop_control:
+    label: "{{ item.server_number | default(item.server_ip | default('firewall')) }}"
+  when: (item.state | default(hetzner_robot_cac_state)) == 'absent'
+  register: hetzner_robot_cac_firewall_absent_operations
+  no_log: true
+
+- name: Cancel absent Robot vSwitches
+  community.hrobot.v_switch:
+    hetzner_user: "{{ hetzner_robot_cac_user }}"
+    hetzner_password: "{{ hetzner_robot_cac_password }}"
+    rate_limit_retry_timeout: "{{ hetzner_robot_cac_rate_limit_retry_timeout }}"
+    name: "{{ item.name }}"
+    vlan: "{{ item.vlan }}"
+    servers: "{{ item.servers | default(omit) }}"
+    timeout: "{{ item.timeout | default(180) }}"
+    wait: "{{ item.wait | default(true) }}"
+    wait_delay: "{{ item.wait_delay | default(10) }}"
+    state: absent
+  loop: "{{ hetzner_robot_cac_vswitches }}"
+  loop_control:
+    label: "{{ item.name | default('vSwitch') }}"
+  when: (item.state | default(hetzner_robot_cac_state)) == 'absent'
+  register: hetzner_robot_cac_vswitch_absent_operations
+  no_log: true
+
+- name: Remove absent Robot SSH keys
+  community.hrobot.ssh_key:
+    hetzner_user: "{{ hetzner_robot_cac_user }}"
+    hetzner_password: "{{ hetzner_robot_cac_password }}"
+    rate_limit_retry_timeout: "{{ hetzner_robot_cac_rate_limit_retry_timeout }}"
+    fingerprint: "{{ item.fingerprint | default(omit) }}"
+    public_key: "{{ item.public_key | default(omit) }}"
+    state: absent
+  loop: "{{ hetzner_robot_cac_ssh_keys }}"
+  loop_control:
+    label: "{{ item.name | default(item.fingerprint | default('key')) }}"
+  when: (item.state | default(hetzner_robot_cac_state)) == 'absent'
+  register: hetzner_robot_cac_ssh_key_absent_operations
+  no_log: true

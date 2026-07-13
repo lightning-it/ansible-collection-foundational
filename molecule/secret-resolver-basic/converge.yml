@@ -22,8 +22,8 @@
       ansible.builtin.include_role:
         name: lit.foundational.secret_resolver
       vars:
-        lit_secret_resolver_provider: runtime
-        lit_secret_resolver_requests:
+        secret_resolver_provider: runtime
+        secret_resolver_requests:
           - name: runtime_value
             provider_order:
               - runtime
@@ -106,10 +106,10 @@
     - name: Assert run-once outputs are visible to the secondary host
       ansible.builtin.assert:
         that:
-          - lit_secret_resolver_result is defined
-          - lit_secret_resolver_metadata is defined
-          - lit_secret_resolver_result.runtime_value == secret_resolver_molecule_runtime_value
-          - lit_secret_resolver_metadata.runtime_value.provider == 'runtime'
+          - secret_resolver_result is defined
+          - secret_resolver_metadata is defined
+          - secret_resolver_result.runtime_value == secret_resolver_molecule_runtime_value
+          - secret_resolver_metadata.runtime_value.provider == 'runtime'
         quiet: true
       no_log: true
       when: inventory_hostname == 'secret-resolver-secondary'
@@ -118,25 +118,25 @@
       ansible.builtin.set_fact:
         secret_resolver_molecule_output_checks:
           keys: >-
-            {{ lit_secret_resolver_result | length == 9 }}
+            {{ secret_resolver_result | length == 9 }}
           runtime: >-
-            {{ lit_secret_resolver_result.runtime_value == secret_resolver_molecule_runtime_value }}
+            {{ secret_resolver_result.runtime_value == secret_resolver_molecule_runtime_value }}
           environment: >-
-            {{ lit_secret_resolver_result.environment_value == '__LIT_MOLECULE_ENVIRONMENT_VALUE__' }}
+            {{ secret_resolver_result.environment_value == '__LIT_MOLECULE_ENVIRONMENT_VALUE__' }}
           ansible_vault: >-
-            {{ lit_secret_resolver_result.already_decrypted == secret_resolver_molecule_decrypted_vault_value }}
+            {{ secret_resolver_result.already_decrypted == secret_resolver_molecule_decrypted_vault_value }}
           default: >-
-            {{ lit_secret_resolver_result.defaulted_value == '__LIT_MOLECULE_DEFAULT_VALUE__' }}
+            {{ secret_resolver_result.defaulted_value == '__LIT_MOLECULE_DEFAULT_VALUE__' }}
           provider_order: >-
-            {{ lit_secret_resolver_result.ordered_value == secret_resolver_molecule_ordered_value }}
+            {{ secret_resolver_result.ordered_value == secret_resolver_molecule_ordered_value }}
           fallback: >-
-            {{ lit_secret_resolver_result.fallback_enabled == '__LIT_MOLECULE_ENVIRONMENT_VALUE__' }}
-          runtime_empty: "{{ lit_secret_resolver_result.allowed_empty == '' }}"
-          environment_empty: "{{ lit_secret_resolver_result.environment_empty_allowed == '' }}"
+            {{ secret_resolver_result.fallback_enabled == '__LIT_MOLECULE_ENVIRONMENT_VALUE__' }}
+          runtime_empty: "{{ secret_resolver_result.allowed_empty == '' }}"
+          environment_empty: "{{ secret_resolver_result.environment_empty_allowed == '' }}"
           existing: >-
-            {{ lit_secret_resolver_result.existing_not_generated == secret_resolver_molecule_existing_value }}
-          optional_absent: "{{ 'optional_missing' not in lit_secret_resolver_result }}"
-          fallback_disabled_absent: "{{ 'fallback_disabled' not in lit_secret_resolver_result }}"
+            {{ secret_resolver_result.existing_not_generated == secret_resolver_molecule_existing_value }}
+          optional_absent: "{{ 'optional_missing' not in secret_resolver_result }}"
+          fallback_disabled_absent: "{{ 'fallback_disabled' not in secret_resolver_result }}"
       changed_when: false
       no_log: true
       when: inventory_hostname == 'secret-resolver-primary'
@@ -155,32 +155,32 @@
     - name: Assert provider order fallback and empty-value metadata
       ansible.builtin.assert:
         that:
-          - lit_secret_resolver_metadata.runtime_value.provider == 'runtime'
-          - lit_secret_resolver_metadata.environment_value.provider == 'environment'
-          - lit_secret_resolver_metadata.already_decrypted.provider == 'ansible_vault'
-          - lit_secret_resolver_metadata.defaulted_value.provider == 'default'
-          - lit_secret_resolver_metadata.ordered_value.attempted_providers == ['runtime']
-          - lit_secret_resolver_metadata.ordered_value.attempt_failures == []
-          - not lit_secret_resolver_metadata.ordered_value.fallback_used
-          - not lit_secret_resolver_metadata.optional_missing.resolved
-          - lit_secret_resolver_metadata.optional_missing.failure_category == 'secret_not_found'
-          - lit_secret_resolver_metadata.optional_missing.attempted_providers == ['runtime']
-          - not lit_secret_resolver_metadata.fallback_disabled.resolved
-          - lit_secret_resolver_metadata.fallback_disabled.attempted_providers == ['runtime']
-          - not lit_secret_resolver_metadata.fallback_disabled.fallback_attempted
-          - lit_secret_resolver_metadata.fallback_enabled.provider == 'environment'
-          - lit_secret_resolver_metadata.fallback_enabled.attempted_providers == ['runtime', 'environment']
+          - secret_resolver_metadata.runtime_value.provider == 'runtime'
+          - secret_resolver_metadata.environment_value.provider == 'environment'
+          - secret_resolver_metadata.already_decrypted.provider == 'ansible_vault'
+          - secret_resolver_metadata.defaulted_value.provider == 'default'
+          - secret_resolver_metadata.ordered_value.attempted_providers == ['runtime']
+          - secret_resolver_metadata.ordered_value.attempt_failures == []
+          - not secret_resolver_metadata.ordered_value.fallback_used
+          - not secret_resolver_metadata.optional_missing.resolved
+          - secret_resolver_metadata.optional_missing.failure_category == 'secret_not_found'
+          - secret_resolver_metadata.optional_missing.attempted_providers == ['runtime']
+          - not secret_resolver_metadata.fallback_disabled.resolved
+          - secret_resolver_metadata.fallback_disabled.attempted_providers == ['runtime']
+          - not secret_resolver_metadata.fallback_disabled.fallback_attempted
+          - secret_resolver_metadata.fallback_enabled.provider == 'environment'
+          - secret_resolver_metadata.fallback_enabled.attempted_providers == ['runtime', 'environment']
           - >-
-            lit_secret_resolver_metadata.fallback_enabled.attempt_failures ==
+            secret_resolver_metadata.fallback_enabled.attempt_failures ==
             [{'provider': 'runtime', 'category': 'secret_not_found'}]
-          - lit_secret_resolver_metadata.fallback_enabled.fallback_attempted
-          - lit_secret_resolver_metadata.fallback_enabled.fallback_used
-          - lit_secret_resolver_metadata.allowed_empty.resolved
-          - lit_secret_resolver_metadata.allowed_empty.provider == 'runtime'
-          - lit_secret_resolver_metadata.environment_empty_allowed.resolved
-          - lit_secret_resolver_metadata.environment_empty_allowed.provider == 'environment'
-          - not lit_secret_resolver_metadata.existing_not_generated.generated
-          - lit_secret_resolver_metadata.existing_not_generated.attempted_providers == ['runtime']
+          - secret_resolver_metadata.fallback_enabled.fallback_attempted
+          - secret_resolver_metadata.fallback_enabled.fallback_used
+          - secret_resolver_metadata.allowed_empty.resolved
+          - secret_resolver_metadata.allowed_empty.provider == 'runtime'
+          - secret_resolver_metadata.environment_empty_allowed.resolved
+          - secret_resolver_metadata.environment_empty_allowed.provider == 'environment'
+          - not secret_resolver_metadata.existing_not_generated.generated
+          - secret_resolver_metadata.existing_not_generated.attempted_providers == ['runtime']
         quiet: true
       no_log: true
       when: inventory_hostname == 'secret-resolver-primary'
@@ -206,7 +206,7 @@
               'written_back'
             ]
         quiet: true
-      loop: "{{ lit_secret_resolver_metadata | dict2items }}"
+      loop: "{{ secret_resolver_metadata | dict2items }}"
       loop_control:
         loop_var: secret_resolver_molecule_metadata_entry
         label: metadata schema
@@ -218,7 +218,7 @@
         that:
           - >-
             secret_resolver_molecule_leak_sentinels
-            | select('in', lit_secret_resolver_metadata | to_json)
+            | select('in', secret_resolver_metadata | to_json)
             | list
             | length == 0
         quiet: true

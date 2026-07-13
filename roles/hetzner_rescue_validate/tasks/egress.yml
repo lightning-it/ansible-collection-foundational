@@ -1,0 +1,12 @@
+---
+- name: Verify Rescue DNS and HTTPS egress
+  ansible.builtin.uri:
+    url: "{{ hetzner_rescue_validate_egress_url }}"
+    method: HEAD
+    return_content: false
+    timeout: "{{ hetzner_rescue_validate_egress_timeout }}"
+  register: hetzner_rescue_validate_egress_result
+  changed_when: false
+  failed_when: >-
+    hetzner_rescue_validate_egress_result.status | default(-1) | int
+    not in (hetzner_rescue_validate_egress_status_codes | map('int') | list)

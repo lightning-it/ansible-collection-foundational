@@ -1,0 +1,242 @@
+---
+- name: Validate controller preflight inputs
+  ansible.builtin.import_tasks: controller_preflight_assert.yml
+  tags: always
+
+- name: Publish validation-only controller preflight plan
+  ansible.builtin.set_fact:
+    hetzner_rescue_validate_result:
+      changed: false
+      validated: true
+      validate_only: true
+      controller_preflight: true
+      controller_trust_observed: false
+      ssh_agent_observed: false
+      required_ssh_key_count: "{{ hetzner_rescue_validate_controller_required_ssh_public_keys | length }}"
+      dns_observed: false
+      dns_record_count: "{{ hetzner_rescue_validate_controller_dns_records | length }}"
+    cacheable: false
+  when: hetzner_rescue_validate_only | bool
+  changed_when: false
+  no_log: true
+  delegate_to: localhost
+  become: false
+
+- name: Observe controller trust, agent identities, and authoritative DNS
+  when: not (hetzner_rescue_validate_only | bool)
+  block:
+    - name: Validate and pin Rescue controller SSH trust
+      ansible.builtin.include_tasks: controller_trust.yml
+
+    - name: Require a forwarded controller SSH agent
+      ansible.builtin.assert:
+        that:
+          - lookup('ansible.builtin.env', 'SSH_AUTH_SOCK') | default('', true) | trim | length > 0
+        fail_msg: "Controller preflight requires a reachable SSH agent through SSH_AUTH_SOCK."
+        quiet: true
+      changed_when: false
+      no_log: true
+      delegate_to: localhost
+      become: false
+
+    - name: Validate required identities against the controller SSH agent
+      block:
+        - name: Derive required public-key SHA-256 fingerprints
+          ansible.builtin.command:
+            argv:
+              - ssh-keygen
+              - -E
+              - sha256
+              - -lf
+              - -
+            stdin: "{{ hetzner_rescue_validate_controller_required_ssh_public_key }}\n"
+            stdin_add_newline: false
+          loop: "{{ hetzner_rescue_validate_controller_required_ssh_public_keys }}"
+          loop_control:
+            loop_var: hetzner_rescue_validate_controller_required_ssh_public_key
+            index_var: hetzner_rescue_validate_controller_required_ssh_public_key_index
+            label: >-
+              required SSH public key {{ hetzner_rescue_validate_controller_required_ssh_public_key_index | int + 1 }}
+          register: hetzner_rescue_validate_controller_required_fingerprint_commands
+          changed_when: false
+          failed_when: false
+          no_log: true
+          delegate_to: localhost
+          become: false
+
+        - name: Inspect controller SSH agent SHA-256 fingerprints
+          ansible.builtin.command:
+            argv:
+              - ssh-add
+              - -l
+              - -E
+              - sha256
+          register: hetzner_rescue_validate_controller_agent_identities
+          changed_when: false
+          failed_when: false
+          no_log: true
+          delegate_to: localhost
+          become: false
+
+        - name: Normalize controller SSH identity fingerprints
+          ansible.builtin.set_fact:
+            hetzner_rescue_validate_controller_required_fingerprints: >-
+              {{
+                hetzner_rescue_validate_controller_required_fingerprint_commands.results
+                | map(attribute='stdout')
+                | map('regex_findall', 'SHA256:[A-Za-z0-9+/]{43}')
+                | flatten
+                | list
+              }}
+            hetzner_rescue_validate_controller_agent_fingerprints: >-
+              {{
+                hetzner_rescue_validate_controller_agent_identities.stdout
+                | regex_findall('SHA256:[A-Za-z0-9+/]{43}')
+              }}
+            cacheable: false
+          changed_when: false
+          no_log: true
+          delegate_to: localhost
+          become: false
+
+        - name: Require every declared identity in the controller SSH agent
+          ansible.builtin.assert:
+            that:
+              - >-
+                hetzner_rescue_validate_controller_required_fingerprint_commands.results
+                | selectattr('rc', 'ne', 0)
+                | list
+                | length == 0
+              - hetzner_rescue_validate_controller_agent_identities.rc == 0
+              - >-
+                hetzner_rescue_validate_controller_required_fingerprints | length
+                == hetzner_rescue_validate_controller_required_ssh_public_keys | length
+              - >-
+                hetzner_rescue_validate_controller_required_fingerprints | unique | length
+                == hetzner_rescue_validate_controller_required_fingerprints | length
+              - >-
+                hetzner_rescue_validate_controller_required_fingerprints
+                | difference(hetzner_rescue_validate_controller_agent_fingerprints)
+                | length == 0
+            fail_msg: "The controller SSH agent does not contain every declared unique public-key identity."
+            quiet: true
+          changed_when: false
+          no_log: true
+          delegate_to: localhost
+          become: false
+
+      always:
+        - name: Remove controller SSH identity observation details from facts
+          ansible.builtin.set_fact:
+            hetzner_rescue_validate_controller_required_fingerprint_commands: {}
+            hetzner_rescue_validate_controller_agent_identities: {}
+            hetzner_rescue_validate_controller_required_fingerprints: []
+            hetzner_rescue_validate_controller_agent_fingerprints: []
+            cacheable: false
+          changed_when: false
+          no_log: true
+          delegate_to: localhost
+          become: false
+
+    - name: Validate authoritative controller DNS observations
+      block:
+        - name: Initialize sanitized authoritative DNS matches
+          ansible.builtin.set_fact:
+            hetzner_rescue_validate_controller_dns_matches: []
+            cacheable: false
+          changed_when: false
+          no_log: true
+          delegate_to: localhost
+          become: false
+
+        - name: Observe each record through the declared authoritative resolver
+          ansible.builtin.set_fact:
+            hetzner_rescue_validate_controller_dns_matches: >-
+              {{
+                hetzner_rescue_validate_controller_dns_matches
+                +
+                [
+                  hetzner_rescue_validate_controller_dns_record.value
+                  in query(
+                    'community.general.dig',
+                    hetzner_rescue_validate_controller_dns_record.name,
+                    '@' ~ hetzner_rescue_validate_controller_dns_resolver,
+                    qtype=hetzner_rescue_validate_controller_dns_record.type
+                  )
+                ]
+              }}
+            cacheable: false
+          loop: "{{ hetzner_rescue_validate_controller_dns_records }}"
+          loop_control:
+            loop_var: hetzner_rescue_validate_controller_dns_record
+            index_var: hetzner_rescue_validate_controller_dns_record_index
+            label: >-
+              DNS observation {{ hetzner_rescue_validate_controller_dns_record_index | int + 1 }}
+          changed_when: false
+          no_log: true
+          delegate_to: localhost
+          become: false
+
+        - name: Require every authoritative DNS observation to match
+          ansible.builtin.assert:
+            that:
+              - >-
+                hetzner_rescue_validate_controller_dns_matches
+                | reject('equalto', true)
+                | list
+                | length == 0
+            fail_msg: "One or more authoritative DNS observations did not return the exact declared value."
+            quiet: true
+          changed_when: false
+          no_log: true
+          delegate_to: localhost
+          become: false
+
+      always:
+        - name: Remove authoritative DNS observation details from facts
+          ansible.builtin.set_fact:
+            hetzner_rescue_validate_controller_dns_matches: []
+            cacheable: false
+          changed_when: false
+          no_log: true
+          delegate_to: localhost
+          become: false
+
+    - name: Publish sanitized controller preflight observations
+      ansible.builtin.set_fact:
+        hetzner_rescue_validate_result:
+          changed: >-
+            {{
+              [
+                hetzner_rescue_validate_known_hosts_directory_result.changed | default(false),
+                hetzner_rescue_validate_known_hosts_file_result.changed | default(false),
+                hetzner_rescue_validate_known_hosts_pin_result.changed | default(false)
+              ]
+              | select('equalto', true)
+              | list
+              | length > 0
+            }}
+          validated: true
+          validate_only: false
+          controller_preflight: true
+          controller_trust_observed: true
+          ssh_agent_observed: true
+          required_ssh_key_count: "{{ hetzner_rescue_validate_controller_required_ssh_public_keys | length }}"
+          dns_observed: true
+          dns_record_count: "{{ hetzner_rescue_validate_controller_dns_records | length }}"
+        cacheable: false
+      changed_when: false
+      no_log: true
+      delegate_to: localhost
+      become: false
+
+    - name: Remove controller trust mutation details from facts
+      ansible.builtin.set_fact:
+        hetzner_rescue_validate_known_hosts_directory_result: {}
+        hetzner_rescue_validate_known_hosts_file_result: {}
+        hetzner_rescue_validate_known_hosts_pin_result: {}
+        cacheable: false
+      changed_when: false
+      no_log: true
+      delegate_to: localhost
+      become: false

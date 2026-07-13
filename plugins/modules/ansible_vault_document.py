@@ -48,7 +48,7 @@ notes:
   - The action never accepts a Vault password or password-file argument.
   - The action requires task-level C(no_log=true) to suppress secret task arguments at every callback verbosity.
   - Plaintext is serialized, encrypted, decrypted, and compared only in controller process memory.
-  - Plaintext and ciphertext each have a fixed 64 MiB safety limit; the limit is not caller-configurable.
+  - Plaintext and ciphertext each have a fixed 128 MiB safety limit; the limit is not caller-configurable.
   - Check mode never creates a directory, serializes the mapping, or invokes Vault encryption for an absent path.
 author:
   - Lightning IT (@lightning-it)

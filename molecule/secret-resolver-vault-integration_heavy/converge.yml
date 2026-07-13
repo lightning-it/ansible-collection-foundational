@@ -81,14 +81,14 @@
           hashicorp_vault:
             path: integration/existing
             key: selected
-    lit_secret_resolver_provider: hashicorp_vault
-    lit_secret_resolver_phase: bootstrap
-    lit_secret_resolver_vault_addr: "{{ secret_resolver_vault_test_addr }}"
-    lit_secret_resolver_vault_token: molecule-root-token
-    lit_secret_resolver_vault_validate_certs: false
-    lit_secret_resolver_vault_timeout: 2
-    lit_secret_resolver_vault_retries: 0
-    lit_secret_resolver_requests:
+    secret_resolver_provider: hashicorp_vault
+    secret_resolver_phase: bootstrap
+    secret_resolver_vault_addr: "{{ secret_resolver_vault_test_addr }}"
+    secret_resolver_vault_token: molecule-root-token
+    secret_resolver_vault_validate_certs: false
+    secret_resolver_vault_timeout: 2
+    secret_resolver_vault_retries: 0
+    secret_resolver_requests:
       - name: existing_value
         hashicorp_vault:
           path: integration/existing
@@ -132,7 +132,7 @@
         url: "{{ secret_resolver_vault_test_addr }}/v1/secret/data/integration/generated"
         method: GET
         headers:
-          X-Vault-Token: "{{ lit_secret_resolver_vault_token }}"
+          X-Vault-Token: "{{ secret_resolver_vault_token }}"
         return_content: true
         status_code:
           - 200
@@ -144,7 +144,7 @@
         url: "{{ secret_resolver_vault_test_addr }}/v1/secret/data/integration/migrated"
         method: GET
         headers:
-          X-Vault-Token: "{{ lit_secret_resolver_vault_token }}"
+          X-Vault-Token: "{{ secret_resolver_vault_token }}"
         return_content: true
         status_code:
           - 200
@@ -168,26 +168,26 @@
     - name: Capture first-pass state without disclosure
       ansible.builtin.set_fact:
         secret_resolver_vault_first_generated_value: >-
-          {{ lit_secret_resolver_result.generated_value }}
+          {{ secret_resolver_result.generated_value }}
         secret_resolver_vault_first_generated: >-
-          {{ lit_secret_resolver_metadata.generated_value.generated | bool }}
+          {{ secret_resolver_metadata.generated_value.generated | bool }}
         secret_resolver_vault_first_written_back: >-
-          {{ lit_secret_resolver_metadata.generated_value.written_back | bool }}
+          {{ secret_resolver_metadata.generated_value.written_back | bool }}
         secret_resolver_vault_first_generation_state: >-
-          {{ lit_secret_resolver_metadata.generated_value.persistence_state }}
+          {{ secret_resolver_metadata.generated_value.persistence_state }}
         secret_resolver_vault_first_migrated: >-
-          {{ lit_secret_resolver_metadata.migrated_value.migrated | bool }}
+          {{ secret_resolver_metadata.migrated_value.migrated | bool }}
         secret_resolver_vault_first_migration_state: >-
-          {{ lit_secret_resolver_metadata.migrated_value.persistence_state }}
+          {{ secret_resolver_metadata.migrated_value.persistence_state }}
       changed_when: false
       no_log: true
 
     - name: Assert first-pass resolution and persistence semantics
       ansible.builtin.assert:
         that:
-          - lit_secret_resolver_result.existing_value == 'vault-existing-input'
-          - lit_secret_resolver_result.migrated_value == 'migration-source-input'
-          - lit_secret_resolver_metadata.existing_value.provider == 'hashicorp_vault'
+          - secret_resolver_result.existing_value == 'vault-existing-input'
+          - secret_resolver_result.migrated_value == 'migration-source-input'
+          - secret_resolver_metadata.existing_value.provider == 'hashicorp_vault'
           - >-
             (
               secret_resolver_vault_expect_generation_write
@@ -230,15 +230,15 @@
     - name: Verify immediate normalized reread behavior
       ansible.builtin.assert:
         that:
-          - lit_secret_resolver_result.existing_value == 'vault-existing-input'
-          - lit_secret_resolver_result.generated_value == secret_resolver_vault_first_generated_value
-          - lit_secret_resolver_result.migrated_value == 'migration-source-input'
-          - lit_secret_resolver_metadata.generated_value.provider == 'hashicorp_vault'
-          - not lit_secret_resolver_metadata.generated_value.generated
-          - not lit_secret_resolver_metadata.generated_value.written_back
-          - lit_secret_resolver_metadata.generated_value.persistence_state == 'not_requested'
-          - not lit_secret_resolver_metadata.migrated_value.migrated
-          - lit_secret_resolver_metadata.migrated_value.persistence_state == 'already_present'
+          - secret_resolver_result.existing_value == 'vault-existing-input'
+          - secret_resolver_result.generated_value == secret_resolver_vault_first_generated_value
+          - secret_resolver_result.migrated_value == 'migration-source-input'
+          - secret_resolver_metadata.generated_value.provider == 'hashicorp_vault'
+          - not secret_resolver_metadata.generated_value.generated
+          - not secret_resolver_metadata.generated_value.written_back
+          - secret_resolver_metadata.generated_value.persistence_state == 'not_requested'
+          - not secret_resolver_metadata.migrated_value.migrated
+          - secret_resolver_metadata.migrated_value.persistence_state == 'already_present'
         quiet: true
       no_log: true
 
@@ -248,7 +248,7 @@
           ansible.builtin.include_role:
             name: lit.foundational.secret_resolver
           vars:
-            lit_secret_resolver_requests:
+            secret_resolver_requests:
               - name: conflicting_migration
                 ansible_vault:
                   variable: secret_resolver_migration_input

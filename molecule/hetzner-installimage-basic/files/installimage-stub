@@ -3,6 +3,7 @@ set -euo pipefail
 trap 'printf "installimage-stub failed at line %s\n" "$LINENO" >&2' ERR
 
 fixture_root=/tmp/lit-hetzner-installimage-test
+installimage_workdir=/installimage.M0L3C
 config_path=""
 post_install_path=""
 
@@ -36,10 +37,13 @@ grep -q '^CRYPTPASSWORD ' "$config_path"
 grep -q '^TAKE_OVER_RESCUE_SYSTEM_SSH_PUBLIC_KEYS yes$' "$config_path"
 test "$post_install_path" = "$fixture_root/post-install.sh"
 
-mkdir -p "$fixture_root/fold" "$fixture_root/installed"
-cp "$config_path" "$fixture_root/fold/install.conf"
-FOLD="$fixture_root/fold" /post-mount
-cp "$fixture_root/fold/install.conf" "$fixture_root/installed/installimage.conf"
+rm -rf "$installimage_workdir"
+mkdir -m 0700 "$installimage_workdir"
+mkdir -p "$fixture_root/installed"
+cp "$config_path" "$installimage_workdir/install.conf"
+/post-mount
+cp "$installimage_workdir/install.conf" "$fixture_root/installed/installimage.conf"
+rm -rf "$installimage_workdir"
 
 cp "$config_path" /autosetup
 mv /autosetup /autosetup.bak-molecule

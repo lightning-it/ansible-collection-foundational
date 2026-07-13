@@ -1,0 +1,424 @@
+---
+argument_specs:
+  main:
+    short_description: Declaratively reconcile Hetzner Robot configuration-as-code resources.
+    description:
+      - Uses purpose-built modules from community.hrobot and performs no raw REST calls.
+      - Runs Robot API operations once on the Ansible controller.
+      - Supports validation-only planning and separately gated destructive states.
+    options:
+      hetzner_robot_cac_user:
+        description: Resolved Hetzner Robot web-service username.
+        type: str
+        default: ""
+        no_log: true
+      hetzner_robot_cac_password:
+        description: Resolved Hetzner Robot web-service password.
+        type: str
+        default: ""
+        no_log: true
+      hetzner_robot_cac_validate_only:
+        description: Validate declarations and publish a secret-free plan without API calls.
+        type: bool
+        default: false
+      hetzner_robot_cac_state:
+        description: Default state for resources that omit an item state.
+        type: str
+        choices: [present, absent]
+        default: present
+      hetzner_robot_cac_allow_destructive:
+        description: Explicit approval required for absent, disabled, cancelled, or unrouted states.
+        type: bool
+        default: false
+      hetzner_robot_cac_rate_limit_retry_timeout:
+        description: Finite maximum seconds to retry Robot rate-limit responses.
+        type: int
+        default: 120
+      hetzner_robot_cac_server_metadata:
+        description: Dedicated server name declarations; Robot cannot delete leased servers.
+        type: list
+        elements: dict
+        default: []
+        options:
+          server_number:
+            description: Hetzner numeric server identifier.
+            type: int
+            required: true
+          server_name:
+            description: Desired dedicated server name or FQDN.
+            type: str
+            required: true
+          state:
+            description: Server metadata supports present only.
+            type: str
+            choices: [present]
+      hetzner_robot_cac_firewalls:
+        description: Dedicated server firewall declarations.
+        type: list
+        elements: dict
+        default: []
+        options:
+          server_number:
+            description: Preferred numeric server identifier; mutually exclusive with server_ip.
+            type: int
+          server_ip:
+            description: Deprecated Robot main-IP identifier; prefer server_number.
+            type: str
+          port:
+            description: Physical switch port governed by the firewall.
+            type: str
+            choices: [main, kvm]
+            default: main
+          allowlist_hos:
+            description: Permit access from Hetzner services.
+            type: bool
+          filter_ipv6:
+            description: Whether the firewall also filters IPv6 traffic.
+            type: bool
+          rules:
+            description: Authoritative input and output rule lists when supplied.
+            type: dict
+            options:
+              input:
+                description: Ordered inbound firewall rules.
+                type: list
+                elements: dict
+                options:
+                  name:
+                    description: Robot-compatible rule name.
+                    type: str
+                  ip_version:
+                    description: Address family for addresses or protocols in the rule.
+                    type: str
+                    choices: [ipv4, ipv6]
+                  dst_ip:
+                    description: Destination IP address or CIDR.
+                    type: str
+                  dst_port:
+                    description: Destination port or range.
+                    type: str
+                  src_ip:
+                    description: Source IP address or CIDR.
+                    type: str
+                  src_port:
+                    description: Source port or range.
+                    type: str
+                  protocol:
+                    description: Protocol above the IP layer.
+                    type: str
+                  tcp_flags:
+                    description: Robot TCP flag expression.
+                    type: str
+                  action:
+                    description: Action taken when the rule matches.
+                    type: str
+                    choices: [accept, discard]
+                    required: true
+              output:
+                description: Ordered outbound firewall rules.
+                type: list
+                elements: dict
+                options:
+                  name:
+                    description: Robot-compatible rule name.
+                    type: str
+                  ip_version:
+                    description: Address family for addresses or protocols in the rule.
+                    type: str
+                    choices: [ipv4, ipv6]
+                  dst_ip:
+                    description: Destination IP address or CIDR.
+                    type: str
+                  dst_port:
+                    description: Destination port or range.
+                    type: str
+                  src_ip:
+                    description: Source IP address or CIDR.
+                    type: str
+                  src_port:
+                    description: Source port or range.
+                    type: str
+                  protocol:
+                    description: Protocol above the IP layer.
+                    type: str
+                  tcp_flags:
+                    description: Robot TCP flag expression.
+                    type: str
+                  action:
+                    description: Action taken when the rule matches.
+                    type: str
+                    choices: [accept, discard]
+                    required: true
+          timeout:
+            description: Seconds to wait for the final firewall state.
+            type: int
+            default: 180
+          update_timeout:
+            description: Timeout used by a firewall configuration request.
+            type: int
+            default: 30
+          wait_delay:
+            description: Seconds between firewall-state polling attempts.
+            type: int
+            default: 10
+          wait_for_configured:
+            description: Wait until Robot reports the firewall as active or disabled.
+            type: bool
+            default: true
+          state:
+            description: Present activates the firewall; absent disables it.
+            type: str
+            choices: [present, absent]
+      hetzner_robot_cac_vswitches:
+        description: Hetzner Robot vSwitch declarations.
+        type: list
+        elements: dict
+        default: []
+        options:
+          name:
+            description: vSwitch name; name and VLAN form the identity.
+            type: str
+            required: true
+          vlan:
+            description: VLAN identifier from 4000 through 4091.
+            type: int
+            required: true
+          servers:
+            description: Numeric server IDs or main IPs; omit to preserve membership.
+            type: list
+            elements: str
+          timeout:
+            description: Seconds to wait for vSwitch server membership changes.
+            type: int
+            default: 180
+          wait:
+            description: Wait until vSwitch membership reaches its final state.
+            type: bool
+            default: true
+          wait_delay:
+            description: Seconds between vSwitch polling attempts.
+            type: int
+            default: 10
+          state:
+            description: Absent cancels the vSwitch at the end of the current day.
+            type: str
+            choices: [present, absent]
+      hetzner_robot_cac_reverse_dns:
+        description: Reverse DNS declarations for Robot-assigned addresses.
+        type: list
+        elements: dict
+        default: []
+        options:
+          ip:
+            description: IP address whose reverse DNS entry is reconciled.
+            type: str
+            required: true
+          value:
+            description: Desired reverse DNS name, required for present.
+            type: str
+          state:
+            description: Reverse DNS entry state.
+            type: str
+            choices: [present, absent]
+      hetzner_robot_cac_ssh_keys:
+        description: Public SSH keys stored in Hetzner Robot.
+        type: list
+        elements: dict
+        default: []
+        options:
+          name:
+            description: Robot key name, required for present.
+            type: str
+          public_key:
+            description: OpenSSH public key data; never provide private keys.
+            type: str
+          fingerprint:
+            description: MD5 fingerprint used to identify an absent key.
+            type: str
+          state:
+            description: Robot public key state.
+            type: str
+            choices: [present, absent]
+      hetzner_robot_cac_failover_ips:
+        description: Failover IP routing declarations.
+        type: list
+        elements: dict
+        default: []
+        options:
+          failover_ip:
+            description: Failover IPv4 or IPv6 address.
+            type: str
+            required: true
+          value:
+            description: Target server address required for present/routed state.
+            type: str
+          timeout:
+            description: Seconds to wait for routing or unrouting.
+            type: int
+            default: 180
+          state:
+            description: Present routes the IP; absent unroutes it.
+            type: str
+            choices: [present, absent]
+  audit:
+    short_description: Audit exact Hetzner Robot server, firewall, and vSwitch state.
+    description:
+      - Uses read-only community.hrobot information modules and forced check mode for vSwitch drift detection.
+      - Queries the server list once per role invocation and resolves each declared public IP uniquely.
+      - Publishes only sanitized counts after all declared state is proven exact.
+    options:
+      hetzner_robot_cac_user:
+        description: Resolved Hetzner Robot web-service username.
+        type: str
+        default: ""
+        no_log: true
+      hetzner_robot_cac_password:
+        description: Resolved Hetzner Robot web-service password.
+        type: str
+        default: ""
+        no_log: true
+      hetzner_robot_cac_validate_only:
+        description: Validate audit declarations and publish a plan without API calls.
+        type: bool
+        default: false
+      hetzner_robot_cac_rate_limit_retry_timeout:
+        description: Non-negative maximum seconds to retry Robot rate-limit responses.
+        type: int
+        default: 120
+      hetzner_robot_cac_audit_servers:
+        description: Expected dedicated server state keyed by the exact public server IP.
+        type: list
+        elements: dict
+        default: []
+        options:
+          server_ip:
+            description: Public main IP that must uniquely resolve in Robot.
+            type: str
+            required: true
+          server_name:
+            description: Exact expected Robot server name; omitted values are not checked.
+            type: str
+          status:
+            description: Exact expected Robot server status.
+            type: str
+            choices: [ready, in process]
+            default: ready
+          cancelled:
+            description: Exact expected server cancellation flag.
+            type: bool
+            default: false
+          firewall:
+            description: Optional exact expected Robot firewall state.
+            type: dict
+            options:
+              status:
+                description: Expected firewall status.
+                type: str
+                choices: [active, disabled]
+                default: active
+              port:
+                description: Expected physical switch port.
+                type: str
+                choices: [main, kvm]
+                default: main
+              filter_ipv6:
+                description: Expected IPv6 filtering flag.
+                type: bool
+                default: false
+              allowlist_hos:
+                description: Expected Hetzner-services allowlist flag.
+                type: bool
+                default: false
+              rules:
+                description: Optional exact ordered input and output rule sets.
+                type: dict
+                options:
+                  input:
+                    description: Expected ordered inbound rules.
+                    type: list
+                    elements: dict
+                    options:
+                      name:
+                        description: Expected rule name.
+                        type: str
+                      ip_version:
+                        description: Expected address family.
+                        type: str
+                        choices: [ipv4, ipv6]
+                      dst_ip:
+                        description: Expected destination IP or CIDR; bare IPv4 hosts normalize to /32.
+                        type: str
+                      dst_port:
+                        description: Expected destination port or range.
+                        type: str
+                      src_ip:
+                        description: Expected source IP or CIDR; bare IPv4 hosts normalize to /32.
+                        type: str
+                      src_port:
+                        description: Expected source port or range.
+                        type: str
+                      protocol:
+                        description: Expected protocol above IP.
+                        type: str
+                      tcp_flags:
+                        description: Expected Robot TCP flag expression.
+                        type: str
+                      action:
+                        description: Expected rule action.
+                        type: str
+                        choices: [accept, discard]
+                        required: true
+                  output:
+                    description: Expected ordered outbound rules.
+                    type: list
+                    elements: dict
+                    options:
+                      name:
+                        description: Expected rule name.
+                        type: str
+                      ip_version:
+                        description: Expected address family.
+                        type: str
+                        choices: [ipv4, ipv6]
+                      dst_ip:
+                        description: Expected destination IP or CIDR; bare IPv4 hosts normalize to /32.
+                        type: str
+                      dst_port:
+                        description: Expected destination port or range.
+                        type: str
+                      src_ip:
+                        description: Expected source IP or CIDR; bare IPv4 hosts normalize to /32.
+                        type: str
+                      src_port:
+                        description: Expected source port or range.
+                        type: str
+                      protocol:
+                        description: Expected protocol above IP.
+                        type: str
+                      tcp_flags:
+                        description: Expected Robot TCP flag expression.
+                        type: str
+                      action:
+                        description: Expected rule action.
+                        type: str
+                        choices: [accept, discard]
+                        required: true
+      hetzner_robot_cac_audit_vswitches:
+        description: Expected active vSwitches with exact ready server membership.
+        type: list
+        elements: dict
+        default: []
+        options:
+          name:
+            description: Exact expected vSwitch name.
+            type: str
+            required: true
+          vlan:
+            description: Exact VLAN identifier from 4000 through 4091.
+            type: int
+            required: true
+          servers:
+            description: Exact unique server IDs or public IP membership.
+            type: list
+            elements: str
+            required: true
