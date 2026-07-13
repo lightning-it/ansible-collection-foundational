@@ -1,7 +1,7 @@
 ---
 namespace: lit
 name: foundational
-version: 1.27.0
+version: 1.28.0
 readme: README.md
 description: Foundational Ansible collection for ModuLix, providing base roles, helpers,
   and Terraform/Terragrunt runner building blocks for platform automation.
@@ -16,8 +16,8 @@ tags:
   - security
   - automation
 dependencies:
-  hetzner.hcloud: "6.10.0"
-  community.hrobot: "2.7.2"
+  hetzner.hcloud: 6.10.0
+  community.hrobot: 2.7.2
   community.general: '>=11.4.9,<12.0.0'
   community.crypto: '>=3.2.2,<4.0.0'
   ansible.posix: '>=2.2.0'
