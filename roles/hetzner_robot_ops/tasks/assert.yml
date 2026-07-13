@@ -1,0 +1,82 @@
+---
+- name: Validate Hetzner Robot operation selection
+  ansible.builtin.assert:
+    that:
+      - hetzner_robot_ops_action in ['none', 'activate_rescue', 'set_regular_boot', 'reset']
+      - ansible_play_hosts_all | length == 1
+    fail_msg: >-
+      Select exactly one supported hetzner_robot_ops_action and run this role in a play containing exactly one host.
+    quiet: true
+
+- name: Validate inputs required by active Hetzner Robot operations
+  ansible.builtin.assert:
+    that:
+      - hetzner_robot_ops_hetzner_user | trim | length > 0
+      - hetzner_robot_ops_hetzner_password | length > 0
+      - hetzner_robot_ops_server_number | int > 0
+      - hetzner_robot_ops_server_ip is match('^(?:[0-9]{1,3}\\.){3}[0-9]{1,3}$')
+      - >-
+        hetzner_robot_ops_server_ip.split('.')
+        | map('int')
+        | select('gt', 255)
+        | list
+        | length == 0
+      - hetzner_robot_ops_rate_limit_retry_timeout | int >= 0
+    fail_msg: >-
+      Active operations require non-empty Robot credentials, a positive server number, its exact main IPv4, and a
+      non-negative finite rate-limit retry timeout.
+    quiet: true
+  when: hetzner_robot_ops_action != 'none'
+  no_log: true
+
+- name: Validate boot operation confirmation
+  ansible.builtin.assert:
+    that:
+      - hetzner_robot_ops_boot_confirmation == ('BOOT ' ~ (hetzner_robot_ops_server_number | string))
+    fail_msg: >-
+      Boot configuration changes require hetzner_robot_ops_boot_confirmation to exactly match
+      "BOOT <server_number>".
+    quiet: true
+  when: hetzner_robot_ops_action in ['activate_rescue', 'set_regular_boot']
+
+- name: Validate rescue activation inputs
+  ansible.builtin.assert:
+    that:
+      - hetzner_robot_ops_rescue_os | trim | length > 0
+      - hetzner_robot_ops_rescue_authorized_keys | length > 0
+      - >-
+        hetzner_robot_ops_rescue_authorized_keys
+        | map('trim')
+        | reject('equalto', '')
+        | list
+        | length == hetzner_robot_ops_rescue_authorized_keys | length
+    fail_msg: >-
+      Rescue activation requires an operating-system name and at least one non-empty SSH key fingerprint or public
+      key already registered in Hetzner Robot.
+    quiet: true
+  when: hetzner_robot_ops_action == 'activate_rescue'
+
+- name: Validate reset operation confirmation
+  ansible.builtin.assert:
+    that:
+      - hetzner_robot_ops_reset_confirmation == ('RESET ' ~ (hetzner_robot_ops_server_number | string))
+      - hetzner_robot_ops_reset_type in ['software', 'hardware', 'power', 'manual']
+    fail_msg: >-
+      Reset requires a supported reset type and hetzner_robot_ops_reset_confirmation exactly matching
+      "RESET <server_number>".
+    quiet: true
+  when: hetzner_robot_ops_action == 'reset'
+
+- name: Validate manual reset operation confirmation
+  ansible.builtin.assert:
+    that:
+      - >-
+        hetzner_robot_ops_manual_reset_confirmation
+        == ('MANUAL RESET ' ~ (hetzner_robot_ops_server_number | string))
+    fail_msg: >-
+      Manual reset requests require hetzner_robot_ops_manual_reset_confirmation to exactly match
+      "MANUAL RESET <server_number>".
+    quiet: true
+  when:
+    - hetzner_robot_ops_action == 'reset'
+    - hetzner_robot_ops_reset_type == 'manual'

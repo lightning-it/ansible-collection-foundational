@@ -1,0 +1,320 @@
+---
+- name: Remove only scenario-owned live Hetzner Cloud infrastructure
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - live-vars
+  tasks:
+    - name: Validate the filesystem-safe live cleanup identity
+      ansible.builtin.assert:
+        that:
+          - hetzner_cloud_live_test_id is match('^[a-z0-9][a-z0-9-]{7,23}$')
+          - '''mgmt01'' not in hetzner_cloud_live_test_id'
+          - '''mgmt01'' not in hetzner_cloud_live_name'
+          - hetzner_cloud_live_name.startswith('lit-hcloud-')
+        fail_msg: "Refusing cleanup before path construction because the live-test identity is unsafe."
+        quiet: true
+      changed_when: false
+      no_log: true
+
+    - name: Inspect successful collision-preflight marker
+      ansible.builtin.stat:
+        path: "{{ hetzner_cloud_live_owner_marker }}"
+      register: hetzner_cloud_live_cleanup_marker
+
+    - name: Read successful collision-preflight identity
+      ansible.builtin.slurp:
+        src: "{{ hetzner_cloud_live_owner_marker }}"
+      register: hetzner_cloud_live_cleanup_marker_content
+      when: hetzner_cloud_live_cleanup_marker.stat.exists | bool
+      no_log: true
+
+    - name: Require the marker to belong to this exact live-test identity
+      ansible.builtin.assert:
+        that:
+          - >-
+            hetzner_cloud_live_cleanup_marker_content.content
+            | b64decode
+            | trim
+            == hetzner_cloud_live_test_id
+        fail_msg: "Refusing cleanup because the preflight marker belongs to a different live-test identity."
+        quiet: true
+      when: hetzner_cloud_live_cleanup_marker.stat.exists | bool
+      changed_when: false
+      no_log: true
+
+    - name: Discover, verify, and remove scenario-owned resources
+      when: hetzner_cloud_live_cleanup_marker.stat.exists | bool
+      block:
+        - name: Enforce the destructive live-test cleanup gate
+          ansible.builtin.assert:
+            that:
+              - hetzner_cloud_live_enabled | lower == 'true'
+              - hetzner_cloud_live_token_present | bool
+            fail_msg: "Refusing destructive cleanup without the complete safe live-test gate."
+            quiet: true
+          changed_when: false
+          no_log: true
+
+        - name: Discover potentially owned live resources
+          no_log: true
+          block:
+            - name: Read live SSH keys
+              hetzner.hcloud.ssh_key_info:
+                name: "{{ hetzner_cloud_live_name }}-key"
+              register: hetzner_cloud_live_cleanup_ssh_keys
+
+            - name: Read live firewalls
+              hetzner.hcloud.firewall_info:
+                name: "{{ hetzner_cloud_live_name }}-firewall"
+              register: hetzner_cloud_live_cleanup_firewalls
+
+            - name: Read live Networks
+              hetzner.hcloud.network_info:
+                name: "{{ hetzner_cloud_live_name }}-network"
+              register: hetzner_cloud_live_cleanup_networks
+
+            - name: Read live Primary IPv4 resources
+              hetzner.hcloud.primary_ip_info:
+                name: "{{ hetzner_cloud_live_name }}-primary"
+              register: hetzner_cloud_live_cleanup_primary_ips
+
+            - name: Read live servers
+              hetzner.hcloud.server_info:
+                name: "{{ hetzner_cloud_live_name }}-server"
+              register: hetzner_cloud_live_cleanup_servers
+
+            - name: Read live Floating IPv4 resources
+              hetzner.hcloud.floating_ip_info:
+                name: "{{ hetzner_cloud_live_name }}-floating"
+              register: hetzner_cloud_live_cleanup_floating_ips
+
+        - name: Verify ownership labels before authorizing any deletion
+          ansible.builtin.assert:
+            that:
+              - >-
+                hetzner_cloud_live_cleanup_ssh_keys.hcloud_ssh_key_info | length == 0
+                or
+                (
+                  hetzner_cloud_live_cleanup_ssh_keys.hcloud_ssh_key_info[0].labels['managed-by']
+                  | default('') == 'molecule'
+                  and
+                  hetzner_cloud_live_cleanup_ssh_keys.hcloud_ssh_key_info[0].labels['test-id']
+                  | default('') == hetzner_cloud_live_test_id
+                )
+              - >-
+                hetzner_cloud_live_cleanup_firewalls.hcloud_firewall_info | length == 0
+                or
+                (
+                  hetzner_cloud_live_cleanup_firewalls.hcloud_firewall_info[0].labels['managed-by']
+                  | default('') == 'molecule'
+                  and
+                  hetzner_cloud_live_cleanup_firewalls.hcloud_firewall_info[0].labels['test-id']
+                  | default('') == hetzner_cloud_live_test_id
+                )
+              - >-
+                hetzner_cloud_live_cleanup_networks.hcloud_network_info | length == 0
+                or
+                (
+                  hetzner_cloud_live_cleanup_networks.hcloud_network_info[0].labels['managed-by']
+                  | default('') == 'molecule'
+                  and
+                  hetzner_cloud_live_cleanup_networks.hcloud_network_info[0].labels['test-id']
+                  | default('') == hetzner_cloud_live_test_id
+                )
+              - >-
+                hetzner_cloud_live_cleanup_primary_ips.hcloud_primary_ip_info | length == 0
+                or
+                (
+                  hetzner_cloud_live_cleanup_primary_ips.hcloud_primary_ip_info[0].labels['managed-by']
+                  | default('') == 'molecule'
+                  and
+                  hetzner_cloud_live_cleanup_primary_ips.hcloud_primary_ip_info[0].labels['test-id']
+                  | default('') == hetzner_cloud_live_test_id
+                )
+              - >-
+                hetzner_cloud_live_cleanup_servers.hcloud_server_info | length == 0
+                or
+                (
+                  hetzner_cloud_live_cleanup_servers.hcloud_server_info[0].labels['managed-by']
+                  | default('') == 'molecule'
+                  and
+                  hetzner_cloud_live_cleanup_servers.hcloud_server_info[0].labels['test-id']
+                  | default('') == hetzner_cloud_live_test_id
+                )
+              - >-
+                hetzner_cloud_live_cleanup_floating_ips.hcloud_floating_ip_info | length == 0
+                or
+                (
+                  hetzner_cloud_live_cleanup_floating_ips.hcloud_floating_ip_info[0].labels['managed-by']
+                  | default('') == 'molecule'
+                  and
+                  hetzner_cloud_live_cleanup_floating_ips.hcloud_floating_ip_info[0].labels['test-id']
+                  | default('') == hetzner_cloud_live_test_id
+                )
+            fail_msg: >-
+              At least one colliding resource lacks this run's ownership labels. Refusing every deletion.
+            quiet: true
+          changed_when: false
+          no_log: true
+
+        - name: Build dependency-safe cleanup declarations from discovered state
+          ansible.builtin.set_fact:
+            hetzner_cloud_live_cleanup_reverse_dns: >-
+              {{
+                [
+                  {
+                    'primary_ip': hetzner_cloud_live_cleanup_primary_ips.hcloud_primary_ip_info[0].id,
+                    'ip_address': hetzner_cloud_live_cleanup_primary_ips.hcloud_primary_ip_info[0].ip,
+                    'state': 'absent'
+                  }
+                ]
+                if hetzner_cloud_live_cleanup_primary_ips.hcloud_primary_ip_info | length == 1
+                else []
+              }}
+            hetzner_cloud_live_cleanup_floating_declaration: >-
+              {{
+                [
+                  {
+                    'id': hetzner_cloud_live_cleanup_floating_ips.hcloud_floating_ip_info[0].id,
+                    'state': 'absent'
+                  }
+                ]
+                if hetzner_cloud_live_cleanup_floating_ips.hcloud_floating_ip_info | length == 1
+                else []
+              }}
+            hetzner_cloud_live_cleanup_firewall_relationships: >-
+              {{
+                [
+                  {
+                    'firewall': hetzner_cloud_live_cleanup_firewalls.hcloud_firewall_info[0].id,
+                    'servers': [hetzner_cloud_live_cleanup_servers.hcloud_server_info[0].id],
+                    'state': 'absent'
+                  }
+                ]
+                if
+                (
+                  hetzner_cloud_live_cleanup_firewalls.hcloud_firewall_info | length == 1
+                  and hetzner_cloud_live_cleanup_servers.hcloud_server_info | length == 1
+                )
+                else []
+              }}
+            hetzner_cloud_live_cleanup_network_relationships: >-
+              {{
+                [
+                  {
+                    'server': hetzner_cloud_live_cleanup_servers.hcloud_server_info[0].id,
+                    'network': hetzner_cloud_live_cleanup_networks.hcloud_network_info[0].id,
+                    'state': 'absent'
+                  }
+                ]
+                if
+                (
+                  hetzner_cloud_live_cleanup_networks.hcloud_network_info | length == 1
+                  and hetzner_cloud_live_cleanup_servers.hcloud_server_info | length == 1
+                )
+                else []
+              }}
+            hetzner_cloud_live_cleanup_server_declaration: >-
+              {{
+                [
+                  {
+                    'id': hetzner_cloud_live_cleanup_servers.hcloud_server_info[0].id,
+                    'state': 'absent'
+                  }
+                ]
+                if hetzner_cloud_live_cleanup_servers.hcloud_server_info | length == 1
+                else []
+              }}
+            hetzner_cloud_live_cleanup_primary_declaration: >-
+              {{
+                [
+                  {
+                    'id': hetzner_cloud_live_cleanup_primary_ips.hcloud_primary_ip_info[0].id,
+                    'state': 'absent'
+                  }
+                ]
+                if hetzner_cloud_live_cleanup_primary_ips.hcloud_primary_ip_info | length == 1
+                else []
+              }}
+            hetzner_cloud_live_cleanup_firewall_declaration: >-
+              {{
+                [
+                  {
+                    'id': hetzner_cloud_live_cleanup_firewalls.hcloud_firewall_info[0].id,
+                    'state': 'absent'
+                  }
+                ]
+                if hetzner_cloud_live_cleanup_firewalls.hcloud_firewall_info | length == 1
+                else []
+              }}
+            hetzner_cloud_live_cleanup_subnetwork_declaration: >-
+              {{
+                [
+                  {
+                    'network': hetzner_cloud_live_cleanup_networks.hcloud_network_info[0].id,
+                    'ip_range': hetzner_cloud_live_subnetworks[0].ip_range,
+                    'type': hetzner_cloud_live_subnetworks[0].type,
+                    'network_zone': hetzner_cloud_live_subnetworks[0].network_zone,
+                    'state': 'absent'
+                  }
+                ]
+                if hetzner_cloud_live_cleanup_networks.hcloud_network_info | length == 1
+                else []
+              }}
+            hetzner_cloud_live_cleanup_network_declaration: >-
+              {{
+                [
+                  {
+                    'id': hetzner_cloud_live_cleanup_networks.hcloud_network_info[0].id,
+                    'state': 'absent'
+                  }
+                ]
+                if hetzner_cloud_live_cleanup_networks.hcloud_network_info | length == 1
+                else []
+              }}
+            hetzner_cloud_live_cleanup_ssh_key_declaration: >-
+              {{
+                [
+                  {
+                    'id': hetzner_cloud_live_cleanup_ssh_keys.hcloud_ssh_key_info[0].id,
+                    'state': 'absent'
+                  }
+                ]
+                if hetzner_cloud_live_cleanup_ssh_keys.hcloud_ssh_key_info | length == 1
+                else []
+              }}
+          changed_when: false
+          no_log: true
+
+        - name: Reconcile all discovered resources absent through the role
+          ansible.builtin.include_role:
+            name: lit.foundational.hetzner_cloud
+          vars:
+            hetzner_cloud_allow_destructive: true
+            hetzner_cloud_reverse_dns: "{{ hetzner_cloud_live_cleanup_reverse_dns }}"
+            hetzner_cloud_floating_ips: "{{ hetzner_cloud_live_cleanup_floating_declaration }}"
+            hetzner_cloud_firewall_resources: "{{ hetzner_cloud_live_cleanup_firewall_relationships }}"
+            hetzner_cloud_server_networks: "{{ hetzner_cloud_live_cleanup_network_relationships }}"
+            hetzner_cloud_servers: "{{ hetzner_cloud_live_cleanup_server_declaration }}"
+            hetzner_cloud_primary_ips: "{{ hetzner_cloud_live_cleanup_primary_declaration }}"
+            hetzner_cloud_firewalls: "{{ hetzner_cloud_live_cleanup_firewall_declaration }}"
+            hetzner_cloud_subnetworks: "{{ hetzner_cloud_live_cleanup_subnetwork_declaration }}"
+            hetzner_cloud_networks: "{{ hetzner_cloud_live_cleanup_network_declaration }}"
+            hetzner_cloud_ssh_keys: "{{ hetzner_cloud_live_cleanup_ssh_key_declaration }}"
+          no_log: true
+
+        - name: Record successful live infrastructure cleanup
+          ansible.builtin.set_fact:
+            hetzner_cloud_live_cleanup_complete: true
+          changed_when: false
+
+    - name: Remove ephemeral files after safe cleanup or an incomplete prepare
+      ansible.builtin.file:
+        path: "{{ hetzner_cloud_live_key_directory }}"
+        state: absent
+      when:
+        - >-
+          not hetzner_cloud_live_cleanup_marker.stat.exists
+          or hetzner_cloud_live_cleanup_complete | default(false) | bool

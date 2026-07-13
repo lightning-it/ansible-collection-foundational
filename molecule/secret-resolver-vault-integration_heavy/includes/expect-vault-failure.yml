@@ -7,29 +7,29 @@
         apply:
           no_log: true
       vars:
-        lit_secret_resolver_provider: hashicorp_vault
-        lit_secret_resolver_provider_order: >-
+        secret_resolver_provider: hashicorp_vault
+        secret_resolver_provider_order: >-
           {{ secret_resolver_vault_failure_case.provider_order | default([]) }}
-        lit_secret_resolver_allow_fallback: >-
+        secret_resolver_allow_fallback: >-
           {{ secret_resolver_vault_failure_case.allow_fallback | default(false) }}
-        lit_secret_resolver_fallback_on: >-
+        secret_resolver_fallback_on: >-
           {{ secret_resolver_vault_failure_case.fallback_on | default(['secret_not_found', 'secret_key_missing']) }}
-        lit_secret_resolver_vault_addr: >-
+        secret_resolver_vault_addr: >-
           {{ secret_resolver_vault_failure_case.addr | default(secret_resolver_vault_test_addr) }}
-        lit_secret_resolver_vault_token: >-
+        secret_resolver_vault_token: >-
           {{ secret_resolver_vault_failure_case.token | default('molecule-root-token') }}
-        lit_secret_resolver_vault_auth_method: >-
+        secret_resolver_vault_auth_method: >-
           {{ secret_resolver_vault_failure_case.auth_method | default('token') }}
-        lit_secret_resolver_vault_role_id: >-
+        secret_resolver_vault_role_id: >-
           {{ secret_resolver_vault_failure_case.role_id | default('') }}
-        lit_secret_resolver_vault_secret_id: >-
+        secret_resolver_vault_secret_id: >-
           {{ secret_resolver_vault_failure_case.secret_id | default('') }}
-        lit_secret_resolver_vault_token_validate: >-
+        secret_resolver_vault_token_validate: >-
           {{ secret_resolver_vault_failure_case.token_validate | default(true) }}
-        lit_secret_resolver_vault_validate_certs: false
-        lit_secret_resolver_vault_timeout: 1
-        lit_secret_resolver_vault_retries: 0
-        lit_secret_resolver_requests:
+        secret_resolver_vault_validate_certs: false
+        secret_resolver_vault_timeout: 1
+        secret_resolver_vault_retries: 0
+        secret_resolver_requests:
           - "{{ secret_resolver_vault_failure_case.request }}"
       no_log: true
 

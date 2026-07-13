@@ -1,0 +1,74 @@
+---
+- name: Validate Hetzner Robot audit controls
+  ansible.builtin.assert:
+    that:
+      - hetzner_robot_cac_rate_limit_retry_timeout | int >= 0
+      - >-
+        hetzner_robot_cac_audit_servers
+        | map(attribute='server_ip')
+        | unique
+        | length == hetzner_robot_cac_audit_servers | length
+    fail_msg: Hetzner Robot retry timeout is invalid or audit server public IPs are duplicated.
+    quiet: true
+
+- name: Require resolved Robot credentials for live audit
+  ansible.builtin.assert:
+    that:
+      - hetzner_robot_cac_user | trim | length > 0
+      - hetzner_robot_cac_password | length > 0
+    fail_msg: Resolve both Robot credentials before running a live audit.
+    quiet: true
+  when: not (hetzner_robot_cac_validate_only | bool)
+  no_log: true
+
+- name: Validate Robot server audit declarations
+  ansible.builtin.assert:
+    that:
+      - item.server_ip | trim | length > 0
+      - item.status | default('ready') in ['ready', 'in process']
+      - item.server_name is not defined or item.server_name | trim | length > 0
+      - >-
+        item.firewall is not defined
+        or item.firewall.status | default('active') in ['active', 'disabled']
+      - >-
+        item.firewall is not defined
+        or item.firewall.port | default('main') in ['main', 'kvm']
+      - >-
+        item.firewall is not defined
+        or item.firewall.rules is not defined
+        or (
+          item.firewall.rules.input is defined
+          and item.firewall.rules.output is defined
+        )
+    fail_msg: Robot server audit declarations contain an invalid expected state or incomplete firewall rules.
+    quiet: true
+  loop: "{{ hetzner_robot_cac_audit_servers }}"
+  loop_control:
+    label: "{{ item.server_ip | default('undefined') }}"
+
+- name: Validate Robot vSwitch audit declarations
+  vars:
+    _hetzner_robot_cac_audit_vswitch_identities: >-
+      {%- set ns = namespace(values=[]) -%}
+      {%- for resource in hetzner_robot_cac_audit_vswitches -%}
+      {%- set ns.values = ns.values + [
+        (resource.name | default('')) ~ '|vlan:' ~ (resource.vlan | default('') | string)
+      ] -%}
+      {%- endfor -%}
+      {{ ns.values }}
+  ansible.builtin.assert:
+    that:
+      - >-
+        _hetzner_robot_cac_audit_vswitch_identities | unique | length
+        == _hetzner_robot_cac_audit_vswitch_identities | length
+      - item.name | trim | length > 0
+      - item.vlan | int >= 4000
+      - item.vlan | int <= 4091
+      - item.servers is defined
+      - item.servers | unique | length == item.servers | length
+      - item.servers | select('equalto', '') | list | length == 0
+    fail_msg: vSwitch audits require a name, VLAN 4000-4091, and unique exact server membership.
+    quiet: true
+  loop: "{{ hetzner_robot_cac_audit_vswitches }}"
+  loop_control:
+    label: "{{ item.name | default('undefined') }}"

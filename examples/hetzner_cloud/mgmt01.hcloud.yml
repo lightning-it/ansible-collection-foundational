@@ -1,0 +1,17 @@
+---
+# The official plugin requires a filename ending in hcloud.yml or hcloud.yaml.
+# Inject HCLOUD_TOKEN into the inventory process; never commit api_token here.
+plugin: hetzner.hcloud.hcloud
+label_selector: managed_by=lit-foundational,fqdn
+connect_with: public_ipv4
+hostname: "{{ hcloud_labels.fqdn | default(hcloud_name, true) }}"
+compose:
+  fqdn: hcloud_labels.fqdn
+groups:
+  management_hosts: hcloud_labels.role | default('') == 'management'
+keyed_groups:
+  - key: hcloud_location
+    prefix: hcloud_location
+  - key: hcloud_labels.environment
+    prefix: environment
+strict: true

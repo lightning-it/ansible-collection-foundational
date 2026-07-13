@@ -203,21 +203,21 @@
       or (__secret_resolver_vault_mount_point is not match(secret_resolver_vault_path_pattern))
       or (__secret_resolver_vault_mount_point.split('/') | intersect(['', '.', '..']) | length > 0)
       or ('//' in __secret_resolver_vault_mount_point)
-      or (lit_secret_resolver_vault_timeout is defined and lit_secret_resolver_vault_timeout | int < 1)
-      or (lit_secret_resolver_vault_retries is defined and lit_secret_resolver_vault_retries | int < 0)
+      or (secret_resolver_vault_timeout is defined and secret_resolver_vault_timeout | int < 1)
+      or (secret_resolver_vault_retries is defined and secret_resolver_vault_retries | int < 0)
       or
       (
-        lit_secret_resolver_vault_auth_mount_point is defined
+        secret_resolver_vault_auth_mount_point is defined
         and
         (
-          lit_secret_resolver_vault_auth_mount_point is not match(secret_resolver_vault_path_pattern)
+          secret_resolver_vault_auth_mount_point is not match(secret_resolver_vault_path_pattern)
           or
           (
-            lit_secret_resolver_vault_auth_mount_point.split('/')
+            secret_resolver_vault_auth_mount_point.split('/')
             | intersect(['', '.', '..'])
             | length > 0
           )
-          or '//' in lit_secret_resolver_vault_auth_mount_point
+          or '//' in secret_resolver_vault_auth_mount_point
         )
       )
 
@@ -257,13 +257,6 @@
       changed_when: false
       no_log: true
   rescue:
-    - name: Clear the rescued regular-expression validation objects
-      ansible.builtin.set_fact:
-        "{{ 'ansible_failed_result' }}": {}
-        "{{ 'ansible_failed_task' }}": {}
-      changed_when: false
-      no_log: true
-
     - name: Reject an invalid value regular expression
       ansible.builtin.fail:
         msg: >-

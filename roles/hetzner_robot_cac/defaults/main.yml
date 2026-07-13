@@ -1,0 +1,35 @@
+---
+# Resolve these values before invoking the role. lit.foundational.secret_resolver
+# is the recommended integration point; the role never discovers credentials.
+hetzner_robot_cac_user: ""
+hetzner_robot_cac_password: ""
+
+# Validation mode performs no Robot API calls and requires no credentials.
+hetzner_robot_cac_validate_only: false
+hetzner_robot_cac_state: present
+hetzner_robot_cac_allow_destructive: false
+hetzner_robot_cac_rate_limit_retry_timeout: 120
+
+# Dedicated server metadata can be updated but not deleted by community.hrobot.
+hetzner_robot_cac_server_metadata: []
+
+# Robot firewall definitions. Rules are authoritative when supplied.
+hetzner_robot_cac_firewalls: []
+
+# Robot vSwitch definitions. Use servers: [] during deletion to actively detach
+# all dedicated servers before the end-of-day cancellation.
+hetzner_robot_cac_vswitches: []
+
+# Reverse DNS definitions for assigned server, subnet, or failover addresses.
+hetzner_robot_cac_reverse_dns: []
+
+# Public SSH keys stored in Robot. Private keys must never be supplied here.
+hetzner_robot_cac_ssh_keys: []
+
+# Uniform item state is translated to Robot routing state:
+# present -> routed, absent -> unrouted.
+hetzner_robot_cac_failover_ips: []
+
+# Read-only audit declarations used by the tasks_from: audit entrypoint.
+hetzner_robot_cac_audit_servers: []
+hetzner_robot_cac_audit_vswitches: []

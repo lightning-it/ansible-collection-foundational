@@ -1,0 +1,290 @@
+---
+- name: Read the inventory MGMT parent interface
+  ansible.builtin.command:
+    argv:
+      - "{{ hetzner_rescue_validate_ip_path }}"
+      - -j
+      - link
+      - show
+      - dev
+      - "{{ hetzner_rescue_validate_data_plane.parent_interface }}"
+  register: hetzner_rescue_validate_mgmt_probe_parent
+  changed_when: false
+  failed_when: false
+
+- name: Require the inventory MGMT parent interface in Rescue
+  ansible.builtin.assert:
+    that:
+      - hetzner_rescue_validate_mgmt_probe_parent.rc == 0
+      - >-
+        hetzner_rescue_validate_mgmt_probe_parent.stdout | from_json
+        | length == 1
+    fail_msg: >-
+      Rescue does not expose inventory parent interface
+      {{ hetzner_rescue_validate_data_plane.parent_interface }} on {{ inventory_hostname }}.
+    quiet: true
+
+- name: Read existing Rescue addresses
+  ansible.builtin.command:
+    argv:
+      - "{{ hetzner_rescue_validate_ip_path }}"
+      - -j
+      - address
+      - show
+  register: hetzner_rescue_validate_mgmt_probe_addresses_before
+  changed_when: false
+
+- name: Check for a colliding Rescue probe VLAN interface
+  ansible.builtin.command:
+    argv:
+      - "{{ hetzner_rescue_validate_ip_path }}"
+      - link
+      - show
+      - dev
+      - "{{ hetzner_rescue_validate_data_plane.vlan_interface }}"
+  register: hetzner_rescue_validate_mgmt_probe_vlan_before
+  changed_when: false
+  failed_when: false
+
+- name: Refuse Rescue probe interface or address collisions
+  ansible.builtin.assert:
+    that:
+      - >-
+        hetzner_rescue_validate_data_plane.address not in
+        (
+          hetzner_rescue_validate_mgmt_probe_addresses_before.stdout
+          | from_json
+          | map(attribute='addr_info')
+          | flatten
+          | selectattr('family', 'equalto', 'inet')
+          | map(attribute='local')
+          | list
+        )
+      - hetzner_rescue_validate_mgmt_probe_vlan_before.rc != 0
+    fail_msg: >-
+      The probe-owned interface name or inventory MGMT address already
+      exists. Refusing to reuse or delete pre-existing Rescue state.
+    quiet: true
+
+- name: Exercise the inventory MGMT network on a temporary VLAN
+  block:
+    - name: Create and own the inventory-tagged Rescue probe VLAN
+      ansible.builtin.command:
+        argv:
+          - "{{ hetzner_rescue_validate_ip_path }}"
+          - link
+          - add
+          - link
+          - "{{ hetzner_rescue_validate_data_plane.parent_interface }}"
+          - name
+          - "{{ hetzner_rescue_validate_data_plane.vlan_interface }}"
+          - type
+          - vlan
+          - id
+          - "{{ hetzner_rescue_validate_data_plane.vlan_id | string }}"
+      register: hetzner_rescue_validate_mgmt_probe_vlan_create
+      changed_when: hetzner_rescue_validate_mgmt_probe_vlan_create.rc == 0
+
+    - name: Apply the inventory MTU to the Rescue probe VLAN
+      ansible.builtin.command:
+        argv:
+          - "{{ hetzner_rescue_validate_ip_path }}"
+          - link
+          - set
+          - dev
+          - "{{ hetzner_rescue_validate_data_plane.vlan_interface }}"
+          - mtu
+          - "{{ hetzner_rescue_validate_data_plane.mtu | string }}"
+      changed_when: true
+
+    - name: Bring up the Rescue probe VLAN
+      ansible.builtin.command:
+        argv:
+          - "{{ hetzner_rescue_validate_ip_path }}"
+          - link
+          - set
+          - dev
+          - "{{ hetzner_rescue_validate_data_plane.vlan_interface }}"
+          - up
+      changed_when: true
+
+    - name: Assign the inventory MGMT address to the probe VLAN
+      ansible.builtin.command:
+        argv:
+          - "{{ hetzner_rescue_validate_ip_path }}"
+          - address
+          - add
+          - >-
+            {{
+              hetzner_rescue_validate_data_plane.address
+              ~ '/'
+              ~ (hetzner_rescue_validate_data_plane.prefix_length | string)
+            }}
+          - dev
+          - "{{ hetzner_rescue_validate_data_plane.vlan_interface }}"
+      changed_when: true
+
+    - name: Read the configured Rescue probe VLAN
+      ansible.builtin.command:
+        argv:
+          - "{{ hetzner_rescue_validate_ip_path }}"
+          - -d
+          - -j
+          - link
+          - show
+          - dev
+          - "{{ hetzner_rescue_validate_data_plane.vlan_interface }}"
+      register: hetzner_rescue_validate_mgmt_probe_vlan_state
+      changed_when: false
+
+    - name: Read the configured Rescue MGMT address
+      ansible.builtin.command:
+        argv:
+          - "{{ hetzner_rescue_validate_ip_path }}"
+          - -j
+          - address
+          - show
+          - dev
+          - "{{ hetzner_rescue_validate_data_plane.vlan_interface }}"
+      register: hetzner_rescue_validate_mgmt_probe_address_state
+      changed_when: false
+
+    - name: Require the inventory VLAN, MTU, and MGMT address in Rescue
+      vars:
+        hetzner_rescue_validate_mgmt_probe_vlan_json: >-
+          {{
+            (hetzner_rescue_validate_mgmt_probe_vlan_state.stdout | from_json)[0]
+          }}
+        hetzner_rescue_validate_mgmt_probe_address_json: >-
+          {{
+            (
+              hetzner_rescue_validate_mgmt_probe_address_state.stdout
+              | from_json
+            )[0]
+          }}
+      ansible.builtin.assert:
+        that:
+          - >-
+            hetzner_rescue_validate_mgmt_probe_vlan_json.linkinfo.info_data.id
+            | int == hetzner_rescue_validate_data_plane.vlan_id | int
+          - >-
+            hetzner_rescue_validate_mgmt_probe_vlan_json.mtu | int
+            == hetzner_rescue_validate_data_plane.mtu | int
+          - >-
+            hetzner_rescue_validate_data_plane.address in
+            (
+              hetzner_rescue_validate_mgmt_probe_address_json.addr_info
+              | selectattr('family', 'equalto', 'inet')
+              | map(attribute='local')
+              | list
+            )
+        fail_msg: >-
+          The temporary Rescue VLAN does not match the inventory MGMT
+          VLAN, MTU, or address.
+        quiet: true
+
+    - name: Build the declared peer MGMT address list
+      ansible.builtin.set_fact:
+        hetzner_rescue_validate_mgmt_probe_peer_ips: >-
+          {{
+            hetzner_rescue_validate_data_plane.peer_ipv4_addresses
+            | reject('equalto', hetzner_rescue_validate_data_plane.address)
+            | unique
+            | sort
+            | list
+          }}
+      changed_when: false
+
+    - name: Require the exact unique peer MGMT address set
+      ansible.builtin.assert:
+        that:
+          - >-
+            hetzner_rescue_validate_mgmt_probe_peer_ips | length
+            == hetzner_rescue_validate_data_plane.peer_ipv4_addresses | unique | length
+          - >-
+            hetzner_rescue_validate_data_plane.address
+            not in hetzner_rescue_validate_mgmt_probe_peer_ips
+        fail_msg: >-
+          The selected-play MGMT peer address set is incomplete or
+          contains a duplicate inventory allocation.
+        quiet: true
+
+    - name: Probe every selected peer MGMT address
+      ansible.builtin.command:
+        argv:
+          - "{{ hetzner_rescue_validate_ping_path }}"
+          - -n
+          - -c
+          - "3"
+          - -W
+          - "3"
+          - -I
+          - "{{ hetzner_rescue_validate_data_plane.vlan_interface }}"
+          - "{{ item }}"
+      loop: "{{ hetzner_rescue_validate_mgmt_probe_peer_ips }}"
+      loop_control:
+        label: "{{ item }}"
+      changed_when: false
+
+    - name: Probe the declared inventory MGMT gateway
+      ansible.builtin.command:
+        argv:
+          - "{{ hetzner_rescue_validate_ping_path }}"
+          - -n
+          - -c
+          - "3"
+          - -W
+          - "3"
+          - -I
+          - "{{ hetzner_rescue_validate_data_plane.vlan_interface }}"
+          - "{{ hetzner_rescue_validate_data_plane.gateway }}"
+      changed_when: false
+      when: >-
+        hetzner_rescue_validate_data_plane.gateway
+        | default('', true)
+        | string
+        | trim
+        | length > 0
+
+  always:
+    - name: Remove the owned Rescue probe VLAN
+      ansible.builtin.command:
+        argv:
+          - "{{ hetzner_rescue_validate_ip_path }}"
+          - link
+          - delete
+          - dev
+          - "{{ hetzner_rescue_validate_data_plane.vlan_interface }}"
+      register: hetzner_rescue_validate_mgmt_probe_vlan_remove
+      changed_when: hetzner_rescue_validate_mgmt_probe_vlan_remove.rc == 0
+      failed_when: false
+      when:
+        - hetzner_rescue_validate_mgmt_probe_vlan_create is defined
+        - hetzner_rescue_validate_mgmt_probe_vlan_create.rc | default(1) == 0
+
+    - name: Check the probe VLAN after cleanup
+      ansible.builtin.command:
+        argv:
+          - "{{ hetzner_rescue_validate_ip_path }}"
+          - link
+          - show
+          - dev
+          - "{{ hetzner_rescue_validate_data_plane.vlan_interface }}"
+      register: hetzner_rescue_validate_mgmt_probe_vlan_after
+      changed_when: false
+      failed_when: false
+
+    - name: Require complete cleanup of owned Rescue probe state
+      ansible.builtin.assert:
+        that:
+          - >-
+            (
+              hetzner_rescue_validate_mgmt_probe_vlan_create is not defined
+              or hetzner_rescue_validate_mgmt_probe_vlan_create.rc
+              | default(1) != 0
+            )
+            or hetzner_rescue_validate_mgmt_probe_vlan_after.rc != 0
+        fail_msg: >-
+          Cleanup did not remove all probe-owned Rescue network state.
+          Manual inspection is required before retrying.
+        quiet: true

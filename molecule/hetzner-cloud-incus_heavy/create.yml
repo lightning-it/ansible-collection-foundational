@@ -1,0 +1,203 @@
+---
+- name: Create the Hetzner Cloud guest-detection Incus container
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    hetzner_cloud_incus_instances: "{{ molecule_yml.platforms }}"
+    hetzner_cloud_incus_instance: "{{ molecule_yml.platforms[0] }}"
+  tasks:
+    - name: Read any colliding Incus instance owner
+      ansible.builtin.command:
+        argv:
+          - incus
+          - config
+          - get
+          - "{{ hetzner_cloud_incus_instance.name }}"
+          - user.molecule-owner
+      register: hetzner_cloud_incus_existing_instance_owner
+      changed_when: false
+      failed_when:
+        - hetzner_cloud_incus_existing_instance_owner.rc != 0
+        - '''Instance not found'' not in hetzner_cloud_incus_existing_instance_owner.stderr'
+
+    - name: Read any colliding Incus network owner
+      ansible.builtin.command:
+        argv:
+          - incus
+          - network
+          - get
+          - "{{ hetzner_cloud_incus_instance.network }}"
+          - user.molecule-owner
+      register: hetzner_cloud_incus_existing_network_owner
+      changed_when: false
+      failed_when:
+        - hetzner_cloud_incus_existing_network_owner.rc != 0
+        - '''Network not found'' not in hetzner_cloud_incus_existing_network_owner.stderr'
+
+    - name: Refuse to adopt unrelated Incus resources
+      ansible.builtin.assert:
+        that:
+          - >-
+            hetzner_cloud_incus_existing_instance_owner.rc != 0
+            or hetzner_cloud_incus_existing_instance_owner.stdout == hetzner_cloud_incus_instance.owner
+          - >-
+            hetzner_cloud_incus_existing_network_owner.rc != 0
+            or hetzner_cloud_incus_existing_network_owner.stdout == hetzner_cloud_incus_instance.owner
+        fail_msg: "Refusing to adopt or delete a colliding Incus resource not owned by this scenario."
+        quiet: true
+
+    - name: Recheck a stale Incus instance owner immediately before deletion
+      ansible.builtin.command:
+        argv:
+          - incus
+          - config
+          - get
+          - "{{ hetzner_cloud_incus_instance.name }}"
+          - user.molecule-owner
+      register: hetzner_cloud_incus_stale_instance_owner
+      when:
+        - hetzner_cloud_incus_existing_instance_owner.rc == 0
+        - hetzner_cloud_incus_existing_instance_owner.stdout == hetzner_cloud_incus_instance.owner
+      changed_when: false
+
+    - name: Delete a reverified scenario-owned stale Incus instance
+      ansible.builtin.command:
+        argv:
+          - incus
+          - delete
+          - --force
+          - "{{ hetzner_cloud_incus_instance.name }}"
+      when:
+        - hetzner_cloud_incus_stale_instance_owner is not skipped
+        - hetzner_cloud_incus_stale_instance_owner.stdout == hetzner_cloud_incus_instance.owner
+      changed_when: true
+
+    - name: Recheck a stale Incus network owner immediately before deletion
+      ansible.builtin.command:
+        argv:
+          - incus
+          - network
+          - get
+          - "{{ hetzner_cloud_incus_instance.network }}"
+          - user.molecule-owner
+      register: hetzner_cloud_incus_stale_network_owner
+      when:
+        - hetzner_cloud_incus_existing_network_owner.rc == 0
+        - hetzner_cloud_incus_existing_network_owner.stdout == hetzner_cloud_incus_instance.owner
+      changed_when: false
+
+    - name: Delete a reverified scenario-owned stale Incus network
+      ansible.builtin.command:
+        argv:
+          - incus
+          - network
+          - delete
+          - "{{ hetzner_cloud_incus_instance.network }}"
+      when:
+        - hetzner_cloud_incus_stale_network_owner is not skipped
+        - hetzner_cloud_incus_stale_network_owner.stdout == hetzner_cloud_incus_instance.owner
+      changed_when: true
+
+    - name: Create an isolated scenario-owned Incus network
+      ansible.builtin.command:
+        argv:
+          - incus
+          - network
+          - create
+          - "{{ hetzner_cloud_incus_instance.network }}"
+          - ipv4.address=auto
+          - ipv4.nat=true
+          - ipv6.address=none
+          - "user.molecule-owner={{ hetzner_cloud_incus_instance.owner }}"
+      changed_when: true
+
+    - name: Launch the scenario-owned Ubuntu 24.04 Incus container
+      ansible.builtin.command:
+        argv:
+          - incus
+          - launch
+          - "{{ hetzner_cloud_incus_instance.image }}"
+          - "{{ hetzner_cloud_incus_instance.name }}"
+          - --network
+          - "{{ hetzner_cloud_incus_instance.network }}"
+          - --config
+          - "user.molecule-owner={{ hetzner_cloud_incus_instance.owner }}"
+      changed_when: true
+
+    - name: Wait for Incus command execution
+      ansible.builtin.command:
+        argv:
+          - incus
+          - exec
+          - "{{ hetzner_cloud_incus_instance.name }}"
+          - --
+          - /usr/bin/python3
+          - -c
+          - "import json"
+      register: hetzner_cloud_incus_ready
+      until: hetzner_cloud_incus_ready.rc == 0
+      retries: 60
+      delay: 2
+      changed_when: false
+
+    - name: Read the isolated Incus network IPv4 range
+      ansible.builtin.command:
+        argv:
+          - incus
+          - network
+          - get
+          - "{{ hetzner_cloud_incus_instance.network }}"
+          - ipv4.address
+      register: hetzner_cloud_incus_network_ipv4
+      changed_when: false
+
+    - name: Publish an isolated persistent guest IPv4 fixture
+      ansible.builtin.add_host:
+        name: "{{ hetzner_cloud_incus_instance.name }}"
+        hetzner_cloud_incus_static_cidr: >-
+          {{ hetzner_cloud_incus_network_ipv4.stdout | regex_replace('\.[0-9]+/', '.10/') }}
+
+- name: Configure a persistent global IPv4 on the isolated Incus network
+  hosts: all
+  gather_facts: false
+  become: false
+  tasks:
+    - name: Persist the isolated IPv4 fixture with Netplan
+      ansible.builtin.copy:
+        dest: /etc/netplan/20-molecule-isolated-ipv4.yaml
+        content: |
+          ---
+          network:
+            version: 2
+            ethernets:
+              eth0:
+                dhcp4: false
+                addresses:
+                  - {{ hetzner_cloud_incus_static_cidr }}
+        owner: root
+        group: root
+        mode: "0600"
+
+    - name: Apply the persistent isolated IPv4 fixture
+      ansible.builtin.command:
+        argv:
+          - netplan
+          - apply
+      changed_when: true
+
+    - name: Wait for the global runtime IPv4 fixture
+      ansible.builtin.command:
+        argv:
+          - ip
+          - -j
+          - -4
+          - address
+          - show
+          - scope
+          - global
+      register: hetzner_cloud_incus_ipv4_ready
+      until: (hetzner_cloud_incus_ipv4_ready.stdout | from_json | length) > 0
+      retries: 30
+      delay: 1
+      changed_when: false

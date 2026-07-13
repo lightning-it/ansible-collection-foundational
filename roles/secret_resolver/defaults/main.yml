@@ -1,7 +1,7 @@
 ---
-# Public variables intentionally use the collection-wide lit_secret_resolver_
-# prefix. Effective defaults use the role prefix so ansible-lint can distinguish
-# role-owned state from the documented public API.
+# Public inputs use the role-local secret_resolver_ prefix. Separate *_default
+# constants preserve the distinction between an unset input and its effective
+# default value.
 secret_resolver_provider_default: runtime
 secret_resolver_provider_order_default: []
 secret_resolver_allow_fallback_default: false

@@ -1,0 +1,370 @@
+---
+- name: Preflight adopted Primary IPv4 resources
+  hetzner.hcloud.primary_ip_info:
+    api_token: "{{ hetzner_cloud_api_token if hetzner_cloud_api_token | length > 0 else omit }}"
+    api_endpoint: "{{ hetzner_cloud_api_endpoint }}"
+    id: "{{ hetzner_cloud_primary_ip_item.id | default(omit) }}"
+    name: "{{ hetzner_cloud_primary_ip_item.name | default(omit) }}"
+  loop: "{{ hetzner_cloud_primary_ips }}"
+  loop_control:
+    loop_var: hetzner_cloud_primary_ip_item
+    label: "{{ hetzner_cloud_primary_ip_item.name | default(hetzner_cloud_primary_ip_item.id | default('unnamed')) }}"
+  when:
+    - (hetzner_cloud_primary_ip_item.state | default(hetzner_cloud_state)) != 'absent'
+    - hetzner_cloud_primary_ip_item.prevent_create | default(false) | bool
+  register: hetzner_cloud_primary_ip_preflight
+  no_log: true
+
+- name: Enforce adopted Primary IPv4 identity
+  ansible.builtin.assert:
+    that:
+      - hetzner_cloud_primary_ip_preflight_item.hcloud_primary_ip_info | length == 1
+      - >-
+        hetzner_cloud_primary_ip_preflight_item.hcloud_primary_ip_info[0].ip
+        == hetzner_cloud_primary_ip_preflight_item.hetzner_cloud_primary_ip_item.expected_ip
+    fail_msg: "The required adopted Primary IPv4 resource is missing or has an unexpected address."
+    quiet: true
+  loop: "{{ hetzner_cloud_primary_ip_preflight.results }}"
+  loop_control:
+    loop_var: hetzner_cloud_primary_ip_preflight_item
+    label: >-
+      {{
+        hetzner_cloud_primary_ip_preflight_item.hetzner_cloud_primary_ip_item.name
+        | default(hetzner_cloud_primary_ip_preflight_item.hetzner_cloud_primary_ip_item.id | default('unnamed'))
+      }}
+  when: not (hetzner_cloud_primary_ip_preflight_item.skipped | default(false) | bool)
+  changed_when: false
+  no_log: true
+
+- name: Preflight adopted Floating IPv4 resources
+  hetzner.hcloud.floating_ip_info:
+    api_token: "{{ hetzner_cloud_api_token if hetzner_cloud_api_token | length > 0 else omit }}"
+    api_endpoint: "{{ hetzner_cloud_api_endpoint }}"
+    id: "{{ hetzner_cloud_floating_ip_item.id | default(omit) }}"
+    name: "{{ hetzner_cloud_floating_ip_item.name | default(omit) }}"
+  loop: "{{ hetzner_cloud_floating_ips }}"
+  loop_control:
+    loop_var: hetzner_cloud_floating_ip_item
+    label: "{{ hetzner_cloud_floating_ip_item.name | default(hetzner_cloud_floating_ip_item.id | default('unnamed')) }}"
+  when:
+    - (hetzner_cloud_floating_ip_item.state | default(hetzner_cloud_state)) != 'absent'
+    - hetzner_cloud_floating_ip_item.prevent_create | default(false) | bool
+  register: hetzner_cloud_floating_ip_preflight
+  no_log: true
+
+- name: Enforce adopted Floating IPv4 identity
+  ansible.builtin.assert:
+    that:
+      - hetzner_cloud_floating_ip_preflight_item.hcloud_floating_ip_info | length == 1
+      - >-
+        hetzner_cloud_floating_ip_preflight_item.hcloud_floating_ip_info[0].ip
+        == hetzner_cloud_floating_ip_preflight_item.hetzner_cloud_floating_ip_item.expected_ip
+    fail_msg: "The required adopted Floating IPv4 resource is missing or has an unexpected address."
+    quiet: true
+  loop: "{{ hetzner_cloud_floating_ip_preflight.results }}"
+  loop_control:
+    loop_var: hetzner_cloud_floating_ip_preflight_item
+    label: >-
+      {{
+        hetzner_cloud_floating_ip_preflight_item.hetzner_cloud_floating_ip_item.name
+        | default(hetzner_cloud_floating_ip_preflight_item.hetzner_cloud_floating_ip_item.id | default('unnamed'))
+      }}
+  when: not (hetzner_cloud_floating_ip_preflight_item.skipped | default(false) | bool)
+  changed_when: false
+  no_log: true
+
+- name: Reconcile present SSH keys
+  hetzner.hcloud.ssh_key:
+    api_token: "{{ hetzner_cloud_api_token if hetzner_cloud_api_token | length > 0 else omit }}"
+    api_endpoint: "{{ hetzner_cloud_api_endpoint }}"
+    id: "{{ hetzner_cloud_ssh_key_item.id | default(omit) }}"
+    name: "{{ hetzner_cloud_ssh_key_item.name | default(omit) }}"
+    fingerprint: "{{ hetzner_cloud_ssh_key_item.fingerprint | default(omit) }}"
+    public_key: "{{ hetzner_cloud_ssh_key_item.public_key | default(omit) }}"
+    labels: "{{ hetzner_cloud_ssh_key_item.labels | default(omit) }}"
+    force: "{{ hetzner_cloud_ssh_key_item.force | default(false) | bool }}"
+    state: present
+  loop: "{{ hetzner_cloud_ssh_keys }}"
+  loop_control:
+    loop_var: hetzner_cloud_ssh_key_item
+    label: "{{ hetzner_cloud_ssh_key_item.name | default(hetzner_cloud_ssh_key_item.id | default('unnamed')) }}"
+  when: (hetzner_cloud_ssh_key_item.state | default(hetzner_cloud_state)) != 'absent'
+  register: hetzner_cloud_ssh_key_operations
+  no_log: true
+
+- name: Reconcile present firewalls
+  hetzner.hcloud.firewall:
+    api_token: "{{ hetzner_cloud_api_token if hetzner_cloud_api_token | length > 0 else omit }}"
+    api_endpoint: "{{ hetzner_cloud_api_endpoint }}"
+    id: "{{ hetzner_cloud_firewall_item.id | default(omit) }}"
+    name: "{{ hetzner_cloud_firewall_item.name | default(omit) }}"
+    labels: "{{ hetzner_cloud_firewall_item.labels | default(omit) }}"
+    rules: "{{ hetzner_cloud_firewall_item.rules | default(omit) }}"
+    force: "{{ hetzner_cloud_firewall_item.force | default(false) | bool }}"
+    state: present
+  loop: "{{ hetzner_cloud_firewalls_effective }}"
+  loop_control:
+    loop_var: hetzner_cloud_firewall_item
+    label: "{{ hetzner_cloud_firewall_item.name | default(hetzner_cloud_firewall_item.id | default('unnamed')) }}"
+  when: (hetzner_cloud_firewall_item.state | default(hetzner_cloud_state)) != 'absent'
+  register: hetzner_cloud_firewall_operations
+  no_log: true
+
+- name: Reconcile present placement groups
+  hetzner.hcloud.placement_group:
+    api_token: "{{ hetzner_cloud_api_token if hetzner_cloud_api_token | length > 0 else omit }}"
+    api_endpoint: "{{ hetzner_cloud_api_endpoint }}"
+    id: "{{ hetzner_cloud_placement_group_item.id | default(omit) }}"
+    name: "{{ hetzner_cloud_placement_group_item.name | default(omit) }}"
+    type: "{{ hetzner_cloud_placement_group_item.type | default('spread') }}"
+    labels: "{{ hetzner_cloud_placement_group_item.labels | default(omit) }}"
+    state: present
+  loop: "{{ hetzner_cloud_placement_groups }}"
+  loop_control:
+    loop_var: hetzner_cloud_placement_group_item
+    label: >-
+      {{
+        hetzner_cloud_placement_group_item.name
+        | default(hetzner_cloud_placement_group_item.id | default('unnamed'))
+      }}
+  when: (hetzner_cloud_placement_group_item.state | default(hetzner_cloud_state)) != 'absent'
+  register: hetzner_cloud_placement_group_operations
+  no_log: true
+
+- name: Reconcile present Networks
+  hetzner.hcloud.network:
+    api_token: "{{ hetzner_cloud_api_token if hetzner_cloud_api_token | length > 0 else omit }}"
+    api_endpoint: "{{ hetzner_cloud_api_endpoint }}"
+    id: "{{ hetzner_cloud_network_item.id | default(omit) }}"
+    name: "{{ hetzner_cloud_network_item.name | default(omit) }}"
+    ip_range: "{{ hetzner_cloud_network_item.ip_range | default(omit) }}"
+    expose_routes_to_vswitch: "{{ hetzner_cloud_network_item.expose_routes_to_vswitch | default(omit) }}"
+    labels: "{{ hetzner_cloud_network_item.labels | default(omit) }}"
+    delete_protection: "{{ hetzner_cloud_network_item.delete_protection | default(omit) }}"
+    state: present
+  loop: "{{ hetzner_cloud_networks }}"
+  loop_control:
+    loop_var: hetzner_cloud_network_item
+    label: "{{ hetzner_cloud_network_item.name | default(hetzner_cloud_network_item.id | default('unnamed')) }}"
+  when: (hetzner_cloud_network_item.state | default(hetzner_cloud_state)) != 'absent'
+  register: hetzner_cloud_network_operations
+  no_log: true
+
+- name: Reconcile present subnetworks
+  hetzner.hcloud.subnetwork:
+    api_token: "{{ hetzner_cloud_api_token if hetzner_cloud_api_token | length > 0 else omit }}"
+    api_endpoint: "{{ hetzner_cloud_api_endpoint }}"
+    network: "{{ hetzner_cloud_subnetwork_item.network }}"
+    ip_range: "{{ hetzner_cloud_subnetwork_item.ip_range }}"
+    type: "{{ hetzner_cloud_subnetwork_item.type }}"
+    network_zone: "{{ hetzner_cloud_subnetwork_item.network_zone }}"
+    vswitch_id: "{{ hetzner_cloud_subnetwork_item.vswitch_id | default(omit) }}"
+    state: present
+  loop: "{{ hetzner_cloud_subnetworks }}"
+  loop_control:
+    loop_var: hetzner_cloud_subnetwork_item
+    label: "{{ hetzner_cloud_subnetwork_item.network }}:{{ hetzner_cloud_subnetwork_item.ip_range }}"
+  when: (hetzner_cloud_subnetwork_item.state | default(hetzner_cloud_state)) != 'absent'
+  register: hetzner_cloud_subnetwork_operations
+  no_log: true
+
+- name: Reconcile present Primary IPv4 resources
+  hetzner.hcloud.primary_ip:
+    api_token: "{{ hetzner_cloud_api_token if hetzner_cloud_api_token | length > 0 else omit }}"
+    api_endpoint: "{{ hetzner_cloud_api_endpoint }}"
+    id: "{{ hetzner_cloud_primary_ip_item.id | default(omit) }}"
+    name: "{{ hetzner_cloud_primary_ip_item.name | default(omit) }}"
+    location: "{{ hetzner_cloud_primary_ip_item.location | default(omit) }}"
+    server: "{{ hetzner_cloud_primary_ip_item.server | default(omit) }}"
+    type: "{{ hetzner_cloud_primary_ip_item.type | default('ipv4') }}"
+    auto_delete: "{{ hetzner_cloud_primary_ip_item.auto_delete | default(false) | bool }}"
+    delete_protection: "{{ hetzner_cloud_primary_ip_item.delete_protection | default(omit) }}"
+    labels: "{{ hetzner_cloud_primary_ip_item.labels | default(omit) }}"
+    state: present
+  loop: "{{ hetzner_cloud_primary_ips }}"
+  loop_control:
+    loop_var: hetzner_cloud_primary_ip_item
+    label: "{{ hetzner_cloud_primary_ip_item.name | default(hetzner_cloud_primary_ip_item.id | default('unnamed')) }}"
+  when: (hetzner_cloud_primary_ip_item.state | default(hetzner_cloud_state)) != 'absent'
+  register: hetzner_cloud_primary_ip_operations
+  no_log: true
+
+- name: Verify reconciled Primary IPv4 addresses
+  ansible.builtin.assert:
+    that:
+      - >-
+        hetzner_cloud_primary_ip_operation.hcloud_primary_ip.ip
+        == hetzner_cloud_primary_ip_operation.hetzner_cloud_primary_ip_item.expected_ip
+    fail_msg: "The reconciled Primary IPv4 address does not match expected_ip."
+    quiet: true
+  loop: "{{ hetzner_cloud_primary_ip_operations.results }}"
+  loop_control:
+    loop_var: hetzner_cloud_primary_ip_operation
+    label: >-
+      {{
+        hetzner_cloud_primary_ip_operation.hetzner_cloud_primary_ip_item.name
+        | default(hetzner_cloud_primary_ip_operation.hetzner_cloud_primary_ip_item.id | default('unnamed'))
+      }}
+  when:
+    - not (hetzner_cloud_primary_ip_operation.skipped | default(false) | bool)
+    - hetzner_cloud_primary_ip_operation.hetzner_cloud_primary_ip_item.expected_ip is defined
+  changed_when: false
+  no_log: true
+
+- name: Reconcile present servers
+  hetzner.hcloud.server:
+    api_token: "{{ hetzner_cloud_api_token if hetzner_cloud_api_token | length > 0 else omit }}"
+    api_endpoint: "{{ hetzner_cloud_api_endpoint }}"
+    id: "{{ hetzner_cloud_server_item.id | default(omit) }}"
+    name: "{{ hetzner_cloud_server_item.name | default(omit) }}"
+    server_type: "{{ hetzner_cloud_server_item.server_type | default(omit) }}"
+    ssh_keys: "{{ hetzner_cloud_server_item.ssh_keys | default(omit) }}"
+    volumes: "{{ hetzner_cloud_server_item.volumes | default(omit) }}"
+    firewalls: "{{ hetzner_cloud_server_item.firewalls | default(omit) }}"
+    image: "{{ hetzner_cloud_server_item.image | default(omit) }}"
+    image_allow_deprecated: "{{ hetzner_cloud_server_item.image_allow_deprecated | default(false) | bool }}"
+    location: "{{ hetzner_cloud_server_item.location | default(omit) }}"
+    backups: "{{ hetzner_cloud_server_item.backups | default(omit) }}"
+    upgrade_disk: "{{ hetzner_cloud_server_item.upgrade_disk | default(false) | bool }}"
+    enable_ipv4: "{{ hetzner_cloud_server_item.enable_ipv4 | default(true) | bool }}"
+    enable_ipv6: false
+    ipv4: "{{ hetzner_cloud_server_item.ipv4 | default(omit) }}"
+    private_networks: "{{ hetzner_cloud_server_item.private_networks | default(omit) }}"
+    force: "{{ hetzner_cloud_server_item.force | default(false) | bool }}"
+    user_data: "{{ hetzner_cloud_server_item.user_data | default(omit) }}"
+    rescue_mode: "{{ hetzner_cloud_server_item.rescue_mode | default(omit) }}"
+    labels: "{{ hetzner_cloud_server_item.labels | default(omit) }}"
+    delete_protection: "{{ hetzner_cloud_server_item.delete_protection | default(omit) }}"
+    rebuild_protection: "{{ hetzner_cloud_server_item.rebuild_protection | default(omit) }}"
+    placement_group: "{{ hetzner_cloud_server_item.placement_group | default(omit) }}"
+    state: "{{ hetzner_cloud_server_item.state | default('present') }}"
+  loop: "{{ hetzner_cloud_servers }}"
+  loop_control:
+    loop_var: hetzner_cloud_server_item
+    label: "{{ hetzner_cloud_server_item.name | default(hetzner_cloud_server_item.id | default('unnamed')) }}"
+  when: (hetzner_cloud_server_item.state | default(hetzner_cloud_state)) != 'absent'
+  register: hetzner_cloud_server_operations
+  no_log: true
+
+- name: Reconcile present exact server Network relationships
+  hetzner.hcloud.server_network:
+    api_token: "{{ hetzner_cloud_api_token if hetzner_cloud_api_token | length > 0 else omit }}"
+    api_endpoint: "{{ hetzner_cloud_api_endpoint }}"
+    server: "{{ hetzner_cloud_server_network_item.server }}"
+    network: "{{ hetzner_cloud_server_network_item.network }}"
+    ip: "{{ hetzner_cloud_server_network_item.ip | default(omit) }}"
+    alias_ips: "{{ hetzner_cloud_server_network_item.alias_ips | default(omit) }}"
+    state: present
+  loop: "{{ hetzner_cloud_server_networks }}"
+  loop_control:
+    loop_var: hetzner_cloud_server_network_item
+    label: "{{ hetzner_cloud_server_network_item.server }} -> {{ hetzner_cloud_server_network_item.network }}"
+  when: (hetzner_cloud_server_network_item.state | default(hetzner_cloud_state)) != 'absent'
+  register: hetzner_cloud_server_network_operations
+  no_log: true
+
+- name: Verify exact private IPv4 attachments
+  ansible.builtin.assert:
+    that:
+      - >-
+        hetzner_cloud_server_network_operation.hcloud_server_network.ip
+        ==
+        (
+          hetzner_cloud_server_network_operation.hetzner_cloud_server_network_item.expected_ip
+          | default(hetzner_cloud_server_network_operation.hetzner_cloud_server_network_item.ip)
+        )
+    fail_msg: >-
+      The existing Network attachment has a different address. The official module does not change an attached
+      server's primary private IP; use an explicitly gated detach/reattach migration.
+    quiet: true
+  loop: "{{ hetzner_cloud_server_network_operations.results }}"
+  loop_control:
+    loop_var: hetzner_cloud_server_network_operation
+    label: >-
+      {{ hetzner_cloud_server_network_operation.hetzner_cloud_server_network_item.server }} ->
+      {{ hetzner_cloud_server_network_operation.hetzner_cloud_server_network_item.network }}
+  when:
+    - not (hetzner_cloud_server_network_operation.skipped | default(false) | bool)
+    - >-
+      hetzner_cloud_server_network_operation.hetzner_cloud_server_network_item.expected_ip is defined
+      or hetzner_cloud_server_network_operation.hetzner_cloud_server_network_item.ip is defined
+  changed_when: false
+  no_log: true
+
+- name: Reconcile present firewall resource relationships
+  hetzner.hcloud.firewall_resource:
+    api_token: "{{ hetzner_cloud_api_token if hetzner_cloud_api_token | length > 0 else omit }}"
+    api_endpoint: "{{ hetzner_cloud_api_endpoint }}"
+    firewall: "{{ hetzner_cloud_firewall_resource_item.firewall }}"
+    servers: "{{ hetzner_cloud_firewall_resource_item.servers | default(omit) }}"
+    label_selectors: "{{ hetzner_cloud_firewall_resource_item.label_selectors | default(omit) }}"
+    state: present
+  loop: "{{ hetzner_cloud_firewall_resources }}"
+  loop_control:
+    loop_var: hetzner_cloud_firewall_resource_item
+    label: "{{ hetzner_cloud_firewall_resource_item.firewall }}"
+  when: (hetzner_cloud_firewall_resource_item.state | default(hetzner_cloud_state)) != 'absent'
+  register: hetzner_cloud_firewall_resource_operations
+  no_log: true
+
+- name: Reconcile present Floating IPv4 resources
+  hetzner.hcloud.floating_ip:
+    api_token: "{{ hetzner_cloud_api_token if hetzner_cloud_api_token | length > 0 else omit }}"
+    api_endpoint: "{{ hetzner_cloud_api_endpoint }}"
+    id: "{{ hetzner_cloud_floating_ip_item.id | default(omit) }}"
+    name: "{{ hetzner_cloud_floating_ip_item.name | default(omit) }}"
+    description: "{{ hetzner_cloud_floating_ip_item.description | default(omit) }}"
+    home_location: "{{ hetzner_cloud_floating_ip_item.home_location | default(omit) }}"
+    server: "{{ hetzner_cloud_floating_ip_item.server | default(omit) }}"
+    type: "{{ hetzner_cloud_floating_ip_item.type | default('ipv4') }}"
+    force: "{{ hetzner_cloud_floating_ip_item.force | default(false) | bool }}"
+    delete_protection: "{{ hetzner_cloud_floating_ip_item.delete_protection | default(omit) }}"
+    labels: "{{ hetzner_cloud_floating_ip_item.labels | default(omit) }}"
+    state: present
+  loop: "{{ hetzner_cloud_floating_ips }}"
+  loop_control:
+    loop_var: hetzner_cloud_floating_ip_item
+    label: "{{ hetzner_cloud_floating_ip_item.name | default(hetzner_cloud_floating_ip_item.id | default('unnamed')) }}"
+  when: (hetzner_cloud_floating_ip_item.state | default(hetzner_cloud_state)) != 'absent'
+  register: hetzner_cloud_floating_ip_operations
+  no_log: true
+
+- name: Verify reconciled Floating IPv4 addresses
+  ansible.builtin.assert:
+    that:
+      - >-
+        hetzner_cloud_floating_ip_operation.hcloud_floating_ip.ip
+        == hetzner_cloud_floating_ip_operation.hetzner_cloud_floating_ip_item.expected_ip
+    fail_msg: "The reconciled Floating IPv4 address does not match expected_ip."
+    quiet: true
+  loop: "{{ hetzner_cloud_floating_ip_operations.results }}"
+  loop_control:
+    loop_var: hetzner_cloud_floating_ip_operation
+    label: >-
+      {{
+        hetzner_cloud_floating_ip_operation.hetzner_cloud_floating_ip_item.name
+        | default(hetzner_cloud_floating_ip_operation.hetzner_cloud_floating_ip_item.id | default('unnamed'))
+      }}
+  when:
+    - not (hetzner_cloud_floating_ip_operation.skipped | default(false) | bool)
+    - hetzner_cloud_floating_ip_operation.hetzner_cloud_floating_ip_item.expected_ip is defined
+  changed_when: false
+  no_log: true
+
+- name: Reconcile present reverse DNS records
+  hetzner.hcloud.rdns:
+    api_token: "{{ hetzner_cloud_api_token if hetzner_cloud_api_token | length > 0 else omit }}"
+    api_endpoint: "{{ hetzner_cloud_api_endpoint }}"
+    server: "{{ hetzner_cloud_reverse_dns_item.server | default(omit) }}"
+    primary_ip: "{{ hetzner_cloud_reverse_dns_item.primary_ip | default(omit) }}"
+    floating_ip: "{{ hetzner_cloud_reverse_dns_item.floating_ip | default(omit) }}"
+    ip_address: "{{ hetzner_cloud_reverse_dns_item.ip_address }}"
+    dns_ptr: "{{ hetzner_cloud_reverse_dns_item.dns_ptr }}"
+    state: present
+  loop: "{{ hetzner_cloud_reverse_dns }}"
+  loop_control:
+    loop_var: hetzner_cloud_reverse_dns_item
+    label: "{{ hetzner_cloud_reverse_dns_item.ip_address }} -> {{ hetzner_cloud_reverse_dns_item.dns_ptr }}"
+  when: (hetzner_cloud_reverse_dns_item.state | default(hetzner_cloud_state)) != 'absent'
+  register: hetzner_cloud_reverse_dns_operations
+  no_log: true

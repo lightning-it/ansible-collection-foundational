@@ -1,0 +1,126 @@
+---
+# Controller/API settings. Leave the token empty to use the HCLOUD_TOKEN
+# environment variable supported by the official hetzner.hcloud collection.
+hetzner_cloud_api_token: ""
+hetzner_cloud_api_endpoint: https://api.hetzner.cloud/v1
+hetzner_cloud_validate_only: false
+hetzner_cloud_state: present
+hetzner_cloud_allow_destructive: false
+hetzner_cloud_ipv4_only: true
+hetzner_cloud_allow_server_root_password: false
+
+# Optional secure IPv4 ingress profile. Hetzner Cloud firewalls are allowlists:
+# when inbound rules exist, unsolicited inbound traffic that matches no rule is
+# dropped. No IPv6 CIDR is emitted by this profile.
+hetzner_cloud_default_firewall:
+  enabled: false
+  name: default-ipv4
+  labels: {}
+  ssh_source_ips: []
+  wireguard_source_ips:
+    - 0.0.0.0/0
+  allow_icmp: true
+
+hetzner_cloud_default_firewall_effective: >-
+  {{
+    {
+      'enabled': false,
+      'name': 'default-ipv4',
+      'labels': {},
+      'ssh_source_ips': [],
+      'wireguard_source_ips': ['0.0.0.0/0'],
+      'allow_icmp': true
+    }
+    | combine(hetzner_cloud_default_firewall, recursive=true)
+  }}
+
+hetzner_cloud_default_firewall_rules_effective: >-
+  {{
+    (
+      [
+        {
+          'description': 'Allow SSH from trusted IPv4 networks',
+          'direction': 'in',
+          'protocol': 'tcp',
+          'port': '22',
+          'source_ips': hetzner_cloud_default_firewall_effective.ssh_source_ips
+        }
+      ]
+      if hetzner_cloud_default_firewall_effective.ssh_source_ips | length > 0
+      else []
+    )
+    +
+    (
+      [
+        {
+          'description': 'Allow WireGuard over IPv4',
+          'direction': 'in',
+          'protocol': 'udp',
+          'port': '51820',
+          'source_ips': hetzner_cloud_default_firewall_effective.wireguard_source_ips
+        }
+      ]
+      if hetzner_cloud_default_firewall_effective.wireguard_source_ips | length > 0
+      else []
+    )
+    +
+    (
+      [
+        {
+          'description': 'Allow ICMP over IPv4',
+          'direction': 'in',
+          'protocol': 'icmp',
+          'source_ips': ['0.0.0.0/0']
+        }
+      ]
+      if hetzner_cloud_default_firewall_effective.allow_icmp | bool
+      else []
+    )
+  }}
+
+hetzner_cloud_firewalls_effective: >-
+  {{
+    hetzner_cloud_firewalls
+    +
+    (
+      [
+        {
+          'name': hetzner_cloud_default_firewall_effective.name,
+          'labels': hetzner_cloud_default_firewall_effective.labels,
+          'rules': hetzner_cloud_default_firewall_rules_effective
+        }
+      ]
+      if hetzner_cloud_default_firewall_effective.enabled | bool
+      else []
+    )
+  }}
+
+# Declarative Hetzner Cloud resources. Each item may override
+# hetzner_cloud_state with state: present or state: absent.
+hetzner_cloud_ssh_keys: []
+hetzner_cloud_firewalls: []
+hetzner_cloud_networks: []
+hetzner_cloud_subnetworks: []
+hetzner_cloud_primary_ips: []
+hetzner_cloud_floating_ips: []
+hetzner_cloud_placement_groups: []
+hetzner_cloud_servers: []
+hetzner_cloud_server_networks: []
+hetzner_cloud_firewall_resources: []
+hetzner_cloud_reverse_dns: []
+
+# Read-only guest Floating-IP detection entrypoint. Invoke the role with
+# tasks_from: guest_floating_ip on the guest; the main API entrypoint does not
+# connect to or mutate provisioned servers.
+hetzner_cloud_guest_floating_ips: []
+hetzner_cloud_guest_require_persistent: true
+hetzner_cloud_guest_persistent_config_paths:
+  - /etc/netplan
+  - /etc/network/interfaces.d
+  - /etc/NetworkManager/system-connections
+hetzner_cloud_guest_persistent_config_patterns:
+  - "*.yaml"
+  - "*.yml"
+  - "*.cfg"
+  - "*.conf"
+  - "*.nmconnection"

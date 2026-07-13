@@ -1,0 +1,229 @@
+---
+- name: Query the declared server firewall by numeric Robot server number
+  community.hrobot.firewall_info:
+    hetzner_user: "{{ hetzner_robot_cac_user }}"
+    hetzner_password: "{{ hetzner_robot_cac_password }}"
+    rate_limit_retry_timeout: "{{ hetzner_robot_cac_rate_limit_retry_timeout }}"
+    server_number: >-
+      {{
+        (
+          hetzner_robot_cac_audit_server_info.servers
+          | selectattr('server_ip', 'equalto', hetzner_robot_cac_audit_server.server_ip)
+          | first
+        ).server_number
+      }}
+    wait_for_configured: true
+  register: hetzner_robot_cac_audit_firewall_info
+  changed_when: false
+  no_log: true
+
+- name: Initialize normalized expected and active Robot firewall rules
+  ansible.builtin.set_fact:
+    hetzner_robot_cac_audit_expected_input: []
+    hetzner_robot_cac_audit_expected_output: []
+    hetzner_robot_cac_audit_actual_input: []
+    hetzner_robot_cac_audit_actual_output: []
+    cacheable: false
+  changed_when: false
+  no_log: true
+
+- name: Normalize expected Robot firewall input rules
+  ansible.builtin.set_fact:
+    hetzner_robot_cac_audit_expected_input: >-
+      {{
+        hetzner_robot_cac_audit_expected_input
+        + [
+            {
+              'ip_version': item.ip_version | default(none, true),
+              'name': item.name | default(none, true),
+              'dst_ip': (
+                item.dst_ip ~ '/32'
+                if item.ip_version | default(none) == 'ipv4'
+                   and item.dst_ip is defined
+                   and item.dst_ip is string
+                   and item.dst_ip | length > 0
+                   and '/' not in item.dst_ip
+                else item.dst_ip | default(none, true)
+              ),
+              'src_ip': (
+                item.src_ip ~ '/32'
+                if item.ip_version | default(none) == 'ipv4'
+                   and item.src_ip is defined
+                   and item.src_ip is string
+                   and item.src_ip | length > 0
+                   and '/' not in item.src_ip
+                else item.src_ip | default(none, true)
+              ),
+              'dst_port': item.dst_port | default(none, true),
+              'src_port': item.src_port | default(none, true),
+              'protocol': item.protocol | default(none, true),
+              'tcp_flags': item.tcp_flags | default(none, true),
+              'action': item.action
+            }
+          ]
+      }}
+    cacheable: false
+  loop: "{{ hetzner_robot_cac_audit_server.firewall.rules.input | default([]) }}"
+  loop_control:
+    label: "{{ item.name | default(item.action) }}"
+  changed_when: false
+  no_log: true
+
+- name: Normalize expected Robot firewall output rules
+  ansible.builtin.set_fact:
+    hetzner_robot_cac_audit_expected_output: >-
+      {{
+        hetzner_robot_cac_audit_expected_output
+        + [
+            {
+              'ip_version': item.ip_version | default(none, true),
+              'name': item.name | default(none, true),
+              'dst_ip': (
+                item.dst_ip ~ '/32'
+                if item.ip_version | default(none) == 'ipv4'
+                   and item.dst_ip is defined
+                   and item.dst_ip is string
+                   and item.dst_ip | length > 0
+                   and '/' not in item.dst_ip
+                else item.dst_ip | default(none, true)
+              ),
+              'src_ip': (
+                item.src_ip ~ '/32'
+                if item.ip_version | default(none) == 'ipv4'
+                   and item.src_ip is defined
+                   and item.src_ip is string
+                   and item.src_ip | length > 0
+                   and '/' not in item.src_ip
+                else item.src_ip | default(none, true)
+              ),
+              'dst_port': item.dst_port | default(none, true),
+              'src_port': item.src_port | default(none, true),
+              'protocol': item.protocol | default(none, true),
+              'tcp_flags': item.tcp_flags | default(none, true),
+              'action': item.action
+            }
+          ]
+      }}
+    cacheable: false
+  loop: "{{ hetzner_robot_cac_audit_server.firewall.rules.output | default([]) }}"
+  loop_control:
+    label: "{{ item.name | default(item.action) }}"
+  changed_when: false
+  no_log: true
+
+- name: Normalize active Robot firewall input rules
+  ansible.builtin.set_fact:
+    hetzner_robot_cac_audit_actual_input: >-
+      {{
+        hetzner_robot_cac_audit_actual_input
+        + [
+            {
+              'ip_version': item.ip_version | default(none, true),
+              'name': item.name | default(none, true),
+              'dst_ip': (
+                item.dst_ip ~ '/32'
+                if item.ip_version | default(none) == 'ipv4'
+                   and item.dst_ip is defined
+                   and item.dst_ip is string
+                   and item.dst_ip | length > 0
+                   and '/' not in item.dst_ip
+                else item.dst_ip | default(none, true)
+              ),
+              'src_ip': (
+                item.src_ip ~ '/32'
+                if item.ip_version | default(none) == 'ipv4'
+                   and item.src_ip is defined
+                   and item.src_ip is string
+                   and item.src_ip | length > 0
+                   and '/' not in item.src_ip
+                else item.src_ip | default(none, true)
+              ),
+              'dst_port': item.dst_port | default(none, true),
+              'src_port': item.src_port | default(none, true),
+              'protocol': item.protocol | default(none, true),
+              'tcp_flags': item.tcp_flags | default(none, true),
+              'action': item.action
+            }
+          ]
+      }}
+    cacheable: false
+  loop: "{{ hetzner_robot_cac_audit_firewall_info.firewall.rules.input }}"
+  loop_control:
+    label: "{{ item.name | default(item.action) }}"
+  changed_when: false
+  no_log: true
+
+- name: Normalize active Robot firewall output rules
+  ansible.builtin.set_fact:
+    hetzner_robot_cac_audit_actual_output: >-
+      {{
+        hetzner_robot_cac_audit_actual_output
+        + [
+            {
+              'ip_version': item.ip_version | default(none, true),
+              'name': item.name | default(none, true),
+              'dst_ip': (
+                item.dst_ip ~ '/32'
+                if item.ip_version | default(none) == 'ipv4'
+                   and item.dst_ip is defined
+                   and item.dst_ip is string
+                   and item.dst_ip | length > 0
+                   and '/' not in item.dst_ip
+                else item.dst_ip | default(none, true)
+              ),
+              'src_ip': (
+                item.src_ip ~ '/32'
+                if item.ip_version | default(none) == 'ipv4'
+                   and item.src_ip is defined
+                   and item.src_ip is string
+                   and item.src_ip | length > 0
+                   and '/' not in item.src_ip
+                else item.src_ip | default(none, true)
+              ),
+              'dst_port': item.dst_port | default(none, true),
+              'src_port': item.src_port | default(none, true),
+              'protocol': item.protocol | default(none, true),
+              'tcp_flags': item.tcp_flags | default(none, true),
+              'action': item.action
+            }
+          ]
+      }}
+    cacheable: false
+  loop: "{{ hetzner_robot_cac_audit_firewall_info.firewall.rules.output }}"
+  loop_control:
+    label: "{{ item.name | default(item.action) }}"
+  changed_when: false
+  no_log: true
+
+- name: Require the exact declared Robot firewall state
+  ansible.builtin.assert:
+    that:
+      - hetzner_robot_cac_audit_firewall_info.firewall.server_ip == hetzner_robot_cac_audit_server.server_ip
+      - >-
+        hetzner_robot_cac_audit_firewall_info.firewall.server_number | int
+        == (
+          hetzner_robot_cac_audit_server_info.servers
+          | selectattr('server_ip', 'equalto', hetzner_robot_cac_audit_server.server_ip)
+          | first
+        ).server_number | int
+      - >-
+        hetzner_robot_cac_audit_firewall_info.firewall.status
+        == hetzner_robot_cac_audit_server.firewall.status | default('active')
+      - >-
+        hetzner_robot_cac_audit_firewall_info.firewall.port
+        == hetzner_robot_cac_audit_server.firewall.port | default('main')
+      - >-
+        hetzner_robot_cac_audit_firewall_info.firewall.filter_ipv6 | bool
+        == hetzner_robot_cac_audit_server.firewall.filter_ipv6 | default(false) | bool
+      - >-
+        hetzner_robot_cac_audit_firewall_info.firewall.allowlist_hos | bool
+        == hetzner_robot_cac_audit_server.firewall.allowlist_hos | default(false) | bool
+      - >-
+        hetzner_robot_cac_audit_server.firewall.rules is not defined
+        or (
+          hetzner_robot_cac_audit_actual_input == hetzner_robot_cac_audit_expected_input
+          and hetzner_robot_cac_audit_actual_output == hetzner_robot_cac_audit_expected_output
+        )
+    fail_msg: The active Robot firewall differs from its exact normalized declaration.
+    quiet: true
+  no_log: true

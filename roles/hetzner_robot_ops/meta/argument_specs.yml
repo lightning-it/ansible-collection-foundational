@@ -1,0 +1,70 @@
+---
+argument_specs:
+  main:
+    short_description: Perform gated boot or reset operations on one Hetzner Robot server.
+    description:
+      - Uses community.hrobot boot and reset modules only.
+      - Requires explicit action selection and server-specific confirmation phrases.
+      - Executes Robot API operations once on the Ansible controller.
+    options:
+      hetzner_robot_ops_action:
+        description: Explicit one-shot action; none performs no API operation.
+        type: str
+        choices:
+          - none
+          - activate_rescue
+          - set_regular_boot
+          - reset
+        default: none
+      hetzner_robot_ops_hetzner_user:
+        description: Robot web-service username resolved outside this role.
+        type: str
+        default: ""
+        no_log: true
+      hetzner_robot_ops_hetzner_password:
+        description: Robot web-service password resolved outside this role.
+        type: str
+        default: ""
+        no_log: true
+      hetzner_robot_ops_server_number:
+        description: Numeric Robot server identifier; exactly one server is accepted per invocation.
+        type: int
+        default: 0
+      hetzner_robot_ops_server_ip:
+        description: Expected main IP that must belong to the selected numeric Robot server.
+        type: str
+        default: ""
+      hetzner_robot_ops_rate_limit_retry_timeout:
+        description: Finite number of seconds to retry after Robot API rate limiting.
+        type: int
+        default: 60
+      hetzner_robot_ops_boot_confirmation:
+        description: Exact BOOT followed by the server number phrase required for boot actions.
+        type: str
+        default: ""
+      hetzner_robot_ops_rescue_os:
+        description: Robot rescue operating-system identifier.
+        type: str
+        default: linux
+      hetzner_robot_ops_rescue_authorized_keys:
+        description: Robot-registered SSH key fingerprints or public keys installed in rescue.
+        type: list
+        elements: str
+        default: []
+      hetzner_robot_ops_reset_confirmation:
+        description: Exact RESET followed by the server number phrase required for resets.
+        type: str
+        default: ""
+      hetzner_robot_ops_reset_type:
+        description: Reset mechanism supported by the target server.
+        type: str
+        choices:
+          - software
+          - hardware
+          - power
+          - manual
+        default: software
+      hetzner_robot_ops_manual_reset_confirmation:
+        description: Additional exact MANUAL RESET followed by the server number phrase for manual reset.
+        type: str
+        default: ""

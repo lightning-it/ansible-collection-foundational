@@ -2,38 +2,38 @@
 - name: Normalize secret resolver public configuration
   ansible.builtin.set_fact:
     __secret_resolver_provider: >-
-      {{ lit_secret_resolver_provider | default(secret_resolver_provider_default) }}
+      {{ secret_resolver_provider | default(secret_resolver_provider_default) }}
     __secret_resolver_configured_provider_order: >-
-      {{ lit_secret_resolver_provider_order | default(secret_resolver_provider_order_default) }}
+      {{ secret_resolver_provider_order | default(secret_resolver_provider_order_default) }}
     __secret_resolver_allow_fallback: >-
-      {{ lit_secret_resolver_allow_fallback | default(secret_resolver_allow_fallback_default) | bool }}
+      {{ secret_resolver_allow_fallback | default(secret_resolver_allow_fallback_default) | bool }}
     __secret_resolver_fallback_on: >-
-      {{ lit_secret_resolver_fallback_on | default(secret_resolver_fallback_on_default) }}
+      {{ secret_resolver_fallback_on | default(secret_resolver_fallback_on_default) }}
     __secret_resolver_phase: >-
-      {{ lit_secret_resolver_phase | default(secret_resolver_phase_default) }}
-    __secret_resolver_requests: "{{ lit_secret_resolver_requests | default([]) }}"
+      {{ secret_resolver_phase | default(secret_resolver_phase_default) }}
+    __secret_resolver_requests: "{{ secret_resolver_requests | default([]) }}"
     __secret_resolver_vault_addr: >-
       {{
-        lit_secret_resolver_vault_addr
+        secret_resolver_vault_addr
         | default(lookup('ansible.builtin.env', 'VAULT_ADDR', default=''), true)
         | string
         | trim
       }}
     __secret_resolver_vault_namespace: >-
       {{
-        lit_secret_resolver_vault_namespace
+        secret_resolver_vault_namespace
         | default(lookup('ansible.builtin.env', 'VAULT_NAMESPACE', default=''), true)
         | string
         | trim
       }}
     __secret_resolver_vault_mount_point: >-
-      {{ lit_secret_resolver_vault_mount_point | default(secret_resolver_vault_mount_point_default) | string | trim }}
+      {{ secret_resolver_vault_mount_point | default(secret_resolver_vault_mount_point_default) | string | trim }}
     __secret_resolver_vault_auth_method: >-
-      {{ lit_secret_resolver_vault_auth_method | default(secret_resolver_vault_auth_method_default) }}
+      {{ secret_resolver_vault_auth_method | default(secret_resolver_vault_auth_method_default) }}
     __secret_resolver_vault_validate_certs: >-
-      {{ lit_secret_resolver_vault_validate_certs | default(secret_resolver_vault_validate_certs_default) | bool }}
+      {{ secret_resolver_vault_validate_certs | default(secret_resolver_vault_validate_certs_default) | bool }}
     __secret_resolver_vault_token_validate: >-
-      {{ lit_secret_resolver_vault_token_validate | default(secret_resolver_vault_token_validate_default) | bool }}
+      {{ secret_resolver_vault_token_validate | default(secret_resolver_vault_token_validate_default) | bool }}
   changed_when: false
   no_log: true
 

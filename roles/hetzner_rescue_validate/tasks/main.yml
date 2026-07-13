@@ -1,0 +1,50 @@
+---
+- name: Prechecks
+  ansible.builtin.import_tasks: assert.yml
+  tags: always
+
+- name: Publish validation-only Rescue plan
+  ansible.builtin.set_fact:
+    hetzner_rescue_validate_result:
+      changed: false
+      validated: true
+      validate_only: true
+      disk_count: "{{ hetzner_rescue_validate_expected_disks | length }}"
+      smart_enabled: "{{ hetzner_rescue_validate_smart_enabled | bool }}"
+      data_plane_enabled: "{{ hetzner_rescue_validate_data_plane.enabled | bool }}"
+    cacheable: false
+  when: hetzner_rescue_validate_only | bool
+  changed_when: false
+
+- name: Inspect Rescue target state
+  when: not (hetzner_rescue_validate_only | bool)
+  block:
+    - name: Validate Rescue marker and deployment keys
+      ansible.builtin.include_tasks: rescue_identity.yml
+
+    - name: Validate exact physical disks
+      ansible.builtin.include_tasks: disks.yml
+
+    - name: Validate SMART identity, health, history, and thresholds
+      ansible.builtin.include_tasks: smart.yml
+      when: hetzner_rescue_validate_smart_enabled | bool
+
+    - name: Validate Rescue HTTPS egress
+      ansible.builtin.include_tasks: egress.yml
+      when: hetzner_rescue_validate_egress_enabled | bool
+
+    - name: Validate temporary Rescue data plane
+      ansible.builtin.include_tasks: data_plane.yml
+      when: hetzner_rescue_validate_data_plane.enabled | bool
+
+    - name: Publish Rescue validation result
+      ansible.builtin.set_fact:
+        hetzner_rescue_validate_result:
+          changed: "{{ hetzner_rescue_validate_data_plane.enabled | bool }}"
+          validated: true
+          validate_only: false
+          disk_count: "{{ hetzner_rescue_validate_expected_disks | length }}"
+          smart_enabled: "{{ hetzner_rescue_validate_smart_enabled | bool }}"
+          data_plane_enabled: "{{ hetzner_rescue_validate_data_plane.enabled | bool }}"
+        cacheable: false
+      changed_when: false

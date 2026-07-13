@@ -1,0 +1,10 @@
+---
+minor_changes:
+  - >-
+    hetzner_robot_cac - add declarative Hetzner Robot resource reconciliation and read-only server, firewall, and
+    vSwitch drift auditing through community.hrobot modules.
+  - >-
+    hetzner_rescue_validate - add reusable controller trust, Rescue-system identity, disk, shared SMART, egress,
+    data-plane, and installed-LUKS validation entrypoints.
+  - >-
+    hetzner_robot_ops - add separately gated Rescue boot and dedicated-server reset operations.

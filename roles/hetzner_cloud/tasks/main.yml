@@ -1,0 +1,72 @@
+---
+- name: Prechecks
+  ansible.builtin.import_tasks: assert.yml
+  tags: always
+
+- name: Publish secret-free Hetzner Cloud reconciliation plan
+  ansible.builtin.set_fact:
+    hetzner_cloud_plan:
+      default_state: "{{ hetzner_cloud_state }}"
+      ipv4_only: true
+      validate_only: "{{ hetzner_cloud_validate_only | bool }}"
+      destructive_allowed: "{{ hetzner_cloud_allow_destructive | bool }}"
+      resource_counts:
+        ssh_keys: "{{ hetzner_cloud_ssh_keys | length }}"
+        firewalls: "{{ hetzner_cloud_firewalls_effective | length }}"
+        networks: "{{ hetzner_cloud_networks | length }}"
+        subnetworks: "{{ hetzner_cloud_subnetworks | length }}"
+        primary_ips: "{{ hetzner_cloud_primary_ips | length }}"
+        floating_ips: "{{ hetzner_cloud_floating_ips | length }}"
+        placement_groups: "{{ hetzner_cloud_placement_groups | length }}"
+        servers: "{{ hetzner_cloud_servers | length }}"
+        server_networks: "{{ hetzner_cloud_server_networks | length }}"
+        firewall_resources: "{{ hetzner_cloud_firewall_resources | length }}"
+        reverse_dns: "{{ hetzner_cloud_reverse_dns | length }}"
+      generated_firewall:
+        enabled: "{{ hetzner_cloud_default_firewall_effective.enabled | bool }}"
+        name: "{{ hetzner_cloud_default_firewall_effective.name }}"
+        rules: "{{ hetzner_cloud_default_firewall_rules_effective }}"
+    cacheable: false
+  changed_when: false
+
+- name: Reconcile Hetzner Cloud resources on the controller
+  when: not (hetzner_cloud_validate_only | bool)
+  delegate_to: localhost
+  become: false
+  run_once: true
+  block:
+    - name: Reconcile present Hetzner Cloud resources
+      ansible.builtin.include_tasks: present.yml
+
+    - name: Reconcile absent Hetzner Cloud resources
+      ansible.builtin.include_tasks: absent.yml
+
+    - name: Publish sanitized reconciliation results
+      ansible.builtin.include_tasks: outputs.yml
+
+  always:
+    - name: Remove any generated server password from controller facts
+      ansible.builtin.set_fact:
+        hetzner_cloud_server_operations:
+          changed: "{{ hetzner_cloud_server_operations.changed | default(false) | bool }}"
+          servers: >-
+            {{
+              hetzner_cloud_server_operations.results
+              | default([])
+              | selectattr('hcloud_server', 'defined')
+              | map(attribute='hcloud_server')
+              | list
+            }}
+        cacheable: false
+      changed_when: false
+      no_log: true
+
+- name: Publish validation-only result
+  ansible.builtin.set_fact:
+    hetzner_cloud_result:
+      changed: false
+      validated: true
+      resources: "{{ hetzner_cloud_plan.resource_counts }}"
+    cacheable: false
+  when: hetzner_cloud_validate_only | bool
+  changed_when: false

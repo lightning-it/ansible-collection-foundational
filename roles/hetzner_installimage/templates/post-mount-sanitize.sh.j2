@@ -2,15 +2,43 @@
 # lit.foundational.hetzner_installimage sanitizer v{{ hetzner_installimage_post_mount_sanitizer_version }}
 set -euo pipefail
 
-if [ -z "${FOLD:-}" ] || [ "${FOLD#/}" = "${FOLD}" ]; then
-  printf 'FOLD must be an absolute installimage target path\n' >&2
+# Hetzner does not export FOLD to /post-mount and does not guarantee the child
+# working directory. During execution it has exactly one mktemp work directory.
+if [ -z "${FOLD:-}" ]; then
+  shopt -s nullglob
+  set -- /installimage.?????
+  shopt -u nullglob
+  if [ "$#" -ne 1 ]; then
+    printf 'expected exactly one Hetzner installimage working directory\n' >&2
+    exit 1
+  fi
+  FOLD="$1"
+fi
+case "${FOLD}" in
+  /installimage.?????) ;;
+  *)
+    printf 'FOLD must identify a Hetzner installimage working directory\n' >&2
+    exit 1
+    ;;
+esac
+fold_owner="$(stat -c '%u' "${FOLD}")"
+fold_mode="$(stat -c '%a' "${FOLD}")"
+if [ ! -d "${FOLD}" ] || [ -L "${FOLD}" ] || [ "${fold_owner}" != "0" ] || \
+   (( (8#${fold_mode}) & 8#022 )); then
+  printf 'FOLD must be root-owned and not group/other writable\n' >&2
   exit 1
 fi
 
 installimage_config="${FOLD}/install.conf"
 success_marker={{ hetzner_installimage_post_mount_success_marker_path | quote }}
-if [ ! -f "${installimage_config}" ]; then
-  printf 'installimage config not found at %s\n' "${installimage_config}" >&2
+if [ ! -f "${installimage_config}" ] || [ -L "${installimage_config}" ]; then
+  printf 'installimage config must be a regular non-symlink file at %s\n' "${installimage_config}" >&2
+  exit 1
+fi
+config_owner="$(stat -c '%u' "${installimage_config}")"
+config_mode="$(stat -c '%a' "${installimage_config}")"
+if [ "${config_owner}" != "0" ] || (( (8#${config_mode}) & 8#022 )); then
+  printf 'installimage config must be root-owned and not group/other writable\n' >&2
   exit 1
 fi
 

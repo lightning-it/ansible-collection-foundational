@@ -6,7 +6,7 @@ argument_specs:
       - Resolves explicit secret requests on the Ansible controller or execution environment.
       - Publishes secret values separately from non-sensitive resolution metadata.
     options:
-      lit_secret_resolver_provider:
+      secret_resolver_provider:
         description: Primary provider used when a request does not define its own provider order.
         type: str
         choices:
@@ -17,16 +17,16 @@ argument_specs:
           - runtime
           - generated
         default: runtime
-      lit_secret_resolver_provider_order:
+      secret_resolver_provider_order:
         description: Ordered provider chain; fallback still requires explicit enablement.
         type: list
         elements: str
         default: []
-      lit_secret_resolver_allow_fallback:
+      secret_resolver_allow_fallback:
         description: Whether an eligible primary-provider failure may continue to the next provider.
         type: bool
         default: false
-      lit_secret_resolver_fallback_on:
+      secret_resolver_fallback_on:
         description: Explicit failure categories that permit fallback when fallback is enabled.
         type: list
         elements: str
@@ -43,26 +43,26 @@ argument_specs:
         default:
           - secret_not_found
           - secret_key_missing
-      lit_secret_resolver_phase:
+      secret_resolver_phase:
         description: Explicit lifecycle phase; migration is restricted to bootstrap.
         type: str
         choices:
           - bootstrap
           - operational
         default: operational
-      lit_secret_resolver_vault_addr:
+      secret_resolver_vault_addr:
         description: HashiCorp Vault or HCP Vault address; VAULT_ADDR is used when omitted.
         type: str
         required: false
-      lit_secret_resolver_vault_namespace:
+      secret_resolver_vault_namespace:
         description: Optional Vault Enterprise or HCP Vault namespace; VAULT_NAMESPACE is used when omitted.
         type: str
         required: false
-      lit_secret_resolver_vault_mount_point:
+      secret_resolver_vault_mount_point:
         description: Default KV version 2 engine mount point.
         type: str
         default: secret
-      lit_secret_resolver_vault_auth_method:
+      secret_resolver_vault_auth_method:
         description: Authentication method supported by community.hashi_vault KV modules.
         type: str
         choices:
@@ -70,58 +70,58 @@ argument_specs:
           - approle
           - jwt
         default: token
-      lit_secret_resolver_vault_auth_mount_point:
+      secret_resolver_vault_auth_mount_point:
         description: Optional non-default authentication-method mount point.
         type: str
         required: false
-      lit_secret_resolver_vault_validate_certs:
+      secret_resolver_vault_validate_certs:
         description: Whether Vault TLS certificates must be validated.
         type: bool
         default: true
-      lit_secret_resolver_vault_ca_cert:
+      secret_resolver_vault_ca_cert:
         description: Optional controller-side CA certificate path.
         type: str
         required: false
-      lit_secret_resolver_vault_timeout:
+      secret_resolver_vault_timeout:
         description: Optional Vault connection timeout in seconds; must be at least 1.
         type: int
         required: false
-      lit_secret_resolver_vault_retries:
+      secret_resolver_vault_retries:
         description: Optional number of Vault connection retries; must be non-negative.
         type: int
         required: false
-      lit_secret_resolver_vault_token_validate:
+      secret_resolver_vault_token_validate:
         description: Whether token authentication performs a lookup-self validation.
         type: bool
         default: true
-      lit_secret_resolver_vault_token:
+      secret_resolver_vault_token:
         description: Optional securely injected Vault token; provider environment mechanisms are preferred.
         type: str
         required: false
         no_log: true
-      lit_secret_resolver_vault_role_id:
+      secret_resolver_vault_role_id:
         description: Optional securely injected AppRole or JWT role identifier.
         type: str
         required: false
         no_log: true
-      lit_secret_resolver_vault_secret_id:
+      secret_resolver_vault_secret_id:
         description: Optional securely injected AppRole Secret ID.
         type: str
         required: false
         no_log: true
-      lit_secret_resolver_vault_jwt:
+      secret_resolver_vault_jwt:
         description: Optional securely injected JWT assertion.
         type: str
         required: false
         no_log: true
-      lit_secret_resolver_requests:
+      secret_resolver_requests:
         description: Explicit normalized secret requests.
         type: list
         elements: dict
         default: []
         options:
           name:
-            description: Normalized key published in lit_secret_resolver_result.
+            description: Normalized key published in secret_resolver_result.
             type: str
             required: true
           required:
