@@ -5,9 +5,26 @@ objects:
       description: Ensure VLAN filtering and VLAN membership on a linux bridge.
       name: bridge_vlan_membership
       version_added: null
+    hetzner_cloud:
+      description: Declaratively reconcile IPv4-only Hetzner Cloud infrastructure.
+      name: hetzner_cloud
+      version_added: null
     hetzner_installimage:
       description: Plan or execute a guarded Hetzner installimage installation.
       name: hetzner_installimage
+      version_added: null
+    hetzner_rescue_validate:
+      description: Validate Hetzner Rescue identity, disks, SMART health, egress,
+        and an optional data plane.
+      name: hetzner_rescue_validate
+      version_added: null
+    hetzner_robot_cac:
+      description: Declaratively reconcile Hetzner Robot configuration-as-code resources.
+      name: hetzner_robot_cac
+      version_added: null
+    hetzner_robot_ops:
+      description: Perform gated boot or reset operations on one Hetzner Robot server.
+      name: hetzner_robot_ops
       version_added: null
     oob_redfish_control:
       description: Perform Redfish actions (power/boot/virtual media).
@@ -47,4 +64,4 @@ plugins:
   strategy: {}
   test: {}
   vars: {}
-version: 1.27.0
+version: 1.28.0

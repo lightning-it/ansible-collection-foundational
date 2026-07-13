@@ -4,6 +4,29 @@ Lightning IT Collection Release Notes Release Notes
 
 .. contents:: Topics
 
+v1.28.0
+=======
+
+Minor Changes
+-------------
+
+- ansible_vault_document - raise the fixed plaintext and ciphertext safety limit from 64 MiB to 128 MiB for larger encrypted documents.
+- hetzner_cloud - Add controller-side, IPv4-only, declarative Hetzner Cloud reconciliation with official hetzner.hcloud modules for SSH keys, firewalls, Networks, subnetworks, Primary and Floating IPs, placement groups, servers, exact private Network attachments, firewall relationships, reverse DNS, guarded deletion, fixed-address adoption, dynamic-inventory guidance, and read-only guest Floating IP detection.
+- hetzner_rescue_validate - add reusable controller trust, Rescue-system identity, disk, shared SMART, egress, data-plane, and installed-LUKS validation entrypoints.
+- hetzner_robot_cac - add declarative Hetzner Robot resource reconciliation and read-only server, firewall, and vSwitch drift auditing through community.hrobot modules.
+- hetzner_robot_ops - add separately gated Rescue boot and dedicated-server reset operations.
+
+Breaking Changes / Porting Guide
+--------------------------------
+
+- collection - raise the minimum supported ansible-core release from 2.16 to 2.18, matching the supported floor of the required hetzner.hcloud 6.x collection.
+- secret_resolver - rename the public ``lit_secret_resolver_*`` variables and outputs to the mandatory role-prefixed ``secret_resolver_*`` interface.
+
+Bugfixes
+--------
+
+- hetzner_installimage - discover the single Hetzner installimage working directory when ``FOLD`` is not exported to the post-mount hook, and reject unsafe or ambiguous working directories.
+
 v1.27.0
 =======
 
