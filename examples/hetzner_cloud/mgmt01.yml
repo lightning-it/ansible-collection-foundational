@@ -1,0 +1,162 @@
+---
+- name: Reconcile the mgmt01 Hetzner Cloud deployment
+  hosts: localhost
+  gather_facts: false
+  vars:
+    # Supply mgmt01_ssh_public_key from inventory or an extra-vars file. It is
+    # the public half only; never commit the corresponding private key.
+    mgmt01_trusted_ssh_ipv4_cidrs:
+      - 192.0.2.0/24
+
+    # The Floating IP is optional, but it must already exist under this name
+    # when enabled because prevent_create deliberately protects the fixed IP.
+    mgmt01_enable_floating_ipv4: false
+    mgmt01_floating_ip_resources:
+      - name: mgmt01-floating-ipv4
+        type: ipv4
+        server: mgmt01
+        prevent_create: true
+        expected_ip: 116.203.2.108
+        delete_protection: true
+        labels:
+          environment: prd
+          managed_by: lit-foundational
+    mgmt01_primary_reverse_dns:
+      - primary_ip: mgmt01-primary-ipv4
+        ip_address: 167.233.121.91
+        dns_ptr: mgmt01.prd.edge.pub.l-it.io
+    mgmt01_floating_reverse_dns:
+      - floating_ip: mgmt01-floating-ipv4
+        ip_address: 116.203.2.108
+        dns_ptr: mgmt01.prd.edge.pub.l-it.io
+
+    # Public secret_resolver inputs remain play-scoped so the resolved token is
+    # passed directly to the infrastructure role without persisting a secret.
+    secret_resolver_provider: environment
+    secret_resolver_requests:
+      - name: hetzner_cloud_api_token
+        required: true
+        environment:
+          variable: HCLOUD_TOKEN
+
+  roles:
+    # HCLOUD_TOKEN is injected into the controller or execution environment.
+    # The resolver normalizes it without making the infrastructure role aware
+    # of the selected secret backend.
+    - role: lit.foundational.secret_resolver
+
+    - role: lit.foundational.hetzner_cloud
+      vars:
+        hetzner_cloud_api_token: "{{ secret_resolver_result.hetzner_cloud_api_token }}"
+        hetzner_cloud_state: present
+        hetzner_cloud_ipv4_only: true
+
+        hetzner_cloud_ssh_keys:
+          - name: mgmt01-admin
+            public_key: "{{ mgmt01_ssh_public_key }}"
+            labels:
+              environment: prd
+              managed_by: lit-foundational
+
+        hetzner_cloud_default_firewall:
+          enabled: true
+          name: mgmt01-ipv4
+          labels:
+            environment: prd
+            managed_by: lit-foundational
+          ssh_source_ips: "{{ mgmt01_trusted_ssh_ipv4_cidrs }}"
+          wireguard_source_ips:
+            - 0.0.0.0/0
+          allow_icmp: true
+
+        hetzner_cloud_placement_groups:
+          - name: mgmt01-spread
+            type: spread
+            labels:
+              environment: prd
+              managed_by: lit-foundational
+
+        # The broad Network and its server subnet both contain the current .4
+        # and future .1 addresses. This run attaches only 172.16.10.4.
+        hetzner_cloud_networks:
+          - name: management
+            ip_range: 172.16.0.0/16
+            labels:
+              environment: prd
+              managed_by: lit-foundational
+        hetzner_cloud_subnetworks:
+          - network: management
+            ip_range: 172.16.10.0/24
+            type: cloud
+            network_zone: eu-central
+
+        # The fixed public address must already be reserved in this project.
+        # prevent_create avoids silently allocating a different address.
+        hetzner_cloud_primary_ips:
+          - name: mgmt01-primary-ipv4
+            type: ipv4
+            prevent_create: true
+            expected_ip: 167.233.121.91
+            auto_delete: false
+            delete_protection: true
+            labels:
+              environment: prd
+              managed_by: lit-foundational
+
+        hetzner_cloud_servers:
+          - name: mgmt01
+            server_type: cpx22
+            image: ubuntu-24.04
+            location: fsn1
+            ssh_keys:
+              - mgmt01-admin
+            firewalls:
+              - mgmt01-ipv4
+            ipv4: mgmt01-primary-ipv4
+            enable_ipv4: true
+            enable_ipv6: false
+            placement_group: mgmt01-spread
+            backups: true
+            delete_protection: true
+            rebuild_protection: true
+            labels:
+              environment: prd
+              fqdn: mgmt01.prd.edge.pub.l-it.io
+              managed_by: lit-foundational
+              role: management
+
+        # Do not replace this with 172.16.10.1 during initial deployment. The
+        # official module cannot change the primary private address in place.
+        # A later migration must explicitly detach and reattach after the
+        # legacy gateway has been removed and the destructive change approved.
+        hetzner_cloud_server_networks:
+          - server: mgmt01
+            network: management
+            ip: 172.16.10.4
+            expected_ip: 172.16.10.4
+
+        hetzner_cloud_floating_ips: >-
+          {{ mgmt01_floating_ip_resources if mgmt01_enable_floating_ipv4 | bool else [] }}
+        hetzner_cloud_reverse_dns: >-
+          {{
+            mgmt01_primary_reverse_dns
+            + (mgmt01_floating_reverse_dns if mgmt01_enable_floating_ipv4 | bool else [])
+          }}
+
+- name: Inspect optional Floating IPv4 guest configuration
+  hosts: mgmt01.prd.edge.pub.l-it.io
+  gather_facts: false
+  become: true
+  vars:
+    mgmt01_enable_floating_ipv4: false
+  tasks:
+    - name: Detect runtime and persistent Floating IPv4 configuration
+      ansible.builtin.include_role:
+        name: lit.foundational.hetzner_cloud
+        tasks_from: guest_floating_ip
+      vars:
+        hetzner_cloud_guest_floating_ips:
+          - name: mgmt01-floating-ipv4
+            address: 116.203.2.108
+        hetzner_cloud_guest_require_persistent: true
+      when: mgmt01_enable_floating_ipv4 | default(false) | bool

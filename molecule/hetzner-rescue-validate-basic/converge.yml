@@ -1,0 +1,100 @@
+---
+- name: Converge the Hetzner Rescue validation-only plan
+  hosts: all
+  gather_facts: false
+  vars_files:
+    - resources
+  tasks:
+    - name: Validate the reusable Rescue observation contract
+      ansible.builtin.include_role:
+        name: lit.foundational.hetzner_rescue_validate
+
+    - name: Reconcile the same validation-only plan again
+      ansible.builtin.include_role:
+        name: lit.foundational.hetzner_rescue_validate
+      register: hetzner_rescue_validate_second_run
+
+    - name: Require validation-only idempotence
+      ansible.builtin.assert:
+        that:
+          - not (hetzner_rescue_validate_second_run.changed | bool)
+          - hetzner_rescue_validate_result.validated | bool
+          - hetzner_rescue_validate_result.validate_only | bool
+          - hetzner_rescue_validate_result.disk_count | int == 1
+        quiet: true
+      changed_when: false
+
+    - name: Validate the controller preflight declaration without observations
+      ansible.builtin.include_role:
+        name: lit.foundational.hetzner_rescue_validate
+        tasks_from: controller_preflight
+
+    - name: Reconcile the same controller preflight plan again
+      ansible.builtin.include_role:
+        name: lit.foundational.hetzner_rescue_validate
+        tasks_from: controller_preflight
+      register: hetzner_rescue_validate_controller_preflight_second_run
+
+    - name: Require observation-free controller preflight idempotence
+      ansible.builtin.assert:
+        that:
+          - not (hetzner_rescue_validate_controller_preflight_second_run.changed | bool)
+          - hetzner_rescue_validate_result.validated | bool
+          - hetzner_rescue_validate_result.validate_only | bool
+          - hetzner_rescue_validate_result.controller_preflight | bool
+          - not (hetzner_rescue_validate_result.controller_trust_observed | bool)
+          - not (hetzner_rescue_validate_result.ssh_agent_observed | bool)
+          - hetzner_rescue_validate_result.required_ssh_key_count | int == 1
+          - not (hetzner_rescue_validate_result.dns_observed | bool)
+          - hetzner_rescue_validate_result.dns_record_count | int == 3
+        quiet: true
+      changed_when: false
+
+    - name: Validate the standalone Rescue data-plane declaration without probing
+      ansible.builtin.include_role:
+        name: lit.foundational.hetzner_rescue_validate
+        tasks_from: data_plane
+
+    - name: Reconcile the same standalone data-plane plan again
+      ansible.builtin.include_role:
+        name: lit.foundational.hetzner_rescue_validate
+        tasks_from: data_plane
+      register: hetzner_rescue_validate_data_plane_second_run
+
+    - name: Require probe-free standalone data-plane idempotence
+      ansible.builtin.assert:
+        that:
+          - not (hetzner_rescue_validate_data_plane_second_run.changed | bool)
+          - hetzner_rescue_validate_result.validated | bool
+          - hetzner_rescue_validate_result.validate_only | bool
+          - hetzner_rescue_validate_result.data_plane | bool
+          - hetzner_rescue_validate_result.peer_count | int == 2
+        quiet: true
+      changed_when: false
+
+    - name: Validate the rendered fleet inventory contract
+      ansible.builtin.include_role:
+        name: lit.foundational.hetzner_rescue_validate
+        tasks_from: inventory_contract
+
+    - name: Reconcile the same inventory contract again
+      ansible.builtin.include_role:
+        name: lit.foundational.hetzner_rescue_validate
+        tasks_from: inventory_contract
+      register: hetzner_rescue_validate_inventory_contract_second_run
+
+    - name: Require inventory-contract validation idempotence
+      ansible.builtin.assert:
+        that:
+          - not (hetzner_rescue_validate_inventory_contract_second_run.changed | bool)
+          - hetzner_rescue_validate_result.validated | bool
+          - hetzner_rescue_validate_result.validate_only | bool
+          - hetzner_rescue_validate_result.inventory_contract | bool
+          - hetzner_rescue_validate_result.fleet_host_count | int == 2
+          - hetzner_rescue_validate_result.prerequisite_host_count | int == 1
+          - hetzner_rescue_validate_result.robot_input_rule_count | int == 4
+          - hetzner_rescue_validate_result.robot_output_rule_count | int == 1
+          - hetzner_rescue_validate_result.deploy_key_count | int == 1
+          - hetzner_rescue_validate_result.breakglass_key_count | int == 1
+        quiet: true
+      changed_when: false

@@ -1,0 +1,177 @@
+---
+- name: Rebuild the Hetzner Cloud validation-only plan
+  hosts: all
+  gather_facts: false
+  vars_files:
+    - resources.json
+  tasks:
+    - name: Rebuild the representative validation-only plan
+      ansible.builtin.include_role:
+        name: lit.foundational.hetzner_cloud
+
+- name: Reassert the validation-only plan
+  ansible.builtin.import_playbook: assertions.yml
+
+- name: Verify deterministic Hetzner Cloud validation failures
+  hosts: all
+  gather_facts: false
+  vars:
+    hetzner_cloud_validate_only: true
+    hetzner_cloud_ipv4_only: true
+    hetzner_cloud_state: present
+    hetzner_cloud_allow_destructive: false
+    hetzner_cloud_allow_server_root_password: false
+    hetzner_cloud_default_firewall:
+      enabled: false
+      name: molecule-disabled-ipv4
+      labels: {}
+      ssh_source_ips: []
+      wireguard_source_ips: []
+      allow_icmp: false
+    hetzner_cloud_ssh_keys: []
+    hetzner_cloud_firewalls: []
+    hetzner_cloud_networks: []
+    hetzner_cloud_subnetworks: []
+    hetzner_cloud_primary_ips: []
+    hetzner_cloud_floating_ips: []
+    hetzner_cloud_placement_groups: []
+    hetzner_cloud_servers: []
+    hetzner_cloud_server_networks: []
+    hetzner_cloud_firewall_resources: []
+    hetzner_cloud_reverse_dns: []
+  tasks:
+    - name: Accept immutable-ID cleanup declarations in validation-only mode
+      ansible.builtin.include_role:
+        name: lit.foundational.hetzner_cloud
+      vars:
+        hetzner_cloud_allow_destructive: true
+        hetzner_cloud_ssh_keys:
+          - id: 1001
+            state: absent
+        hetzner_cloud_firewalls:
+          - id: 1002
+            state: absent
+        hetzner_cloud_networks:
+          - id: 1003
+            state: absent
+        hetzner_cloud_subnetworks:
+          - network: "1003"
+            ip_range: 10.0.10.0/24
+            type: cloud
+            network_zone: eu-central
+            state: absent
+        hetzner_cloud_primary_ips:
+          - id: 1004
+            state: absent
+        hetzner_cloud_floating_ips:
+          - id: 1005
+            state: absent
+        hetzner_cloud_servers:
+          - id: 1006
+            state: absent
+        hetzner_cloud_server_networks:
+          - server: "1006"
+            network: "1003"
+            state: absent
+        hetzner_cloud_firewall_resources:
+          - firewall: "1002"
+            servers:
+              - "1006"
+            state: absent
+        hetzner_cloud_reverse_dns:
+          - primary_ip: "1004"
+            ip_address: 192.0.2.10
+            state: absent
+
+    - name: Reject an IPv6 firewall source
+      block:
+        - name: Submit a firewall with an IPv6 source
+          ansible.builtin.include_role:
+            name: lit.foundational.hetzner_cloud
+          vars:
+            hetzner_cloud_firewalls:
+              - name: molecule-invalid-ipv6
+                rules:
+                  - description: Reject an IPv6 source
+                    direction: in
+                    protocol: tcp
+                    port: "22"
+                    source_ips:
+                      - 2001:db8::/32
+
+        - name: Fail when the IPv6 firewall source passed validation
+          ansible.builtin.fail:
+            msg: The IPv6 firewall source unexpectedly passed role validation.
+
+      rescue:
+        - name: Assert the IPv4-only firewall precheck rejected the input
+          ansible.builtin.assert:
+            that:
+              - ansible_failed_task.name == 'Validate IPv4-only firewall rules'
+            quiet: true
+
+    - name: Reject absent state without the destructive gate
+      block:
+        - name: Submit absent state without the destructive gate
+          ansible.builtin.include_role:
+            name: lit.foundational.hetzner_cloud
+          vars:
+            hetzner_cloud_state: absent
+
+        - name: Fail when unguarded absent state passed validation
+          ansible.builtin.fail:
+            msg: Unguarded absent state unexpectedly passed role validation.
+
+      rescue:
+        - name: Assert the global policy precheck rejected the input
+          ansible.builtin.assert:
+            that:
+              - ansible_failed_task.name == 'Validate global Hetzner Cloud role policy'
+            quiet: true
+
+    - name: Reject server creation without SSH keys
+      block:
+        - name: Submit server creation without SSH keys
+          ansible.builtin.include_role:
+            name: lit.foundational.hetzner_cloud
+          vars:
+            hetzner_cloud_servers:
+              - name: molecule-no-ssh-keys
+                server_type: cpx22
+                image: ubuntu-24.04
+                location: fsn1
+                enable_ipv6: false
+                ssh_keys: []
+
+        - name: Fail when server creation without SSH keys passed validation
+          ansible.builtin.fail:
+            msg: Server creation without SSH keys unexpectedly passed role validation.
+
+      rescue:
+        - name: Assert the server precheck rejected the input
+          ansible.builtin.assert:
+            that:
+              - ansible_failed_task.name == 'Validate server resources'
+            quiet: true
+
+    - name: Reject an adopted Primary IPv4 without expected_ip
+      block:
+        - name: Submit an adopted Primary IPv4 without expected_ip
+          ansible.builtin.include_role:
+            name: lit.foundational.hetzner_cloud
+          vars:
+            hetzner_cloud_primary_ips:
+              - name: molecule-adopted-primary
+                type: ipv4
+                prevent_create: true
+
+        - name: Fail when adopted Primary IPv4 without expected_ip passed validation
+          ansible.builtin.fail:
+            msg: Adopted Primary IPv4 without expected_ip unexpectedly passed role validation.
+
+      rescue:
+        - name: Assert the Primary IPv4 precheck rejected the input
+          ansible.builtin.assert:
+            that:
+              - ansible_failed_task.name == 'Validate Primary IPv4 resources'
+            quiet: true

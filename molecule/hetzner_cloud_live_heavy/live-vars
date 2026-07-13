@@ -1,0 +1,108 @@
+---
+hetzner_cloud_live_enabled: "{{ lookup('ansible.builtin.env', 'HCLOUD_LIVE_TEST') }}"
+hetzner_cloud_live_token_present: >-
+  {{ lookup('ansible.builtin.env', 'HCLOUD_TOKEN') | length > 0 }}
+hetzner_cloud_live_test_id: "{{ lookup('ansible.builtin.env', 'HCLOUD_LIVE_TEST_ID') }}"
+hetzner_cloud_live_name: "lit-hcloud-{{ hetzner_cloud_live_test_id }}"
+hetzner_cloud_live_location: fsn1
+hetzner_cloud_live_network_zone: eu-central
+hetzner_cloud_live_key_directory: >-
+  {{
+    lookup('ansible.builtin.env', 'MOLECULE_EPHEMERAL_DIRECTORY')
+    ~ '/hetzner-cloud-live-key/'
+    ~ hetzner_cloud_live_test_id
+  }}
+hetzner_cloud_live_key_path: "{{ hetzner_cloud_live_key_directory }}/id_ed25519"
+hetzner_cloud_live_owner_marker: "{{ hetzner_cloud_live_key_directory }}/ownership-verified"
+hetzner_cloud_live_inventory_path: "{{ hetzner_cloud_live_key_directory }}/inventory.hcloud.yml"
+hetzner_cloud_live_labels:
+  managed-by: molecule
+  test-id: "{{ hetzner_cloud_live_test_id }}"
+
+hetzner_cloud_live_ssh_keys:
+  - name: "{{ hetzner_cloud_live_name }}-key"
+    public_key: "{{ lookup('ansible.builtin.file', hetzner_cloud_live_key_path ~ '.pub', errors='ignore') }}"
+    labels: "{{ hetzner_cloud_live_labels }}"
+
+hetzner_cloud_live_firewalls:
+  - name: "{{ hetzner_cloud_live_name }}-firewall"
+    labels: "{{ hetzner_cloud_live_labels }}"
+    force: true
+    rules:
+      - description: Molecule SSH fixture
+        direction: in
+        protocol: tcp
+        port: "22"
+        source_ips:
+          - 127.0.0.1/32
+      - description: Molecule WireGuard fixture
+        direction: in
+        protocol: udp
+        port: "51820"
+        source_ips:
+          - 0.0.0.0/0
+      - description: Molecule IPv4 ICMP fixture
+        direction: in
+        protocol: icmp
+        source_ips:
+          - 0.0.0.0/0
+
+hetzner_cloud_live_networks:
+  - name: "{{ hetzner_cloud_live_name }}-network"
+    ip_range: 10.254.0.0/16
+    labels: "{{ hetzner_cloud_live_labels }}"
+
+hetzner_cloud_live_subnetworks:
+  - network: "{{ hetzner_cloud_live_name }}-network"
+    ip_range: 10.254.1.0/24
+    type: cloud
+    network_zone: "{{ hetzner_cloud_live_network_zone }}"
+
+hetzner_cloud_live_primary_ips:
+  - name: "{{ hetzner_cloud_live_name }}-primary"
+    location: "{{ hetzner_cloud_live_location }}"
+    type: ipv4
+    auto_delete: false
+    labels: "{{ hetzner_cloud_live_labels }}"
+
+hetzner_cloud_live_servers:
+  - name: "{{ hetzner_cloud_live_name }}-server"
+    server_type: cpx22
+    image: ubuntu-24.04
+    location: "{{ hetzner_cloud_live_location }}"
+    ipv4: "{{ hetzner_cloud_live_name }}-primary"
+    enable_ipv4: true
+    enable_ipv6: false
+    ssh_keys:
+      - "{{ hetzner_cloud_live_name }}-key"
+    firewalls:
+      - "{{ hetzner_cloud_live_name }}-firewall"
+    labels: >-
+      {{
+        hetzner_cloud_live_labels
+        | combine(
+            {
+              'fqdn': hetzner_cloud_live_name ~ '.example.com',
+              'role': 'molecule'
+            }
+          )
+      }}
+
+hetzner_cloud_live_server_networks:
+  - server: "{{ hetzner_cloud_live_name }}-server"
+    network: "{{ hetzner_cloud_live_name }}-network"
+    ip: 10.254.1.10
+    expected_ip: 10.254.1.10
+
+hetzner_cloud_live_firewall_resources:
+  - firewall: "{{ hetzner_cloud_live_name }}-firewall"
+    servers:
+      - "{{ hetzner_cloud_live_name }}-server"
+
+hetzner_cloud_live_floating_ips:
+  - name: "{{ hetzner_cloud_live_name }}-floating"
+    description: "Disposable Molecule Floating IPv4 {{ hetzner_cloud_live_test_id }}"
+    server: "{{ hetzner_cloud_live_name }}-server"
+    type: ipv4
+    force: true
+    labels: "{{ hetzner_cloud_live_labels }}"

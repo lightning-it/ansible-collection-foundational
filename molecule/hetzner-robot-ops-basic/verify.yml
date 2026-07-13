@@ -1,0 +1,28 @@
+---
+- name: Verify Hetzner Robot operations validation coverage
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Read validation coverage
+      ansible.builtin.slurp:
+        path: /tmp/lit-foundational-hetzner-robot-ops-validation.json
+      register: hetzner_robot_ops_validation_coverage
+
+    - name: Decode validation coverage
+      ansible.builtin.set_fact:
+        hetzner_robot_ops_validation_data: >-
+          {{ hetzner_robot_ops_validation_coverage.content | b64decode | from_json }}
+
+    - name: Assert fail-closed gates and sanitized no-operation output
+      ansible.builtin.assert:
+        that:
+          - hetzner_robot_ops_validation_data.boot_gate_rejected | bool
+          - hetzner_robot_ops_validation_data.reset_gate_rejected | bool
+          - hetzner_robot_ops_validation_data.manual_gate_rejected | bool
+          - hetzner_robot_ops_validation_data.noop_result.action == 'none'
+          - not hetzner_robot_ops_validation_data.noop_result.changed | bool
+          - not hetzner_robot_ops_validation_data.noop_result.executed | bool
+          - hetzner_robot_ops_validation_data.noop_result.keys() | sort ==
+            ['action', 'changed', 'check_mode', 'executed', 'server_number']
+        quiet: true

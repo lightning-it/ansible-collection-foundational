@@ -1,0 +1,109 @@
+---
+- name: Reconcile disposable live Hetzner Cloud infrastructure
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - live-vars
+  tasks:
+    - name: Recheck live-test authorization before provisioning
+      ansible.builtin.assert:
+        that:
+          - hetzner_cloud_live_enabled | lower == 'true'
+          - hetzner_cloud_live_token_present | bool
+          - hetzner_cloud_live_test_id is match('^[a-z0-9][a-z0-9-]{7,23}$')
+          - '''mgmt01'' not in hetzner_cloud_live_name'
+        fail_msg: "Refusing to provision without the complete safe live-test gate."
+        quiet: true
+      changed_when: false
+      no_log: true
+
+    - name: Create independent resources and the Primary IPv4
+      ansible.builtin.include_role:
+        name: lit.foundational.hetzner_cloud
+      vars:
+        hetzner_cloud_ssh_keys: "{{ hetzner_cloud_live_ssh_keys }}"
+        hetzner_cloud_firewalls: "{{ hetzner_cloud_live_firewalls }}"
+        hetzner_cloud_networks: "{{ hetzner_cloud_live_networks }}"
+        hetzner_cloud_subnetworks: "{{ hetzner_cloud_live_subnetworks }}"
+        hetzner_cloud_primary_ips: "{{ hetzner_cloud_live_primary_ips }}"
+      register: hetzner_cloud_live_foundation_run
+      no_log: true
+
+    - name: Capture the allocated Primary IPv4 without exposing credentials
+      ansible.builtin.set_fact:
+        hetzner_cloud_live_primary_address: "{{ hetzner_cloud_result.primary_ips[0].ip }}"
+      changed_when: false
+      no_log: true
+
+    - name: Create the server and its exact private and Floating IPv4 attachments
+      ansible.builtin.include_role:
+        name: lit.foundational.hetzner_cloud
+      vars:
+        hetzner_cloud_ssh_keys: "{{ hetzner_cloud_live_ssh_keys }}"
+        hetzner_cloud_firewalls: "{{ hetzner_cloud_live_firewalls }}"
+        hetzner_cloud_networks: "{{ hetzner_cloud_live_networks }}"
+        hetzner_cloud_subnetworks: "{{ hetzner_cloud_live_subnetworks }}"
+        hetzner_cloud_primary_ips: "{{ hetzner_cloud_live_primary_ips }}"
+        hetzner_cloud_servers: "{{ hetzner_cloud_live_servers }}"
+        hetzner_cloud_server_networks: "{{ hetzner_cloud_live_server_networks }}"
+        hetzner_cloud_firewall_resources: "{{ hetzner_cloud_live_firewall_resources }}"
+        hetzner_cloud_floating_ips: "{{ hetzner_cloud_live_floating_ips }}"
+      register: hetzner_cloud_live_attachment_run
+      no_log: true
+
+    - name: Define the disposable reverse DNS record from the allocated address
+      ansible.builtin.set_fact:
+        hetzner_cloud_live_reverse_dns:
+          - primary_ip: "{{ hetzner_cloud_live_name }}-primary"
+            ip_address: "{{ hetzner_cloud_live_primary_address }}"
+            dns_ptr: "{{ hetzner_cloud_live_name }}.example.com"
+      changed_when: false
+
+    - name: Reconcile the complete live resource graph and reverse DNS
+      ansible.builtin.include_role:
+        name: lit.foundational.hetzner_cloud
+      vars: &hetzner_cloud_live_complete_role_vars
+        hetzner_cloud_ssh_keys: "{{ hetzner_cloud_live_ssh_keys }}"
+        hetzner_cloud_firewalls: "{{ hetzner_cloud_live_firewalls }}"
+        hetzner_cloud_networks: "{{ hetzner_cloud_live_networks }}"
+        hetzner_cloud_subnetworks: "{{ hetzner_cloud_live_subnetworks }}"
+        hetzner_cloud_primary_ips: "{{ hetzner_cloud_live_primary_ips }}"
+        hetzner_cloud_servers: "{{ hetzner_cloud_live_servers }}"
+        hetzner_cloud_server_networks: "{{ hetzner_cloud_live_server_networks }}"
+        hetzner_cloud_firewall_resources: "{{ hetzner_cloud_live_firewall_resources }}"
+        hetzner_cloud_floating_ips: "{{ hetzner_cloud_live_floating_ips }}"
+        hetzner_cloud_reverse_dns: "{{ hetzner_cloud_live_reverse_dns }}"
+      register: hetzner_cloud_live_complete_run
+      no_log: true
+
+    - name: Reconcile the complete live graph a second time
+      ansible.builtin.include_role:
+        name: lit.foundational.hetzner_cloud
+      vars:
+        <<: *hetzner_cloud_live_complete_role_vars
+      register: hetzner_cloud_live_second_run
+      no_log: true
+
+    - name: Verify second-pass idempotence and sanitized role outputs
+      ansible.builtin.assert:
+        that:
+          - not (hetzner_cloud_live_second_run.changed | bool)
+          - not (hetzner_cloud_result.changed | bool)
+          - hetzner_cloud_result.validated | bool
+          - hetzner_cloud_result.ssh_keys | length == 1
+          - hetzner_cloud_result.firewalls | length == 1
+          - hetzner_cloud_result.networks | length == 1
+          - hetzner_cloud_result.subnetworks | length == 1
+          - hetzner_cloud_result.primary_ips | length == 1
+          - hetzner_cloud_result.servers | length == 1
+          - hetzner_cloud_result.server_networks | length == 1
+          - hetzner_cloud_result.firewall_resources | length == 1
+          - hetzner_cloud_result.floating_ips | length == 1
+          - hetzner_cloud_result.reverse_dns | length == 1
+          - hetzner_cloud_result.primary_ips[0].ip == hetzner_cloud_live_primary_address
+          - hetzner_cloud_result.server_networks[0].ip == '10.254.1.10'
+          - hetzner_cloud_result.floating_ips[0].ip is match('^[0-9]+(?:\.[0-9]+){3}$')
+        quiet: true
+      changed_when: false
+      no_log: true

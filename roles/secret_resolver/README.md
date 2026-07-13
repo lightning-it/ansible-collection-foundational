@@ -15,9 +15,9 @@ Inventory or playbook policy
             v
 lit.foundational.secret_resolver
             |
-            +-- lit_secret_resolver_result (secret values)
+            +-- secret_resolver_result (secret values)
             |
-            +-- lit_secret_resolver_metadata (non-secret audit state)
+            +-- secret_resolver_metadata (non-secret audit state)
             |
             v
 Provider-independent application roles
@@ -51,7 +51,7 @@ active batch. Ansible applies run_once once per serial batch, and the free
 strategy does not provide a deterministic single-host boundary. For serial or
 free application plays, resolve secrets in a dedicated hosts: localhost,
 strategy: linear play, then reference
-hostvars['localhost'].lit_secret_resolver_result from later plays in the same
+hostvars['localhost'].secret_resolver_result from later plays in the same
 playbook run.
 
 All request policy and provider inputs must be controller-, group-, or
@@ -69,8 +69,8 @@ Use the collection FQCN:
 
 The role publishes host facts with cacheable set to false:
 
-- lit_secret_resolver_result contains the resolved values.
-- lit_secret_resolver_metadata contains non-sensitive resolution state.
+- secret_resolver_result contains the resolved values.
+- secret_resolver_metadata contains non-sensitive resolution state.
 
 Both public outputs are cleared before a transaction, so a failed invocation
 that reaches tasks/main.yml cannot leave an earlier successful result looking
@@ -132,18 +132,18 @@ pre-authenticated execution-environment bridge.
 
 The public interface is fully specified in meta/argument_specs.yml. Static
 role-owned defaults are documented in defaults/main.yml; the public
-lit_secret_resolver_* inputs intentionally remain caller supplied.
+secret_resolver_* inputs intentionally remain caller supplied.
 
 ### Global variables
 
 | Variable | Type | Default | Description |
 |---|---|---|---|
-| lit_secret_resolver_provider | string | runtime | Primary provider when no provider order is set |
-| lit_secret_resolver_provider_order | list of strings | empty list | Explicit global provider chain |
-| lit_secret_resolver_allow_fallback | boolean | false | Permit eligible movement through a provider chain |
-| lit_secret_resolver_fallback_on | list of strings | secret_not_found, secret_key_missing | Categories eligible for fallback |
-| lit_secret_resolver_phase | string | operational | Lifecycle phase: bootstrap or operational |
-| lit_secret_resolver_requests | list of dictionaries | empty list | Normalized requests to resolve |
+| secret_resolver_provider | string | runtime | Primary provider when no provider order is set |
+| secret_resolver_provider_order | list of strings | empty list | Explicit global provider chain |
+| secret_resolver_allow_fallback | boolean | false | Permit eligible movement through a provider chain |
+| secret_resolver_fallback_on | list of strings | secret_not_found, secret_key_missing | Categories eligible for fallback |
+| secret_resolver_phase | string | operational | Lifecycle phase: bootstrap or operational |
+| secret_resolver_requests | list of dictionaries | empty list | Normalized requests to resolve |
 
 When provider_order is empty, the effective chain contains only provider.
 Provider names are:
@@ -159,31 +159,31 @@ Provider names are:
 
 | Variable | Type | Default | Description |
 |---|---|---|---|
-| lit_secret_resolver_vault_addr | string | VAULT_ADDR | HashiCorp Vault or HCP Vault address; required for Vault operations |
-| lit_secret_resolver_vault_namespace | string | VAULT_NAMESPACE | Optional Vault Enterprise or HCP Vault namespace |
-| lit_secret_resolver_vault_mount_point | string | secret | Default KV version 2 engine mount |
-| lit_secret_resolver_vault_auth_method | string | token | token, approle, or jwt |
-| lit_secret_resolver_vault_auth_mount_point | string | unset | Optional non-default auth-method mount |
-| lit_secret_resolver_vault_validate_certs | boolean | true | Validate Vault TLS certificates |
-| lit_secret_resolver_vault_ca_cert | string | unset | Controller-side CA certificate path |
-| lit_secret_resolver_vault_timeout | integer | unset | Connection timeout in seconds; at least 1 |
-| lit_secret_resolver_vault_retries | integer | unset | Non-negative connection retry count |
-| lit_secret_resolver_vault_token_validate | boolean | true | Validate a token with lookup-self |
-| lit_secret_resolver_vault_token | string | unset | Securely injected Vault token |
-| lit_secret_resolver_vault_role_id | string | unset | Securely injected AppRole role ID or JWT role identifier |
-| lit_secret_resolver_vault_secret_id | string | unset | Securely injected AppRole Secret ID |
-| lit_secret_resolver_vault_jwt | string | unset | Securely injected JWT assertion |
+| secret_resolver_vault_addr | string | VAULT_ADDR | HashiCorp Vault or HCP Vault address; required for Vault operations |
+| secret_resolver_vault_namespace | string | VAULT_NAMESPACE | Optional Vault Enterprise or HCP Vault namespace |
+| secret_resolver_vault_mount_point | string | secret | Default KV version 2 engine mount |
+| secret_resolver_vault_auth_method | string | token | token, approle, or jwt |
+| secret_resolver_vault_auth_mount_point | string | unset | Optional non-default auth-method mount |
+| secret_resolver_vault_validate_certs | boolean | true | Validate Vault TLS certificates |
+| secret_resolver_vault_ca_cert | string | unset | Controller-side CA certificate path |
+| secret_resolver_vault_timeout | integer | unset | Connection timeout in seconds; at least 1 |
+| secret_resolver_vault_retries | integer | unset | Non-negative connection retry count |
+| secret_resolver_vault_token_validate | boolean | true | Validate a token with lookup-self |
+| secret_resolver_vault_token | string | unset | Securely injected Vault token |
+| secret_resolver_vault_role_id | string | unset | Securely injected AppRole role ID or JWT role identifier |
+| secret_resolver_vault_secret_id | string | unset | Securely injected AppRole Secret ID |
+| secret_resolver_vault_jwt | string | unset | Securely injected JWT assertion |
 
 Authentication inputs map as follows:
 
 | Method | Inputs |
 |---|---|
-| token | lit_secret_resolver_vault_token or provider-supported environment injection |
-| approle | lit_secret_resolver_vault_role_id and lit_secret_resolver_vault_secret_id |
-| jwt | lit_secret_resolver_vault_role_id and lit_secret_resolver_vault_jwt |
+| token | secret_resolver_vault_token or provider-supported environment injection |
+| approle | secret_resolver_vault_role_id and secret_resolver_vault_secret_id |
+| jwt | secret_resolver_vault_role_id and secret_resolver_vault_jwt |
 
-lit_secret_resolver_vault_auth_mount_point selects the authentication backend
-mount. lit_secret_resolver_vault_mount_point selects the KV v2 secrets engine;
+secret_resolver_vault_auth_mount_point selects the authentication backend
+mount. secret_resolver_vault_mount_point selects the KV v2 secrets engine;
 they are independent settings.
 
 Token, Secret ID, and JWT variables are marked no_log in the argument
@@ -195,12 +195,12 @@ source.
 Token lookup-self validation improves the distinction between an invalid token
 and authorization failure at a requested secret path. A deliberately
 restricted token that cannot call lookup-self may set
-lit_secret_resolver_vault_token_validate to false, with reduced diagnostic
+secret_resolver_vault_token_validate to false, with reduced diagnostic
 precision.
 
 ## Request schema
 
-Each item in lit_secret_resolver_requests describes one output key and every
+Each item in secret_resolver_requests describes one output key and every
 permitted source or persistence policy for it.
 
 ### Request-level fields
@@ -390,7 +390,7 @@ write_back_failed or migration_failed occurs after it; those terminal
 categories can never trigger fallback.
 
 An optional request that remains absent is omitted from
-lit_secret_resolver_result and receives unresolved metadata. Non-absence
+secret_resolver_result and receives unresolved metadata. Non-absence
 errors fail closed even for optional requests. A required unresolved absence
 fails the role.
 
@@ -428,7 +428,7 @@ run.
 Given a resolved request named postgresql_admin_password:
 
 ~~~yaml
-lit_secret_resolver_result:
+secret_resolver_result:
   postgresql_admin_password: resolved-value
 ~~~
 
@@ -437,7 +437,7 @@ Do not print this dictionary. The example value above is illustrative only.
 Metadata is separate and contains no secret values or authentication material:
 
 ~~~yaml
-lit_secret_resolver_metadata:
+secret_resolver_metadata:
   postgresql_admin_password:
     resolved: true
     provider: hashicorp_vault
@@ -499,11 +499,11 @@ environment.
   roles:
     - role: lit.foundational.secret_resolver
       vars:
-        lit_secret_resolver_provider: hashicorp_vault
-        lit_secret_resolver_vault_addr: https://vault.example.invalid
-        lit_secret_resolver_vault_namespace: admin/platform
-        lit_secret_resolver_vault_validate_certs: true
-        lit_secret_resolver_requests:
+        secret_resolver_provider: hashicorp_vault
+        secret_resolver_vault_addr: https://vault.example.invalid
+        secret_resolver_vault_namespace: admin/platform
+        secret_resolver_vault_validate_certs: true
+        secret_resolver_requests:
           - name: postgresql_admin_password
             required: true
             hashicorp_vault:
@@ -529,8 +529,8 @@ The encrypted file is decrypted by Ansible before the role runs:
   roles:
     - role: lit.foundational.secret_resolver
       vars:
-        lit_secret_resolver_provider: ansible_vault
-        lit_secret_resolver_requests:
+        secret_resolver_provider: ansible_vault
+        secret_resolver_requests:
           - name: postgresql_admin_password
             required: true
             ansible_vault:
@@ -559,8 +559,8 @@ appropriate service-account context into the execution environment:
   roles:
     - role: lit.foundational.secret_resolver
       vars:
-        lit_secret_resolver_provider: onepassword
-        lit_secret_resolver_requests:
+        secret_resolver_provider: onepassword
+        secret_resolver_requests:
           - name: postgresql_admin_password
             required: true
             onepassword:
@@ -587,8 +587,8 @@ command-line arguments:
   roles:
     - role: lit.foundational.secret_resolver
       vars:
-        lit_secret_resolver_provider: environment
-        lit_secret_resolver_requests:
+        secret_resolver_provider: environment
+        secret_resolver_requests:
           - name: postgresql_admin_password
             required: true
             environment:
@@ -617,8 +617,8 @@ Semaphore variable group, or another secure runtime mechanism:
   roles:
     - role: lit.foundational.secret_resolver
       vars:
-        lit_secret_resolver_provider: runtime
-        lit_secret_resolver_requests:
+        secret_resolver_provider: runtime
+        secret_resolver_requests:
           - name: postgresql_admin_password
             required: true
             runtime:
@@ -633,7 +633,7 @@ directly in a shell command or job template source.
 An unresolved optional request is omitted:
 
 ~~~yaml
-lit_secret_resolver_requests:
+secret_resolver_requests:
   - name: optional_api_token
     required: false
     runtime:
@@ -644,7 +644,7 @@ An explicit default is used only for an ordinary absence and is validated like
 any other value:
 
 ~~~yaml
-lit_secret_resolver_requests:
+secret_resolver_requests:
   - name: bootstrap_label
     required: false
     runtime:
@@ -663,15 +663,15 @@ This policy falls back from Vault to an already-decrypted Ansible Vault
 variable only when the Vault path or key is absent:
 
 ~~~yaml
-lit_secret_resolver_provider_order:
+secret_resolver_provider_order:
   - hashicorp_vault
   - ansible_vault
-lit_secret_resolver_allow_fallback: true
-lit_secret_resolver_fallback_on:
+secret_resolver_allow_fallback: true
+secret_resolver_fallback_on:
   - secret_not_found
   - secret_key_missing
-lit_secret_resolver_vault_addr: https://vault.example.invalid
-lit_secret_resolver_requests:
+secret_resolver_vault_addr: https://vault.example.invalid
+secret_resolver_requests:
   - name: postgresql_admin_password
     required: true
     hashicorp_vault:
@@ -700,9 +700,9 @@ generation:
   roles:
     - role: lit.foundational.secret_resolver
       vars:
-        lit_secret_resolver_provider: hashicorp_vault
-        lit_secret_resolver_vault_addr: https://vault.example.invalid
-        lit_secret_resolver_requests:
+        secret_resolver_provider: hashicorp_vault
+        secret_resolver_vault_addr: https://vault.example.invalid
+        secret_resolver_requests:
           - name: postgresql_admin_password
             required: true
             hashicorp_vault:
@@ -732,8 +732,8 @@ Generation without write-back is ephemeral and can return a different value on
 every run:
 
 ~~~yaml
-lit_secret_resolver_provider: generated
-lit_secret_resolver_requests:
+secret_resolver_provider: generated
+secret_resolver_requests:
   - name: temporary_session_value
     generation:
       enabled: true
@@ -756,9 +756,9 @@ source untouched:
   roles:
     - role: lit.foundational.secret_resolver
       vars:
-        lit_secret_resolver_phase: bootstrap
-        lit_secret_resolver_vault_addr: https://vault.example.invalid
-        lit_secret_resolver_requests:
+        secret_resolver_phase: bootstrap
+        secret_resolver_vault_addr: https://vault.example.invalid
+        secret_resolver_requests:
           - name: postgresql_admin_password
             required: true
             ansible_vault:
@@ -798,9 +798,9 @@ lifecycle boundaries visible:
   roles:
     - role: lit.foundational.secret_resolver
       vars:
-        lit_secret_resolver_phase: bootstrap
-        lit_secret_resolver_provider: ansible_vault
-        lit_secret_resolver_requests:
+        secret_resolver_phase: bootstrap
+        secret_resolver_provider: ansible_vault
+        secret_resolver_requests:
           - name: vault_bootstrap_input
             ansible_vault:
               variable: vault_bootstrap_input_encrypted
@@ -810,7 +810,7 @@ lifecycle boundaries visible:
         name: organization.platform.vault_bootstrap
       vars:
         platform_vault_bootstrap_input: >-
-          {{ lit_secret_resolver_result.vault_bootstrap_input }}
+          {{ secret_resolver_result.vault_bootstrap_input }}
 ~~~
 
 ~~~yaml
@@ -839,10 +839,10 @@ lifecycle boundaries visible:
   roles:
     - role: lit.foundational.secret_resolver
       vars:
-        lit_secret_resolver_phase: operational
-        lit_secret_resolver_provider: hashicorp_vault
-        lit_secret_resolver_vault_addr: https://vault.service.consul:8200
-        lit_secret_resolver_requests:
+        secret_resolver_phase: operational
+        secret_resolver_provider: hashicorp_vault
+        secret_resolver_vault_addr: https://vault.service.consul:8200
+        secret_resolver_requests:
           - name: postgresql_admin_password
             hashicorp_vault:
               path: applications/postgresql
@@ -853,7 +853,7 @@ lifecycle boundaries visible:
   gather_facts: false
   vars:
     postgresql_admin_password: >-
-      {{ hostvars['localhost'].lit_secret_resolver_result.postgresql_admin_password }}
+      {{ hostvars['localhost'].secret_resolver_result.postgresql_admin_password }}
   roles:
     - role: lit.applications.postgresql
 ~~~
@@ -875,7 +875,7 @@ Pass only the normalized variable to the application role:
     name: lit.applications.postgresql
   vars:
     postgresql_admin_password: >-
-      {{ lit_secret_resolver_result.postgresql_admin_password }}
+      {{ secret_resolver_result.postgresql_admin_password }}
 ~~~
 
 The PostgreSQL role does not need community.hashi_vault, a 1Password lookup, or
@@ -954,7 +954,7 @@ Useful checks:
   import hvac.
 - Confirm op --version and op whoami succeed in the same controller
   environment used by Ansible.
-- Confirm VAULT_ADDR or lit_secret_resolver_vault_addr is set.
+- Confirm VAULT_ADDR or secret_resolver_vault_addr is set.
 - Confirm the Vault path is relative to the engine mount and omits data/.
 - Confirm the token or role has both read permission and, for persistence,
   write permission.
@@ -971,10 +971,10 @@ Useful checks:
   this is defense in depth rather than a memory-erasure guarantee.
 - The result is a non-cacheable host fact, but downstream debug tasks, callback
   plugins, custom logging, or cached derived facts can still disclose it.
-- Never debug or serialize lit_secret_resolver_result.
+- Never debug or serialize secret_resolver_result.
 - Never embed tokens, Secret IDs, JWTs, Vault passwords, or 1Password session
   material in role defaults, examples, task names, or command-line arguments.
-- Keep TLS validation enabled. Use lit_secret_resolver_vault_ca_cert for a
+- Keep TLS validation enabled. Use secret_resolver_vault_ca_cert for a
   private CA.
 - Treat the entire result dictionary as sensitive even if a request sets
   sensitive to false. That setting is metadata, not permission to log.

@@ -1,0 +1,59 @@
+---
+- name: Prechecks
+  ansible.builtin.import_tasks: assert.yml
+  tags: always
+
+- name: Publish no-operation result
+  ansible.builtin.set_fact:
+    hetzner_robot_ops_result:
+      action: none
+      changed: false
+      check_mode: "{{ ansible_check_mode }}"
+      executed: false
+      server_number: null
+  when: hetzner_robot_ops_action == 'none'
+
+- name: Prove the selected Robot server number and public IP are bound
+  when: hetzner_robot_ops_action != 'none'
+  delegate_to: localhost
+  become: false
+  run_once: true
+  block:
+    - name: Query the selected dedicated server by number
+      community.hrobot.server_info:
+        hetzner_user: "{{ hetzner_robot_ops_hetzner_user }}"
+        hetzner_password: "{{ hetzner_robot_ops_hetzner_password }}"
+        server_number: "{{ hetzner_robot_ops_server_number }}"
+        rate_limit_retry_timeout: "{{ hetzner_robot_ops_rate_limit_retry_timeout }}"
+      register: hetzner_robot_ops_server_identity
+      changed_when: false
+      no_log: true
+
+    - name: Require the exact active Robot server identity
+      ansible.builtin.assert:
+        that:
+          - hetzner_robot_ops_server_identity.servers | length == 1
+          - hetzner_robot_ops_server_identity.servers[0].server_number | int == hetzner_robot_ops_server_number | int
+          - hetzner_robot_ops_server_identity.servers[0].server_ip == hetzner_robot_ops_server_ip
+          - not (hetzner_robot_ops_server_identity.servers[0].cancelled | bool)
+          - hetzner_robot_ops_server_identity.servers[0].status == 'ready'
+        fail_msg: >-
+          The selected Robot server number is missing, cancelled, not ready, or does not own the expected main IPv4.
+        quiet: true
+      no_log: true
+
+  always:
+    - name: Discard Robot server identity response
+      ansible.builtin.set_fact:
+        hetzner_robot_ops_server_identity: {}
+        cacheable: false
+      changed_when: false
+      no_log: true
+
+- name: Apply selected boot configuration action
+  ansible.builtin.include_tasks: boot.yml
+  when: hetzner_robot_ops_action in ['activate_rescue', 'set_regular_boot']
+
+- name: Apply selected reset action
+  ansible.builtin.include_tasks: reset.yml
+  when: hetzner_robot_ops_action == 'reset'

@@ -41,10 +41,46 @@ Publishing targets: `github-release, ansible-galaxy`.
 
 Foundational Ansible collection for ModuLix.
 It provides generic building blocks and orchestration helpers for consistent, repeatable automation.
+The current collection compatibility baseline is `ansible-core` 2.18.0 or newer.
 
 ## What's inside
 
 ### Key roles
+
+- `lit.foundational.hetzner_cloud`
+  Reconciles IPv4-only Hetzner Cloud infrastructure from the controller with
+  official `hetzner.hcloud` modules:
+  - manages SSH keys, firewalls, Networks, subnetworks, Primary and Floating
+    IPs, placement groups, servers, exact private attachments, and reverse DNS,
+  - adopts fixed addresses safely, gates destructive state, and provides
+    read-only guest Floating IP detection,
+  - includes an `mgmt01` reference deployment and official dynamic inventory.
+
+- `lit.foundational.hetzner_robot_cac`
+  Reconciles configuration attached to existing Hetzner dedicated servers with
+  official `community.hrobot` modules:
+  - manages server names, firewalls, vSwitches, reverse DNS, Robot SSH keys,
+    and failover-IP routing,
+  - provides a read-only audit entrypoint for exact server, firewall, and
+    vSwitch state,
+  - gates destructive declarations and never logs Robot credentials or raw API
+    responses.
+
+- `lit.foundational.hetzner_rescue_validate`
+  Validates a dedicated server in Hetzner Rescue:
+  - pins Rescue SSH trust, validates exact deployment keys and physical disks,
+    and applies one shared ATA/NVMe SMART policy,
+  - provides separately gated extended SMART, temporary vSwitch data-plane,
+    and installed-LUKS passphrase entrypoints,
+  - keeps fleet selection and environment policy in the calling runbook and
+    inventory.
+
+- `lit.foundational.hetzner_robot_ops`
+  Performs one separately authorized Robot boot or reset operation:
+  - defaults to no action and requires one server-specific confirmation,
+  - keeps Rescue activation, regular boot, and reset outside declarative
+    configuration reconciliation,
+  - uses only the official Robot boot and reset modules.
 
 - `lit.foundational.secret_resolver`
   Resolves controller-side secret requests into provider-independent values:
@@ -80,6 +116,27 @@ It provides generic building blocks and orchestration helpers for consistent, re
 ---
 
 ## Dependencies
+
+### Hetzner dependencies
+
+The Cloud role and inventory use official `hetzner.hcloud` 6.10.0 modules. The
+dedicated-server roles use official `community.hrobot` 2.7.2 modules. Both are
+fixed collection dependencies:
+
+```yaml
+dependencies:
+  hetzner.hcloud: 6.10.0
+  community.hrobot: 2.7.2
+```
+
+API operations run on the controller. Inject `HCLOUD_TOKEN` into the
+controller or execution environment, or resolve a token with
+`lit.foundational.secret_resolver`; never commit it to inventory.
+
+Resolve Robot web-service credentials in the same way and inject them only at
+runtime. See the role documentation under `roles/hetzner_robot_cac`,
+`roles/hetzner_robot_ops`, and `roles/hetzner_rescue_validate` for resource
+schemas, audit behavior, and operation gates.
 
 ### Redfish roles
 
@@ -127,6 +184,27 @@ ansible-galaxy collection install \
 ---
 
 ## Quick start
+
+### Hetzner Cloud
+
+```yaml
+---
+- name: Reconcile Hetzner Cloud infrastructure
+  hosts: localhost
+  gather_facts: false
+  roles:
+    - role: lit.foundational.hetzner_cloud
+      vars:
+        hetzner_cloud_validate_only: true
+        hetzner_cloud_ipv4_only: true
+```
+
+See [`roles/hetzner_cloud/README.md`](roles/hetzner_cloud/README.md) for the
+resource contract, safety gates, secrets, check mode, and guest behavior. The
+complete `mgmt01` deployment is in
+[`examples/hetzner_cloud/mgmt01.yml`](examples/hetzner_cloud/mgmt01.yml), with
+official dynamic inventory in
+[`examples/hetzner_cloud/mgmt01.hcloud.yml`](examples/hetzner_cloud/mgmt01.hcloud.yml).
 
 ### Redfish (OOB) inventory + control
 
@@ -323,7 +401,7 @@ See [LICENSE](./LICENSE).
 
 <!-- BEGIN LIT_RELEASE_QUALITY_MODEL -->
 
-## Release and Quality Model
+## Release Validation Model
 
 This repository follows the Lightning IT shared release and quality model.
 The README shows the current supported and tested matrix.

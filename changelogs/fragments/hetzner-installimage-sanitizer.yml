@@ -1,0 +1,5 @@
+---
+bugfixes:
+  - >-
+    hetzner_installimage - discover the single Hetzner installimage working directory when ``FOLD`` is not exported
+    to the post-mount hook, and reject unsafe or ambiguous working directories.

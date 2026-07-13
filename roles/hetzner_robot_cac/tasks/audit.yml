@@ -1,0 +1,128 @@
+---
+- name: Audit prechecks
+  ansible.builtin.import_tasks: assert_audit.yml
+  tags: always
+
+- name: Publish secret-free Hetzner Robot audit plan
+  ansible.builtin.set_fact:
+    hetzner_robot_cac_audit_plan:
+      validate_only: "{{ hetzner_robot_cac_validate_only | bool }}"
+      resource_counts:
+        servers: "{{ hetzner_robot_cac_audit_servers | length }}"
+        firewalls: >-
+          {{ hetzner_robot_cac_audit_servers | selectattr('firewall', 'defined') | list | length }}
+        vswitches: "{{ hetzner_robot_cac_audit_vswitches | length }}"
+    cacheable: false
+  changed_when: false
+
+- name: Audit Hetzner Robot state on the controller
+  when: not (hetzner_robot_cac_validate_only | bool)
+  delegate_to: localhost
+  become: false
+  block:
+    - name: Query the Robot server inventory once
+      community.hrobot.server_info:
+        hetzner_user: "{{ hetzner_robot_cac_user }}"
+        hetzner_password: "{{ hetzner_robot_cac_password }}"
+        rate_limit_retry_timeout: "{{ hetzner_robot_cac_rate_limit_retry_timeout }}"
+        full_info: false
+      register: hetzner_robot_cac_audit_server_info
+      changed_when: false
+      no_log: true
+
+    - name: Require one exact Robot server for every declared public IP
+      ansible.builtin.assert:
+        that:
+          - >-
+            hetzner_robot_cac_audit_server_info.servers
+            | selectattr('server_ip', 'equalto', item.server_ip)
+            | list
+            | length == 1
+          - >-
+            item.server_name is not defined
+            or (
+              hetzner_robot_cac_audit_server_info.servers
+              | selectattr('server_ip', 'equalto', item.server_ip)
+              | first
+            ).server_name == item.server_name
+          - >-
+            (
+              hetzner_robot_cac_audit_server_info.servers
+              | selectattr('server_ip', 'equalto', item.server_ip)
+              | first
+            ).status == (item.status | default('ready'))
+          - >-
+            (
+              hetzner_robot_cac_audit_server_info.servers
+              | selectattr('server_ip', 'equalto', item.server_ip)
+              | first
+            ).cancelled | bool == (item.cancelled | default(false) | bool)
+        fail_msg: A declared Robot server is missing, ambiguous, or differs from its expected state.
+        quiet: true
+      loop: "{{ hetzner_robot_cac_audit_servers }}"
+      loop_control:
+        label: "{{ item.server_ip }}"
+      no_log: true
+
+    - name: Audit declared Robot server firewalls by numeric server number
+      ansible.builtin.include_tasks: audit_firewall.yml
+      loop: "{{ hetzner_robot_cac_audit_servers }}"
+      loop_control:
+        loop_var: hetzner_robot_cac_audit_server
+        label: "{{ hetzner_robot_cac_audit_server.server_ip }}"
+      when: hetzner_robot_cac_audit_server.firewall is defined
+
+    - name: Prove exact active Robot vSwitch state without mutation
+      community.hrobot.v_switch:
+        hetzner_user: "{{ hetzner_robot_cac_user }}"
+        hetzner_password: "{{ hetzner_robot_cac_password }}"
+        rate_limit_retry_timeout: "{{ hetzner_robot_cac_rate_limit_retry_timeout }}"
+        name: "{{ item.name }}"
+        vlan: "{{ item.vlan }}"
+        servers: "{{ item.servers }}"
+        wait: false
+        state: present
+      check_mode: true
+      register: hetzner_robot_cac_audit_vswitch_probe
+      loop: "{{ hetzner_robot_cac_audit_vswitches }}"
+      loop_control:
+        label: "{{ item.name }}"
+      no_log: true
+
+    - name: Assert vSwitch check-mode probes found no drift
+      ansible.builtin.include_tasks: audit_vswitch_assert.yml
+
+    - name: Publish sanitized successful Robot audit result
+      ansible.builtin.set_fact:
+        hetzner_robot_cac_audit_result:
+          changed: false
+          queried: true
+          validated: true
+          resources: "{{ hetzner_robot_cac_audit_plan.resource_counts }}"
+        cacheable: false
+      changed_when: false
+
+  always:
+    - name: Remove raw Robot audit data from controller facts
+      ansible.builtin.set_fact:
+        hetzner_robot_cac_audit_server_info: {}
+        hetzner_robot_cac_audit_firewall_info: {}
+        hetzner_robot_cac_audit_vswitch_probe: {}
+        hetzner_robot_cac_audit_expected_input: []
+        hetzner_robot_cac_audit_expected_output: []
+        hetzner_robot_cac_audit_actual_input: []
+        hetzner_robot_cac_audit_actual_output: []
+        cacheable: false
+      changed_when: false
+      no_log: true
+
+- name: Publish validation-only Robot audit result
+  ansible.builtin.set_fact:
+    hetzner_robot_cac_audit_result:
+      changed: false
+      queried: false
+      validated: true
+      resources: "{{ hetzner_robot_cac_audit_plan.resource_counts }}"
+    cacheable: false
+  when: hetzner_robot_cac_validate_only | bool
+  changed_when: false

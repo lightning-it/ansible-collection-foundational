@@ -1,0 +1,87 @@
+---
+- name: Destroy scenario-owned Hetzner Cloud guest-detection Incus resources
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    hetzner_cloud_incus_instance: "{{ molecule_yml.platforms[0] }}"
+  tasks:
+    - name: Read the Incus instance owner before deletion
+      ansible.builtin.command:
+        argv:
+          - incus
+          - config
+          - get
+          - "{{ hetzner_cloud_incus_instance.name }}"
+          - user.molecule-owner
+      register: hetzner_cloud_incus_destroy_instance_owner
+      changed_when: false
+      failed_when:
+        - hetzner_cloud_incus_destroy_instance_owner.rc != 0
+        - '''Instance not found'' not in hetzner_cloud_incus_destroy_instance_owner.stderr'
+
+    - name: Recheck the Incus instance owner immediately before deletion
+      ansible.builtin.command:
+        argv:
+          - incus
+          - config
+          - get
+          - "{{ hetzner_cloud_incus_instance.name }}"
+          - user.molecule-owner
+      register: hetzner_cloud_incus_destroy_instance_recheck
+      when:
+        - hetzner_cloud_incus_destroy_instance_owner.rc == 0
+        - hetzner_cloud_incus_destroy_instance_owner.stdout == hetzner_cloud_incus_instance.owner
+      changed_when: false
+
+    - name: Delete only the reverified scenario-owned Incus instance
+      ansible.builtin.command:
+        argv:
+          - incus
+          - delete
+          - --force
+          - "{{ hetzner_cloud_incus_instance.name }}"
+      when:
+        - hetzner_cloud_incus_destroy_instance_recheck is not skipped
+        - hetzner_cloud_incus_destroy_instance_recheck.stdout == hetzner_cloud_incus_instance.owner
+      changed_when: true
+
+    - name: Read the Incus network owner before deletion
+      ansible.builtin.command:
+        argv:
+          - incus
+          - network
+          - get
+          - "{{ hetzner_cloud_incus_instance.network }}"
+          - user.molecule-owner
+      register: hetzner_cloud_incus_destroy_network_owner
+      changed_when: false
+      failed_when:
+        - hetzner_cloud_incus_destroy_network_owner.rc != 0
+        - '''Network not found'' not in hetzner_cloud_incus_destroy_network_owner.stderr'
+
+    - name: Recheck the Incus network owner immediately before deletion
+      ansible.builtin.command:
+        argv:
+          - incus
+          - network
+          - get
+          - "{{ hetzner_cloud_incus_instance.network }}"
+          - user.molecule-owner
+      register: hetzner_cloud_incus_destroy_network_recheck
+      when:
+        - hetzner_cloud_incus_destroy_network_owner.rc == 0
+        - hetzner_cloud_incus_destroy_network_owner.stdout == hetzner_cloud_incus_instance.owner
+      changed_when: false
+
+    - name: Delete only the reverified scenario-owned Incus network
+      ansible.builtin.command:
+        argv:
+          - incus
+          - network
+          - delete
+          - "{{ hetzner_cloud_incus_instance.network }}"
+      when:
+        - hetzner_cloud_incus_destroy_network_recheck is not skipped
+        - hetzner_cloud_incus_destroy_network_recheck.stdout == hetzner_cloud_incus_instance.owner
+      changed_when: true

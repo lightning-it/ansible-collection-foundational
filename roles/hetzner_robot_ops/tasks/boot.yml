@@ -1,0 +1,54 @@
+---
+- name: Configure the selected dedicated-server boot mode
+  block:
+    - name: Activate rescue system for the next boot
+      community.hrobot.boot:
+        hetzner_user: "{{ hetzner_robot_ops_hetzner_user }}"
+        hetzner_password: "{{ hetzner_robot_ops_hetzner_password }}"
+        server_number: "{{ hetzner_robot_ops_server_number }}"
+        rescue:
+          os: "{{ hetzner_robot_ops_rescue_os }}"
+          authorized_keys: "{{ hetzner_robot_ops_rescue_authorized_keys }}"
+        rate_limit_retry_timeout: "{{ hetzner_robot_ops_rate_limit_retry_timeout }}"
+      register: _hetzner_robot_ops_boot_result
+      delegate_to: localhost
+      run_once: true
+      no_log: true
+      when: hetzner_robot_ops_action == 'activate_rescue'
+
+    - name: Restore regular boot for the next boot
+      community.hrobot.boot:
+        hetzner_user: "{{ hetzner_robot_ops_hetzner_user }}"
+        hetzner_password: "{{ hetzner_robot_ops_hetzner_password }}"
+        server_number: "{{ hetzner_robot_ops_server_number }}"
+        regular_boot: true
+        rate_limit_retry_timeout: "{{ hetzner_robot_ops_rate_limit_retry_timeout }}"
+      register: _hetzner_robot_ops_boot_result
+      delegate_to: localhost
+      run_once: true
+      no_log: true
+      when: hetzner_robot_ops_action == 'set_regular_boot'
+
+  always:
+    - name: Publish sanitized boot operation result
+      ansible.builtin.set_fact:
+        hetzner_robot_ops_result:
+          action: "{{ hetzner_robot_ops_action }}"
+          changed: "{{ _hetzner_robot_ops_boot_result.changed | default(false) }}"
+          check_mode: "{{ ansible_check_mode }}"
+          configuration_type: >-
+            {{
+              _hetzner_robot_ops_boot_result.configuration_type
+              | default(
+                  (hetzner_robot_ops_action == 'activate_rescue')
+                  | ternary('rescue', 'regular_boot')
+                )
+            }}
+          executed: true
+          server_number: "{{ hetzner_robot_ops_server_number }}"
+      no_log: true
+
+    - name: Discard sensitive boot module response
+      ansible.builtin.set_fact:
+        _hetzner_robot_ops_boot_result: {}
+      no_log: true

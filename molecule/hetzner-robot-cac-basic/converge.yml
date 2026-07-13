@@ -1,0 +1,108 @@
+---
+- name: Converge the Hetzner Robot validation-only plan
+  hosts: all
+  gather_facts: false
+  vars:
+    hetzner_robot_cac_validate_only: true
+    hetzner_robot_cac_allow_destructive: true
+    hetzner_robot_cac_server_metadata:
+      - server_number: 1234567
+        server_name: robot01.example.com
+    hetzner_robot_cac_firewalls:
+      - server_number: 1234567
+        filter_ipv6: false
+        rules:
+          input:
+            - name: Allow trusted SSH
+              ip_version: ipv4
+              src_ip: 192.0.2.0/24
+              dst_port: "22"
+              protocol: tcp
+              action: accept
+          output:
+            - name: Allow outbound IPv4
+              ip_version: ipv4
+              action: accept
+      - server_number: 7654321
+        state: absent
+    hetzner_robot_cac_vswitches:
+      - name: molecule-private
+        vlan: 4010
+        servers:
+          - "1234567"
+    hetzner_robot_cac_reverse_dns:
+      - ip: 192.0.2.10
+        value: robot01.example.com
+      - ip: 192.0.2.11
+        state: absent
+    hetzner_robot_cac_ssh_keys:
+      - name: molecule-automation
+        public_key: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMoleculeValidationOnlyKey automation@example.invalid
+      - fingerprint: 00:11:22:33:44:55:66:77:88:99:aa:bb:cc:dd:ee:ff
+        state: absent
+    hetzner_robot_cac_failover_ips:
+      - failover_ip: 192.0.2.20
+        value: 192.0.2.10
+      - failover_ip: 192.0.2.21
+        state: absent
+    hetzner_robot_cac_audit_servers:
+      - server_ip: 192.0.2.10
+        server_name: robot01.example.com
+        firewall:
+          status: active
+          port: main
+          filter_ipv6: false
+          allowlist_hos: true
+          rules:
+            input:
+              - name: Allow trusted SSH
+                ip_version: ipv4
+                src_ip: 192.0.2.1
+                dst_ip: 192.0.2.10
+                dst_port: "22"
+                protocol: tcp
+                action: accept
+            output:
+              - name: Allow outbound
+                action: accept
+    hetzner_robot_cac_audit_vswitches:
+      - name: molecule-private
+        vlan: 4010
+        servers:
+          - "1234567"
+  tasks:
+    - name: Build a representative Robot plan without API access
+      ansible.builtin.include_role:
+        name: lit.foundational.hetzner_robot_cac
+
+    - name: Assert the secret-free validation plan
+      ansible.builtin.assert:
+        that:
+          - not (hetzner_robot_cac_result.changed | bool)
+          - hetzner_robot_cac_result.validated | bool
+          - hetzner_robot_cac_result.resources.server_metadata | int == 1
+          - hetzner_robot_cac_result.resources.firewalls | int == 2
+          - hetzner_robot_cac_result.resources.vswitches | int == 1
+          - hetzner_robot_cac_result.resources.reverse_dns | int == 2
+          - hetzner_robot_cac_result.resources.ssh_keys | int == 2
+          - hetzner_robot_cac_result.resources.failover_ips | int == 2
+          - hetzner_robot_cac_plan.destructive_allowed | bool
+        fail_msg: Hetzner Robot validation-only plan is incomplete or unsafe.
+        quiet: true
+
+    - name: Build a representative read-only Robot audit plan
+      ansible.builtin.include_role:
+        name: lit.foundational.hetzner_robot_cac
+        tasks_from: audit
+
+    - name: Assert the secret-free audit validation result
+      ansible.builtin.assert:
+        that:
+          - not (hetzner_robot_cac_audit_result.changed | bool)
+          - not (hetzner_robot_cac_audit_result.queried | bool)
+          - hetzner_robot_cac_audit_result.validated | bool
+          - hetzner_robot_cac_audit_result.resources.servers | int == 1
+          - hetzner_robot_cac_audit_result.resources.firewalls | int == 1
+          - hetzner_robot_cac_audit_result.resources.vswitches | int == 1
+        fail_msg: Hetzner Robot audit validation-only result is incomplete.
+        quiet: true

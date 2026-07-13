@@ -1,0 +1,80 @@
+---
+- name: Discover physical Rescue disks by serial
+  ansible.builtin.command:
+    argv:
+      - "{{ hetzner_rescue_validate_lsblk_path }}"
+      - --json
+      - --bytes
+      - --nodeps
+      - --output
+      - PATH,SERIAL,MODEL,SIZE,ROTA,TYPE
+  register: hetzner_rescue_validate_lsblk
+  changed_when: false
+
+- name: Decode physical Rescue disks
+  ansible.builtin.set_fact:
+    hetzner_rescue_validate_disks: >-
+      {{ (hetzner_rescue_validate_lsblk.stdout | from_json).blockdevices }}
+  changed_when: false
+
+- name: Require the exact complete physical-disk serial set
+  vars:
+    hetzner_rescue_validate_live_disk_serials: >-
+      {{
+        hetzner_rescue_validate_disks
+        | selectattr('type', 'equalto', 'disk')
+        | map(attribute='serial')
+        | list
+      }}
+    hetzner_rescue_validate_expected_disk_serials: >-
+      {{ hetzner_rescue_validate_expected_disks | map(attribute='serial') | list }}
+  ansible.builtin.assert:
+    that:
+      - >-
+        hetzner_rescue_validate_live_disk_serials | length
+        == hetzner_rescue_validate_expected_disk_serials | length
+      - >-
+        hetzner_rescue_validate_live_disk_serials | reject('none') | list | length
+        == hetzner_rescue_validate_live_disk_serials | length
+      - >-
+        hetzner_rescue_validate_live_disk_serials | map('trim') | reject('equalto', '') | list | length
+        == hetzner_rescue_validate_live_disk_serials | length
+      - >-
+        hetzner_rescue_validate_live_disk_serials | unique | length
+        == hetzner_rescue_validate_live_disk_serials | length
+      - >-
+        hetzner_rescue_validate_expected_disk_serials | unique | length
+        == hetzner_rescue_validate_expected_disk_serials | length
+      - >-
+        hetzner_rescue_validate_live_disk_serials | sort
+        == hetzner_rescue_validate_expected_disk_serials | sort
+    fail_msg: >-
+      Rescue physical disks are incomplete, extra, serial-less, duplicate,
+      or differ from the exact inventory disk set.
+
+- name: Require every inventory disk's complete identity exactly once
+  vars:
+    hetzner_rescue_validate_disk_matches: >-
+      {{
+        hetzner_rescue_validate_disks
+        | selectattr('serial', 'equalto', item.serial)
+        | selectattr('type', 'equalto', 'disk')
+        | list
+      }}
+  ansible.builtin.assert:
+    that:
+      - hetzner_rescue_validate_disk_matches | length == 1
+      - hetzner_rescue_validate_disk_matches[0].path is string
+      - hetzner_rescue_validate_disk_matches[0].path is match('^/dev/[A-Za-z0-9._/-]+$')
+      - >-
+        hetzner_rescue_validate_disk_matches[0].model | default('') | trim
+        == item.model | trim
+      - hetzner_rescue_validate_disk_matches[0].size | int == item.size_bytes | int
+      - hetzner_rescue_validate_disk_matches[0].rota is boolean
+      - hetzner_rescue_validate_disk_matches[0].rota == item.rotational
+    fail_msg: >-
+      Disk {{ item.serial }} is absent, ambiguous, or differs from the
+      inventory model, byte size, or rotational identity.
+  loop: "{{ hetzner_rescue_validate_expected_disks }}"
+  loop_control:
+    label: "{{ item.serial }}"

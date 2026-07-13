@@ -6,8 +6,8 @@
   block:
     - name: Clear public outputs before resolution
       ansible.builtin.set_fact:
-        "{{ 'lit_secret_resolver_result' }}": {}
-        "{{ 'lit_secret_resolver_metadata' }}": {}
+        secret_resolver_result: {}
+        secret_resolver_metadata: {}
         cacheable: false
       changed_when: false
       no_log: true

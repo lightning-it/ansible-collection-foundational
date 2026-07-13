@@ -45,7 +45,7 @@ notes:
   - This action never contacts a managed host and never accepts a Vault password or password-file argument.
   - The action requires task-level C(no_log=true) to suppress secret task arguments at every callback verbosity.
   - Plaintext is serialized, encrypted, decrypted, and compared only in controller process memory.
-  - Plaintext and ciphertext each have a fixed 64 MiB safety limit; the limit is not caller-configurable.
+  - Plaintext and ciphertext each have a fixed 128 MiB safety limit; the limit is not caller-configurable.
   - Check mode validates an existing document. An absent document reports pending creation without creating a
     directory, serializing the mapping, or invoking Vault encryption.
 author:
@@ -85,7 +85,7 @@ ciphertext_sha256:
 
 
 _EXPECTED_ARGS = frozenset(("path", "document"))
-_MAX_DOCUMENT_BYTES = 64 * 1024 * 1024
+_MAX_DOCUMENT_BYTES = 128 * 1024 * 1024
 
 
 def _normalize_arguments(args):

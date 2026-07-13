@@ -54,16 +54,16 @@
         namespace: >-
           {{ __secret_resolver_vault_namespace if (__secret_resolver_vault_namespace | length > 0) else omit }}
         validate_certs: "{{ __secret_resolver_vault_validate_certs }}"
-        ca_cert: "{{ lit_secret_resolver_vault_ca_cert | default(omit, true) }}"
-        timeout: "{{ lit_secret_resolver_vault_timeout | default(omit) }}"
-        retries: "{{ lit_secret_resolver_vault_retries | default(omit) }}"
+        ca_cert: "{{ secret_resolver_vault_ca_cert | default(omit, true) }}"
+        timeout: "{{ secret_resolver_vault_timeout | default(omit) }}"
+        retries: "{{ secret_resolver_vault_retries | default(omit) }}"
         auth_method: "{{ __secret_resolver_vault_auth_method }}"
-        mount_point: "{{ lit_secret_resolver_vault_auth_mount_point | default(omit, true) }}"
-        token: "{{ lit_secret_resolver_vault_token | default(omit, true) }}"
+        mount_point: "{{ secret_resolver_vault_auth_mount_point | default(omit, true) }}"
+        token: "{{ secret_resolver_vault_token | default(omit, true) }}"
         token_validate: "{{ __secret_resolver_vault_token_validate }}"
-        role_id: "{{ lit_secret_resolver_vault_role_id | default(omit, true) }}"
-        secret_id: "{{ lit_secret_resolver_vault_secret_id | default(omit, true) }}"
-        jwt: "{{ lit_secret_resolver_vault_jwt | default(omit, true) }}"
+        role_id: "{{ secret_resolver_vault_role_id | default(omit, true) }}"
+        secret_id: "{{ secret_resolver_vault_secret_id | default(omit, true) }}"
+        jwt: "{{ secret_resolver_vault_jwt | default(omit, true) }}"
         engine_mount_point: >-
           {{ __secret_resolver_persist_target.mount_point | default(__secret_resolver_vault_mount_point) }}
         path: "{{ __secret_resolver_persist_target.path }}"
@@ -82,13 +82,6 @@
               ~ ' '
               ~ (ansible_failed_result.exception | default('') | string)
             }}
-      changed_when: false
-      no_log: true
-
-    - name: Clear the rescued persistent Vault read failure object
-      ansible.builtin.set_fact:
-        "{{ 'ansible_failed_result' }}": {}
-        "{{ 'ansible_failed_task' }}": {}
       changed_when: false
       no_log: true
 
@@ -245,16 +238,16 @@
         namespace: >-
           {{ __secret_resolver_vault_namespace if (__secret_resolver_vault_namespace | length > 0) else omit }}
         validate_certs: "{{ __secret_resolver_vault_validate_certs }}"
-        ca_cert: "{{ lit_secret_resolver_vault_ca_cert | default(omit, true) }}"
-        timeout: "{{ lit_secret_resolver_vault_timeout | default(omit) }}"
-        retries: "{{ lit_secret_resolver_vault_retries | default(omit) }}"
+        ca_cert: "{{ secret_resolver_vault_ca_cert | default(omit, true) }}"
+        timeout: "{{ secret_resolver_vault_timeout | default(omit) }}"
+        retries: "{{ secret_resolver_vault_retries | default(omit) }}"
         auth_method: "{{ __secret_resolver_vault_auth_method }}"
-        mount_point: "{{ lit_secret_resolver_vault_auth_mount_point | default(omit, true) }}"
-        token: "{{ lit_secret_resolver_vault_token | default(omit, true) }}"
+        mount_point: "{{ secret_resolver_vault_auth_mount_point | default(omit, true) }}"
+        token: "{{ secret_resolver_vault_token | default(omit, true) }}"
         token_validate: "{{ __secret_resolver_vault_token_validate }}"
-        role_id: "{{ lit_secret_resolver_vault_role_id | default(omit, true) }}"
-        secret_id: "{{ lit_secret_resolver_vault_secret_id | default(omit, true) }}"
-        jwt: "{{ lit_secret_resolver_vault_jwt | default(omit, true) }}"
+        role_id: "{{ secret_resolver_vault_role_id | default(omit, true) }}"
+        secret_id: "{{ secret_resolver_vault_secret_id | default(omit, true) }}"
+        jwt: "{{ secret_resolver_vault_jwt | default(omit, true) }}"
         engine_mount_point: >-
           {{ __secret_resolver_persist_target.mount_point | default(__secret_resolver_vault_mount_point) }}
         path: "{{ __secret_resolver_persist_target.path }}"
@@ -268,13 +261,6 @@
     - name: Mark the persistent Vault write as rejected
       ansible.builtin.set_fact:
         __secret_resolver_persist_write_failed: true
-      changed_when: false
-      no_log: true
-
-    - name: Clear the rescued persistent Vault write failure object
-      ansible.builtin.set_fact:
-        "{{ 'ansible_failed_result' }}": {}
-        "{{ 'ansible_failed_task' }}": {}
       changed_when: false
       no_log: true
 

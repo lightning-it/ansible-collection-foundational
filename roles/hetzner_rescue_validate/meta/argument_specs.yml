@@ -1,0 +1,325 @@
+---
+argument_specs:
+  main:
+    short_description: Validate Hetzner Rescue identity, disks, SMART health, egress, and an optional data plane.
+    options: &hetzner_rescue_validate_common_options
+      hetzner_rescue_validate_only:
+        type: bool
+        default: false
+      hetzner_rescue_validate_expected_disks:
+        type: list
+        elements: dict
+        default: []
+        options:
+          serial: {type: str, required: true}
+          model: {type: str, required: true}
+          size_bytes: {type: int, required: true}
+          rotational: {type: bool, required: true}
+          purpose:
+            type: str
+            choices: [system, preserve]
+            required: true
+      hetzner_rescue_validate_deploy_ssh_public_keys:
+        type: list
+        elements: str
+        default: []
+      hetzner_rescue_validate_robot_user_keys_path:
+        type: path
+        default: /root/.ssh/robot_user_keys
+      hetzner_rescue_validate_robot_user_keys_max_bytes:
+        type: int
+        default: 65536
+      hetzner_rescue_validate_rescue_marker_path:
+        type: path
+        default: /root/.oldroot/nfs/install/installimage
+      hetzner_rescue_validate_lsblk_path:
+        type: path
+        default: /usr/bin/lsblk
+      hetzner_rescue_validate_smartctl_path:
+        type: path
+        default: /usr/sbin/smartctl
+      hetzner_rescue_validate_nvme_path:
+        type: path
+        default: /usr/sbin/nvme
+      hetzner_rescue_validate_ip_path:
+        type: path
+        default: /usr/sbin/ip
+      hetzner_rescue_validate_ping_path:
+        type: path
+        default: /usr/bin/ping
+      hetzner_rescue_validate_cryptsetup_path:
+        type: path
+        default: /usr/sbin/cryptsetup
+      hetzner_rescue_validate_smart_enabled:
+        type: bool
+        default: true
+      hetzner_rescue_validate_smart_policy:
+        type: dict
+      hetzner_rescue_validate_smart_overrides:
+        type: dict
+        default: {}
+      hetzner_rescue_validate_egress_enabled:
+        type: bool
+        default: true
+      hetzner_rescue_validate_egress_url:
+        type: str
+        default: https://archive.ubuntu.com/ubuntu/
+      hetzner_rescue_validate_egress_status_codes:
+        type: list
+        elements: int
+        default: [200, 301, 302]
+      hetzner_rescue_validate_egress_timeout:
+        type: int
+        default: 20
+      hetzner_rescue_validate_data_plane:
+        type: dict
+        options:
+          enabled: {type: bool, default: false}
+          parent_interface: {type: str, default: ""}
+          vlan_interface: {type: str, default: ""}
+          vlan_id: {type: int, default: 0}
+          mtu: {type: int, default: 1400}
+          address: {type: str, default: ""}
+          prefix_length: {type: int, default: 0}
+          gateway: {type: str, default: ""}
+          peer_ipv4_addresses:
+            type: list
+            elements: str
+            default: []
+  controller_trust:
+    short_description: Pin and validate one Rescue Ed25519 SSH host key on the controller.
+    options:
+      hetzner_rescue_validate_known_hosts_path: {type: path, required: true}
+      hetzner_rescue_validate_public_ipv4: {type: str, required: true}
+      hetzner_rescue_validate_ssh_ed25519_sha256: {type: str, required: true, no_log: true}
+  controller_preflight:
+    short_description: Validate Rescue SSH trust, controller agent identities, and authoritative DNS observations.
+    options:
+      hetzner_rescue_validate_only: {type: bool, default: false}
+      hetzner_rescue_validate_known_hosts_path: {type: path, required: true}
+      hetzner_rescue_validate_public_ipv4: {type: str, required: true}
+      hetzner_rescue_validate_ssh_ed25519_sha256: {type: str, required: true, no_log: true}
+      hetzner_rescue_validate_controller_required_ssh_public_keys:
+        type: list
+        elements: str
+        required: true
+      hetzner_rescue_validate_controller_dns_resolver:
+        type: str
+        required: true
+      hetzner_rescue_validate_controller_dns_records:
+        type: list
+        elements: dict
+        required: true
+        options:
+          name: {type: str, required: true}
+          type:
+            type: str
+            choices: [A, PTR, CNAME]
+            required: true
+          value: {type: str, required: true}
+  data_plane:
+    short_description: Exercise one temporary, collision-safe Rescue VLAN data plane.
+    options:
+      hetzner_rescue_validate_only: {type: bool, default: false}
+      hetzner_rescue_validate_ip_path: {type: path, default: /usr/sbin/ip}
+      hetzner_rescue_validate_ping_path: {type: path, default: /usr/bin/ping}
+      hetzner_rescue_validate_data_plane:
+        type: dict
+        required: true
+        options:
+          enabled: {type: bool, required: true}
+          parent_interface: {type: str, required: true}
+          vlan_interface: {type: str, required: true}
+          vlan_id: {type: int, required: true}
+          mtu: {type: int, required: true}
+          address: {type: str, required: true}
+          prefix_length: {type: int, required: true}
+          gateway: {type: str, default: ""}
+          peer_ipv4_addresses:
+            type: list
+            elements: str
+            required: true
+  inventory_contract:
+    short_description: Validate the rendered fleet, installation, firewall, and MGMT inventory contract.
+    options:
+      hetzner_rescue_validate_inventory_contract:
+        type: dict
+        required: true
+        options:
+          selected_hosts:
+            type: list
+            elements: str
+            required: true
+          expected_fleet:
+            type: list
+            elements: str
+            required: true
+          install_order:
+            type: list
+            elements: str
+            required: true
+          prerequisite_hosts:
+            type: list
+            elements: str
+            required: true
+          host:
+            type: dict
+            required: true
+            options:
+              inventory_hostname: {type: str, required: true}
+              public_ipv4: {type: str, required: true}
+          installimage:
+            type: dict
+            required: true
+            options:
+              hostname: {type: str, required: true}
+              public_ipv4: {type: str, required: true}
+              action:
+                type: str
+                choices: [plan]
+                required: true
+          ssh_public_keys:
+            type: dict
+            required: true
+            options:
+              deploy:
+                type: list
+                elements: str
+                required: true
+                no_log: true
+              breakglass:
+                type: list
+                elements: str
+                required: true
+                no_log: true
+          service_hosts:
+            type: dict
+            required: true
+            options:
+              tang: {type: str, required: true}
+              vault: {type: str, required: true}
+          robot_firewall:
+            type: dict
+            required: true
+            options:
+              enabled: {type: bool, required: true}
+              dropbear_port: {type: int, required: true}
+              input_rules:
+                type: list
+                elements: dict
+                required: true
+                options:
+                  ip_version:
+                    type: str
+                    choices: [ipv4, ipv6]
+                    required: true
+                  protocol:
+                    type: str
+                    choices: [tcp, udp, gre, icmp, ipip, ah, esp]
+                    required: true
+                  src_ip: {type: raw}
+                  src_port: {type: raw}
+                  dst_ip: {type: raw}
+                  dst_port: {type: raw}
+                  tcp_flags: {type: raw}
+                  action:
+                    type: str
+                    choices: [accept, discard]
+                    required: true
+                  name: {type: str, required: true}
+              output_rules:
+                type: list
+                elements: dict
+                required: true
+          mgmt:
+            type: dict
+            required: true
+            options:
+              transport:
+                type: dict
+                required: true
+                options:
+                  provider:
+                    type: str
+                    choices: [hetzner_robot_vswitch]
+                    required: true
+                  state:
+                    type: str
+                    choices: [active]
+                    required: true
+                  name: {type: str, required: true}
+                  vlan_id: {type: int, required: true}
+                  mtu: {type: int, required: true}
+              network:
+                type: dict
+                required: true
+                options:
+                  state:
+                    type: str
+                    choices: [active]
+                    required: true
+                  parent_interface: {type: str, required: true}
+                  vlan_interface: {type: str, required: true}
+                  ipv4: {type: str, required: true}
+              subnet:
+                type: dict
+                required: true
+                options:
+                  prefix_length: {type: int, required: true}
+                  gateway: {type: str, default: ""}
+              netplan_vlan:
+                type: dict
+                required: true
+                options:
+                  name: {type: str, required: true}
+                  id: {type: int, required: true}
+                  link: {type: str, required: true}
+                  mtu: {type: int, required: true}
+                  addresses:
+                    type: list
+                    elements: str
+                    required: true
+  extended_smart:
+    short_description: Run one separately authorized extended SMART self-test per selected disk.
+    options:
+      <<: *hetzner_rescue_validate_common_options
+      hetzner_rescue_validate_extended_smart_allow: {type: bool, default: false}
+      hetzner_rescue_validate_extended_smart_confirmation: {type: str, default: ""}
+      hetzner_rescue_validate_extended_smart_target_serials:
+        type: list
+        elements: str
+        default: []
+      hetzner_rescue_validate_extended_smart_observe_interval_seconds: {type: int, default: 5}
+      hetzner_rescue_validate_extended_smart_observe_timeout_seconds: {type: int, default: 60}
+      hetzner_rescue_validate_extended_smart_poll_interval_seconds: {type: int, default: 30}
+      hetzner_rescue_validate_extended_smart_completion_grace_seconds: {type: int, default: 900}
+      hetzner_rescue_validate_extended_smart_max_estimated_minutes: {type: int, default: 1440}
+  luks_passphrase:
+    short_description: Prove that a retained secret unlocks the one installed LUKS root on approved disks.
+    options:
+      hetzner_rescue_validate_expected_disks:
+        type: list
+        elements: dict
+        required: true
+        options:
+          serial: {type: str, required: true}
+          model: {type: str, required: true}
+          size_bytes: {type: int, required: true}
+          rotational: {type: bool, required: true}
+          purpose:
+            type: str
+            choices: [system, preserve]
+            required: true
+      hetzner_rescue_validate_luks_passphrase:
+        type: str
+        required: true
+        no_log: true
+      hetzner_rescue_validate_luks_software_raid_enabled:
+        type: bool
+        default: false
+      hetzner_rescue_validate_lsblk_path:
+        type: path
+        default: /usr/bin/lsblk
+      hetzner_rescue_validate_cryptsetup_path:
+        type: path
+        default: /usr/sbin/cryptsetup

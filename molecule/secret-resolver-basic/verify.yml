@@ -237,8 +237,8 @@
       ansible.builtin.include_role:
         name: lit.foundational.secret_resolver
       vars:
-        lit_secret_resolver_provider: runtime
-        lit_secret_resolver_requests:
+        secret_resolver_provider: runtime
+        secret_resolver_requests:
           - name: generated_password
             runtime:
               variable: secret_resolver_molecule_undefined_password
@@ -276,39 +276,39 @@
       ansible.builtin.assert:
         that:
           - >-
-            lit_secret_resolver_result.keys() | list | sort ==
+            secret_resolver_result.keys() | list | sort ==
             ['existing_not_regenerated', 'generated_hex', 'generated_password', 'generated_uuid']
-          - lit_secret_resolver_result.generated_password | length == 24
-          - lit_secret_resolver_result.generated_password | regex_findall('[a-z]') | length >= 2
-          - lit_secret_resolver_result.generated_password | regex_findall('[A-Z]') | length >= 2
-          - lit_secret_resolver_result.generated_password | regex_findall('[0-9]') | length >= 2
-          - lit_secret_resolver_result.generated_password | regex_findall('[^A-Za-z0-9]') | length >= 2
-          - lit_secret_resolver_result.generated_hex is match('^[0-9a-f]{32}$')
+          - secret_resolver_result.generated_password | length == 24
+          - secret_resolver_result.generated_password | regex_findall('[a-z]') | length >= 2
+          - secret_resolver_result.generated_password | regex_findall('[A-Z]') | length >= 2
+          - secret_resolver_result.generated_password | regex_findall('[0-9]') | length >= 2
+          - secret_resolver_result.generated_password | regex_findall('[^A-Za-z0-9]') | length >= 2
+          - secret_resolver_result.generated_hex is match('^[0-9a-f]{32}$')
           - >-
-            lit_secret_resolver_result.generated_uuid
+            secret_resolver_result.generated_uuid
             is match('^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$')
           - >-
-            lit_secret_resolver_result.existing_not_regenerated ==
+            secret_resolver_result.existing_not_regenerated ==
             secret_resolver_molecule_existing_generation_value
-          - lit_secret_resolver_metadata.generated_password.generated
-          - lit_secret_resolver_metadata.generated_hex.generated
-          - lit_secret_resolver_metadata.generated_uuid.generated
-          - lit_secret_resolver_metadata.generated_password.provider == 'generated'
-          - lit_secret_resolver_metadata.generated_hex.provider == 'generated'
-          - lit_secret_resolver_metadata.generated_uuid.provider == 'generated'
+          - secret_resolver_metadata.generated_password.generated
+          - secret_resolver_metadata.generated_hex.generated
+          - secret_resolver_metadata.generated_uuid.generated
+          - secret_resolver_metadata.generated_password.provider == 'generated'
+          - secret_resolver_metadata.generated_hex.provider == 'generated'
+          - secret_resolver_metadata.generated_uuid.provider == 'generated'
           - >-
-            lit_secret_resolver_metadata.generated_password.attempted_providers == ['runtime', 'generated']
-          - lit_secret_resolver_metadata.generated_hex.attempted_providers == ['runtime', 'generated']
-          - lit_secret_resolver_metadata.generated_uuid.attempted_providers == ['runtime', 'generated']
-          - not lit_secret_resolver_metadata.generated_password.written_back
-          - not lit_secret_resolver_metadata.generated_hex.written_back
-          - not lit_secret_resolver_metadata.generated_uuid.written_back
-          - lit_secret_resolver_metadata.generated_password.persistence_state == 'not_requested'
-          - lit_secret_resolver_metadata.generated_hex.persistence_state == 'not_requested'
-          - lit_secret_resolver_metadata.generated_uuid.persistence_state == 'not_requested'
-          - not lit_secret_resolver_metadata.existing_not_regenerated.generated
-          - lit_secret_resolver_metadata.existing_not_regenerated.provider == 'runtime'
-          - lit_secret_resolver_metadata.existing_not_regenerated.attempted_providers == ['runtime']
+            secret_resolver_metadata.generated_password.attempted_providers == ['runtime', 'generated']
+          - secret_resolver_metadata.generated_hex.attempted_providers == ['runtime', 'generated']
+          - secret_resolver_metadata.generated_uuid.attempted_providers == ['runtime', 'generated']
+          - not secret_resolver_metadata.generated_password.written_back
+          - not secret_resolver_metadata.generated_hex.written_back
+          - not secret_resolver_metadata.generated_uuid.written_back
+          - secret_resolver_metadata.generated_password.persistence_state == 'not_requested'
+          - secret_resolver_metadata.generated_hex.persistence_state == 'not_requested'
+          - secret_resolver_metadata.generated_uuid.persistence_state == 'not_requested'
+          - not secret_resolver_metadata.existing_not_regenerated.generated
+          - secret_resolver_metadata.existing_not_regenerated.provider == 'runtime'
+          - secret_resolver_metadata.existing_not_regenerated.attempted_providers == ['runtime']
         quiet: true
       no_log: true
 
@@ -316,8 +316,8 @@
       ansible.builtin.assert:
         that:
           - >-
-            lit_secret_resolver_result.values() | list
-            | select('in', lit_secret_resolver_metadata | to_json)
+            secret_resolver_result.values() | list
+            | select('in', secret_resolver_metadata | to_json)
             | list
             | length == 0
         quiet: true

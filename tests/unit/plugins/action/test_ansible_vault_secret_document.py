@@ -340,9 +340,9 @@ def test_argument_validation_coerces_strict_jinja_rendered_integers():
     )
 
     assert result["schema_version"] == 1
-    assert type(result["schema_version"]) is int
+    assert result["schema_version"].__class__ is int
     assert result["secret_length"] == 64
-    assert type(result["secret_length"]) is int
+    assert result["secret_length"].__class__ is int
 
 
 @pytest.mark.parametrize(

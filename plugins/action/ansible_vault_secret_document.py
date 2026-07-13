@@ -107,6 +107,13 @@ _RACE_RETRY_SECONDS = 0.01
 _TEMP_CREATE_RETRIES = 100
 
 
+def _plain_text(value):
+    """Convert Ansible unsafe text proxies into an ordinary Python string."""
+    if isinstance(value, str):
+        return value.encode("utf-8").decode("utf-8")
+    return value
+
+
 class _UniqueKeySafeLoader(yaml.SafeLoader):
     """Safe YAML loader that rejects duplicate mapping keys."""
 
@@ -369,8 +376,11 @@ class _VaultSecretDocumentStore:
             )
             document = {
                 "schema_version": schema_version,
-                "subject": subject,
-                secret_field: generated_secret,
+                # Jinja-rendered action arguments may be AnsibleUnsafeText;
+                # normalize before PyYAML serialization just as exact-document
+                # mode does.
+                "subject": _plain_text(subject),
+                _plain_text(secret_field): generated_secret,
             }
             plaintext = yaml.safe_dump(
                 document,

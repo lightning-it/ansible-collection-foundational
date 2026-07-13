@@ -1,0 +1,197 @@
+---
+- name: Validate Rescue SSH trust inputs
+  ansible.builtin.assert:
+    that:
+      - not ansible_check_mode
+      - hetzner_rescue_validate_public_ipv4 is match('^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$')
+      - hetzner_rescue_validate_ssh_ed25519_sha256 is match('^SHA256:[A-Za-z0-9+/]{43}$')
+      - hetzner_rescue_validate_known_hosts_path | length > 0
+      - hetzner_rescue_validate_known_hosts_path is match('^/')
+      - hetzner_rescue_validate_known_hosts_path is not search('[\r\n]')
+      - hetzner_rescue_validate_known_hosts_path | dirname != '/'
+    fail_msg: "Rescue SSH trust requires a public IPv4, pinned Ed25519 SHA-256 fingerprint, and known-hosts path."
+    quiet: true
+  changed_when: false
+  no_log: true
+  delegate_to: localhost
+  become: false
+
+- name: Resolve the controller user and canonical known-hosts directory
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/env
+      - bash
+      - -c
+      - 'id -u; realpath -- "$1"'
+      - lit-known-hosts-safety
+      - "{{ hetzner_rescue_validate_known_hosts_path | dirname }}"
+  register: hetzner_rescue_validate_known_hosts_controller_context
+  changed_when: false
+  no_log: true
+  delegate_to: localhost
+  become: false
+
+- name: Inspect the existing private known-hosts directory
+  ansible.builtin.stat:
+    path: "{{ hetzner_rescue_validate_known_hosts_path | dirname }}"
+    follow: false
+    get_attributes: false
+    get_checksum: false
+    get_mime: false
+  register: hetzner_rescue_validate_known_hosts_directory
+  changed_when: false
+  delegate_to: localhost
+  become: false
+
+- name: Require a canonical owner-only known-hosts directory
+  ansible.builtin.assert:
+    that:
+      - hetzner_rescue_validate_known_hosts_controller_context.stdout_lines | length == 2
+      - >-
+        hetzner_rescue_validate_known_hosts_controller_context.stdout_lines[1]
+        == hetzner_rescue_validate_known_hosts_path | dirname
+      - hetzner_rescue_validate_known_hosts_directory.stat.exists | default(false)
+      - hetzner_rescue_validate_known_hosts_directory.stat.isdir | default(false)
+      - not (hetzner_rescue_validate_known_hosts_directory.stat.islnk | default(false))
+      - >-
+        hetzner_rescue_validate_known_hosts_directory.stat.uid | default(-1) | int
+        == hetzner_rescue_validate_known_hosts_controller_context.stdout_lines[0] | int
+      - hetzner_rescue_validate_known_hosts_directory.stat.mode | default('') == '0700'
+    fail_msg: >-
+      The Rescue known-hosts parent must already be a canonical, owner-only, non-symlink directory owned by the
+      controller user. The role will not create or chmod an arbitrary caller path.
+    quiet: true
+  changed_when: false
+  no_log: true
+  delegate_to: localhost
+  become: false
+
+- name: Inspect any existing Rescue known-hosts path
+  ansible.builtin.stat:
+    path: "{{ hetzner_rescue_validate_known_hosts_path }}"
+    follow: false
+    get_attributes: false
+    get_checksum: false
+    get_mime: false
+  register: hetzner_rescue_validate_known_hosts_before
+  changed_when: false
+  delegate_to: localhost
+  become: false
+
+- name: Refuse an unsafe existing Rescue known-hosts path
+  ansible.builtin.assert:
+    that:
+      - >-
+        not (hetzner_rescue_validate_known_hosts_before.stat.exists | default(false))
+        or
+        (
+          hetzner_rescue_validate_known_hosts_before.stat.isreg | default(false)
+          and not (hetzner_rescue_validate_known_hosts_before.stat.islnk | default(false))
+          and hetzner_rescue_validate_known_hosts_before.stat.uid | default(-1) | int
+              == hetzner_rescue_validate_known_hosts_controller_context.stdout_lines[0] | int
+          and hetzner_rescue_validate_known_hosts_before.stat.mode | default('') == '0600'
+        )
+    fail_msg: >-
+      An existing Rescue known-hosts path must be a controller-owned, mode 0600, regular non-symlink file.
+    quiet: true
+  changed_when: false
+  delegate_to: localhost
+  become: false
+
+- name: Ensure the Rescue known-hosts file is owner-only
+  ansible.builtin.file:
+    path: "{{ hetzner_rescue_validate_known_hosts_path }}"
+    state: touch
+    mode: "0600"
+    access_time: preserve
+    modification_time: preserve
+  register: hetzner_rescue_validate_known_hosts_file_result
+  throttle: 1
+  delegate_to: localhost
+  become: false
+
+- name: Scan the live Rescue Ed25519 host key over IPv4
+  ansible.builtin.command:
+    argv:
+      - ssh-keyscan
+      - -q
+      - -4
+      - -T
+      - "10"
+      - -t
+      - ed25519
+      - "{{ hetzner_rescue_validate_public_ipv4 }}"
+  register: hetzner_rescue_validate_keyscan
+  changed_when: false
+  no_log: true
+  delegate_to: localhost
+  become: false
+
+- name: Select the sole exact live Rescue host-key line
+  ansible.builtin.set_fact:
+    hetzner_rescue_validate_key_lines: >-
+      {{
+        hetzner_rescue_validate_keyscan.stdout_lines
+        | select(
+            'match',
+            '^' ~ (hetzner_rescue_validate_public_ipv4 | regex_escape)
+            ~ ' ssh-ed25519 [A-Za-z0-9+/=]+$'
+          )
+        | list
+      }}
+    cacheable: false
+  changed_when: false
+  no_log: true
+  delegate_to: localhost
+  become: false
+
+- name: Require exactly one live Ed25519 host key
+  ansible.builtin.assert:
+    that:
+      - hetzner_rescue_validate_keyscan.rc == 0
+      - hetzner_rescue_validate_key_lines | length == 1
+    fail_msg: "The Rescue IPv4 did not return exactly one Ed25519 host key."
+    quiet: true
+  changed_when: false
+  no_log: true
+  delegate_to: localhost
+  become: false
+
+- name: Derive the live Rescue key SHA-256 fingerprint
+  ansible.builtin.command:
+    argv: [ssh-keygen, -E, sha256, -lf, -]
+    stdin: "{{ hetzner_rescue_validate_key_lines[0] }}\n"
+    stdin_add_newline: false
+  register: hetzner_rescue_validate_live_fingerprint
+  changed_when: false
+  no_log: true
+  delegate_to: localhost
+  become: false
+
+- name: Require the live key to equal the inventory pin
+  ansible.builtin.assert:
+    that:
+      - >-
+        hetzner_rescue_validate_live_fingerprint.stdout
+        | regex_findall('SHA256:[A-Za-z0-9+/]{43}')
+        == [hetzner_rescue_validate_ssh_ed25519_sha256]
+    fail_msg: "The live Rescue SSH host key does not equal the declared fingerprint."
+    quiet: true
+  changed_when: false
+  no_log: true
+  delegate_to: localhost
+  become: false
+
+- name: Pin only the independently verified Rescue Ed25519 key
+  ansible.builtin.known_hosts:
+    path: "{{ hetzner_rescue_validate_known_hosts_path }}"
+    name: "{{ hetzner_rescue_validate_public_ipv4 }}"
+    key: >-
+      {{ hetzner_rescue_validate_public_ipv4 }}
+      {{ hetzner_rescue_validate_key_lines[0].split(' ', 1)[1] }}
+    state: present
+  register: hetzner_rescue_validate_known_hosts_pin_result
+  throttle: 1
+  no_log: true
+  delegate_to: localhost
+  become: false

@@ -1,0 +1,228 @@
+---
+- name: Validate Hetzner Robot role controls
+  ansible.builtin.assert:
+    that:
+      - hetzner_robot_cac_state in ['present', 'absent']
+      - hetzner_robot_cac_rate_limit_retry_timeout | int >= 0
+    fail_msg: Hetzner Robot state or rate-limit retry timeout is invalid.
+    quiet: true
+
+- name: Require resolved Robot credentials for API reconciliation
+  ansible.builtin.assert:
+    that:
+      - hetzner_robot_cac_user | trim | length > 0
+      - hetzner_robot_cac_password | length > 0
+    fail_msg: Resolve both Robot credentials before disabling validation-only mode.
+    quiet: true
+  when: not (hetzner_robot_cac_validate_only | bool)
+  no_log: true
+
+- name: Require unique Hetzner Robot resource identities
+  vars:
+    _hetzner_robot_cac_server_identities: >-
+      {{ hetzner_robot_cac_server_metadata | map(attribute='server_number') | map('string') | list }}
+    _hetzner_robot_cac_firewall_identities: >-
+      {%- set ns = namespace(values=[]) -%}
+      {%- for resource in hetzner_robot_cac_firewalls -%}
+      {%- set target =
+        ('number:' ~ (resource.server_number | string))
+        if resource.server_number is defined
+        else ('ip:' ~ (resource.server_ip | default(''))) -%}
+      {%- set ns.values = ns.values + [target ~ '|port:' ~ (resource.port | default('main'))] -%}
+      {%- endfor -%}
+      {{ ns.values }}
+    _hetzner_robot_cac_vswitch_identities: >-
+      {%- set ns = namespace(values=[]) -%}
+      {%- for resource in hetzner_robot_cac_vswitches -%}
+      {%- set ns.values = ns.values + [
+        (resource.name | default('')) ~ '|vlan:' ~ (resource.vlan | default('') | string)
+      ] -%}
+      {%- endfor -%}
+      {{ ns.values }}
+    _hetzner_robot_cac_reverse_dns_identities: >-
+      {{ hetzner_robot_cac_reverse_dns | map(attribute='ip') | list }}
+    _hetzner_robot_cac_ssh_key_identities: >-
+      {%- set ns = namespace(values=[]) -%}
+      {%- for resource in hetzner_robot_cac_ssh_keys -%}
+      {%- set resource_state = resource.state | default(hetzner_robot_cac_state) -%}
+      {%- set identity =
+        ('public_key:' ~ ((
+          resource.public_key | default('') | trim
+        ).split()[:2] | join(' ')))
+        if resource_state == 'present' or resource.public_key is defined
+        else (
+          ('fingerprint:' ~ resource.fingerprint)
+          if resource.fingerprint is defined else 'undefined'
+        ) -%}
+      {%- set ns.values = ns.values + [identity] -%}
+      {%- endfor -%}
+      {{ ns.values }}
+    _hetzner_robot_cac_failover_ip_identities: >-
+      {{ hetzner_robot_cac_failover_ips | map(attribute='failover_ip') | list }}
+  ansible.builtin.assert:
+    that:
+      - >-
+        _hetzner_robot_cac_server_identities | unique | length
+        == _hetzner_robot_cac_server_identities | length
+      - >-
+        _hetzner_robot_cac_firewall_identities | unique | length
+        == _hetzner_robot_cac_firewall_identities | length
+      - >-
+        hetzner_robot_cac_firewalls | selectattr('server_number', 'defined') | list | length
+        in [0, hetzner_robot_cac_firewalls | length]
+      - >-
+        _hetzner_robot_cac_vswitch_identities | unique | length
+        == _hetzner_robot_cac_vswitch_identities | length
+      - >-
+        _hetzner_robot_cac_reverse_dns_identities | unique | length
+        == _hetzner_robot_cac_reverse_dns_identities | length
+      - >-
+        _hetzner_robot_cac_ssh_key_identities | unique | length
+        == _hetzner_robot_cac_ssh_key_identities | length
+      - >-
+        _hetzner_robot_cac_failover_ip_identities | unique | length
+        == _hetzner_robot_cac_failover_ip_identities | length
+    fail_msg: >-
+      Each Robot server, firewall target and port, vSwitch name and VLAN, reverse-DNS IP, SSH key, and failover IP
+      may be declared only once. A firewall declaration set must use one consistent identifier type so numeric and
+      IP aliases cannot reconcile the same firewall twice.
+    quiet: true
+  no_log: true
+
+- name: Require explicit approval for destructive resource states
+  ansible.builtin.assert:
+    that:
+      - >-
+        hetzner_robot_cac_allow_destructive | bool
+        or (item.state | default(hetzner_robot_cac_state)) != 'absent'
+    fail_msg: Set hetzner_robot_cac_allow_destructive=true before declaring any resource absent.
+    quiet: true
+  loop: >-
+    {{
+      hetzner_robot_cac_firewalls
+      + hetzner_robot_cac_vswitches
+      + hetzner_robot_cac_reverse_dns
+      + hetzner_robot_cac_ssh_keys
+      + hetzner_robot_cac_failover_ips
+    }}
+  loop_control:
+    label: >-
+      {{
+        item.name
+        | default(item.ip
+        | default(item.failover_ip
+        | default(item.server_number
+        | default(item.server_ip
+        | default(item.fingerprint
+        | default('resource'))))))
+      }}
+
+- name: Validate dedicated server metadata declarations
+  ansible.builtin.assert:
+    that:
+      - item.server_number is defined
+      - item.server_number | int > 0
+      - item.server_name is defined
+      - item.server_name | trim | length > 0
+      - (item.state | default(hetzner_robot_cac_state)) == 'present'
+    fail_msg: Server metadata requires a positive server_number, a non-empty server_name, and state present.
+    quiet: true
+  loop: "{{ hetzner_robot_cac_server_metadata }}"
+  loop_control:
+    label: "{{ item.server_number | default('undefined') }}"
+
+- name: Validate firewall declarations
+  ansible.builtin.assert:
+    that:
+      - >-
+        ((item.server_number is defined) | int)
+        + ((item.server_ip is defined and item.server_ip | length > 0) | int)
+        == 1
+      - item.server_number is not defined or item.server_number | int > 0
+      - (item.state | default(hetzner_robot_cac_state)) in ['present', 'absent']
+      - (item.timeout | default(180) | int) > 0
+      - (item.update_timeout | default(30) | int) > 0
+      - (item.wait_delay | default(10) | int) > 0
+      - >-
+        (item.state | default(hetzner_robot_cac_state)) == 'absent'
+        or (
+          item.rules is defined
+          and item.rules.input is defined
+          and item.rules.output is defined
+        )
+    fail_msg: Each firewall requires one identifier, positive timeouts, and complete input/output rules when present.
+    quiet: true
+  loop: "{{ hetzner_robot_cac_firewalls }}"
+  loop_control:
+    label: "{{ item.server_number | default(item.server_ip | default('undefined')) }}"
+
+- name: Validate vSwitch declarations
+  ansible.builtin.assert:
+    that:
+      - item.name is defined
+      - item.name | trim | length > 0
+      - item.vlan is defined
+      - item.vlan | int >= 4000
+      - item.vlan | int <= 4091
+      - (item.state | default(hetzner_robot_cac_state)) in ['present', 'absent']
+      - (item.timeout | default(180) | int) > 0
+      - (item.wait_delay | default(10) | int) > 0
+    fail_msg: Each vSwitch requires a name, VLAN from 4000 through 4091, valid state, and positive timeouts.
+    quiet: true
+  loop: "{{ hetzner_robot_cac_vswitches }}"
+  loop_control:
+    label: "{{ item.name | default('undefined') }}"
+
+- name: Validate reverse DNS declarations
+  ansible.builtin.assert:
+    that:
+      - item.ip is defined
+      - item.ip | trim | length > 0
+      - (item.state | default(hetzner_robot_cac_state)) in ['present', 'absent']
+      - >-
+        (item.state | default(hetzner_robot_cac_state)) == 'absent'
+        or (item.value is defined and item.value | trim | length > 0)
+    fail_msg: Reverse DNS requires an IP address and a value when state is present.
+    quiet: true
+  loop: "{{ hetzner_robot_cac_reverse_dns }}"
+  loop_control:
+    label: "{{ item.ip | default('undefined') }}"
+
+- name: Validate Robot SSH key declarations without exposing key data
+  ansible.builtin.assert:
+    that:
+      - (item.state | default(hetzner_robot_cac_state)) in ['present', 'absent']
+      - >-
+        (item.state | default(hetzner_robot_cac_state)) == 'absent'
+        or (
+          item.name is defined
+          and item.name | trim | length > 0
+          and item.public_key is defined
+          and item.public_key | trim | length > 0
+        )
+      - >-
+        (item.state | default(hetzner_robot_cac_state)) == 'present'
+        or (item.public_key | default('') | trim | length > 0)
+        or (item.fingerprint | default('') | trim | length > 0)
+    fail_msg: SSH keys require name and public_key for present, or public_key/fingerprint for absent.
+    quiet: true
+  loop: "{{ hetzner_robot_cac_ssh_keys }}"
+  loop_control:
+    label: "{{ item.name | default(item.fingerprint | default('key')) }}"
+  no_log: true
+
+- name: Validate failover IP declarations
+  ansible.builtin.assert:
+    that:
+      - item.failover_ip is defined
+      - item.failover_ip | trim | length > 0
+      - (item.state | default(hetzner_robot_cac_state)) in ['present', 'absent']
+      - >-
+        (item.state | default(hetzner_robot_cac_state)) == 'absent'
+        or (item.value is defined and item.value | trim | length > 0)
+      - (item.timeout | default(180) | int) > 0
+    fail_msg: Failover IPs require an address, a route value when present, and a positive timeout.
+    quiet: true
+  loop: "{{ hetzner_robot_cac_failover_ips }}"
+  loop_control:
+    label: "{{ item.failover_ip | default('undefined') }}"

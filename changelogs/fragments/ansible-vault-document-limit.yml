@@ -1,0 +1,5 @@
+---
+minor_changes:
+  - >-
+    ansible_vault_document - raise the fixed plaintext and ciphertext safety limit from 64 MiB to 128 MiB for
+    larger encrypted documents.

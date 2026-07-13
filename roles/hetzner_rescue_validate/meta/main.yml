@@ -1,0 +1,17 @@
+---
+galaxy_info:
+  role_name: hetzner_rescue_validate
+  namespace: lit
+  author: Lightning IT
+  description: Validate a Hetzner dedicated server while it runs in Rescue.
+  company: Lightning IT
+  license: MIT
+  min_ansible_version: "2.18"
+  galaxy_tags:
+    - baremetal
+    - hetzner
+    - rescue
+    - smart
+    - validation
+
+dependencies: []
