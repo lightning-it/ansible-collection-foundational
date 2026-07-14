@@ -1,0 +1,6 @@
+---
+bugfixes:
+  - collection - Pin ``community.hashi_vault`` 7.1.0 and make ``galaxy.yml`` the single source of truth for
+    dependency versions so consumer dependency resolution cannot select the incompatible 6.x release line.
+  - secret_resolver - Treat a missing persistent Vault target as categorized read state without leaking internal
+    Ansible rescue context into successful callers under ``community.hashi_vault`` 7.1.0.
