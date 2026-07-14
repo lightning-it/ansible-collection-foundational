@@ -103,9 +103,9 @@ Migration never deletes or rotates the source.
 
 | Component | Requirement | Used for |
 |---|---|---|
-| ansible-core | 2.16 or newer | Role argument validation and execution |
+| ansible-core | 2.18 or newer | Role argument validation and execution |
 | community.general | 11.4.9 or newer, before 12.0.0 | Random generation and 1Password lookup |
-| community.hashi_vault | 6.2.1 or newer, before 7.0.0 | Vault KV v2 reads and writes |
+| community.hashi_vault | Exactly 7.1.0 | Vault KV v2 reads and writes |
 | hvac | Installed for the controller Python interpreter | Vault reads and writes |
 | 1Password CLI | Authenticated op 2.x executable on the controller PATH | 1Password requests only |
 
@@ -1003,8 +1003,8 @@ KV v2 retrieval, generation, write-back, migration, and repeat-run behavior:
 molecule test -s secret-resolver-vault-integration_heavy
 ~~~
 
-It pins community.hashi_vault 6.2.1 to exercise the declared compatibility
-floor. It requires the scenario's container runtime prerequisites and is
+It pins community.hashi_vault 7.1.0 to exercise the declared production
+dependency. It requires the scenario's container runtime prerequisites and is
 separate from mocked or unit-like provider checks. Public CI does not require a
 real HCP Vault tenant or production 1Password account.
 
@@ -1023,7 +1023,7 @@ unmistakably synthetic test values.
 
 | Environment | Status |
 |---|---|
-| ansible-core 2.16 and newer | Supported by role metadata |
+| ansible-core 2.18 and newer | Supported by collection metadata |
 | AAP execution environments | Supported when controller dependencies and credentials are present |
 | Local Ansible controller | Supported when provider dependencies are present |
 | CI/CD runner | Supported with protected runtime or environment injection |
