@@ -26,6 +26,10 @@ objects:
       description: Perform gated boot or reset operations on one Hetzner Robot server.
       name: hetzner_robot_ops
       version_added: null
+    luks_header_escrow:
+      description: Persist one installed LUKS2 header as immutable Ansible Vault ciphertext.
+      name: luks_header_escrow
+      version_added: null
     oob_redfish_control:
       description: Perform Redfish actions (power/boot/virtual media).
       name: oob_redfish_control
@@ -64,4 +68,4 @@ plugins:
   strategy: {}
   test: {}
   vars: {}
-version: 1.28.0
+version: 1.29.0

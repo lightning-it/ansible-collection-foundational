@@ -4,6 +4,14 @@ Lightning IT Collection Release Notes Release Notes
 
 .. contents:: Topics
 
+v1.29.0
+=======
+
+Minor Changes
+-------------
+
+- luks_header_escrow - Add a guarded, distribution-neutral role that captures one installed LUKS2 header and persists exact immutable controller-side Ansible Vault ciphertext with explicit loaded-identity selection, canonical block-device and protected remote-temporary-path validation, cryptographic payload-to-metadata binding, and no controller plaintext.
+
 v1.28.0
 =======
 
