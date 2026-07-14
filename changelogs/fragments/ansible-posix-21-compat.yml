@@ -1,0 +1,4 @@
+---
+bugfixes:
+  - collection - Lower the declared ``ansible.posix`` minimum to 2.1.0 so the collection can be resolved alongside
+    ``fedora.linux_system_roles`` 1.127.2, which requires ``ansible.posix`` below 2.2.0.
