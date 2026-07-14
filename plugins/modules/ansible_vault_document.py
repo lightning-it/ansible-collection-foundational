@@ -30,6 +30,14 @@ options:
       - The task must set C(no_log=true); the action fails closed before inspecting this value otherwise.
     type: dict
     required: true
+  vault_id:
+    version_added: "1.29.0"
+    description:
+      - Loaded Ansible Vault identity label to use when creating an absent document.
+      - The label may contain only ASCII letters, digits, dots, underscores, and hyphens.
+      - The action never accepts or loads Vault password material.
+      - Existing documents are validated with the identities already loaded by Ansible.
+    type: str
 attributes:
   action:
     description: The action executes entirely on the controller.
@@ -46,6 +54,7 @@ attributes:
 notes:
   - This documentation stub has no remote implementation; all behavior is provided by the matching action plugin.
   - The action never accepts a Vault password or password-file argument.
+  - Set C(vault_id) when more than one identity is loaded so creation cannot silently use the wrong identity.
   - The action requires task-level C(no_log=true) to suppress secret task arguments at every callback verbosity.
   - Plaintext is serialized, encrypted, decrypted, and compared only in controller process memory.
   - Plaintext and ciphertext each have a fixed 128 MiB safety limit; the limit is not caller-configurable.
@@ -59,6 +68,7 @@ EXAMPLES = r"""
 - name: Persist an immutable encrypted bootstrap document
   lit.foundational.ansible_vault_document:
     path: /secure/inventory/bootstrap/service01.vault.yml
+    vault_id: production
     document:
       schema_version: 1
       subject: service01.example.test

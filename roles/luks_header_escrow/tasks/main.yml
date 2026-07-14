@@ -1,0 +1,21 @@
+---
+- name: Prechecks
+  ansible.builtin.import_tasks: assert.yml
+  tags: always
+
+- name: Validate controller escrow state
+  ansible.builtin.import_tasks: controller_preflight.yml
+  when: luks_header_escrow_enabled | bool
+  tags: always
+
+- name: Validate managed-host temporary state
+  ansible.builtin.import_tasks: remote_preflight.yml
+  when: luks_header_escrow_enabled | bool
+
+- name: Discover the installed LUKS2 source
+  ansible.builtin.import_tasks: discover.yml
+  when: luks_header_escrow_enabled | bool
+
+- name: Persist the installed LUKS2 header escrow
+  ansible.builtin.import_tasks: escrow.yml
+  when: luks_header_escrow_enabled | bool

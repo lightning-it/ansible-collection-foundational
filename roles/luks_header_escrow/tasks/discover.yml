@@ -1,0 +1,110 @@
+---
+- name: Read active crypttab source declarations
+  ansible.builtin.command:
+    argv:
+      - "{{ luks_header_escrow_awk_path }}"
+      - '!/^[[:space:]]*#/ && NF >= 2 {print $2}'
+      - "{{ luks_header_escrow_crypttab_path }}"
+  register: _luks_header_escrow_crypttab_sources
+  changed_when: false
+  no_log: true
+
+- name: Require exactly one encrypted source declaration
+  ansible.builtin.assert:
+    that:
+      - _luks_header_escrow_crypttab_sources.stdout_lines | length == 1
+      - _luks_header_escrow_crypttab_sources.stdout_lines[0] | trim | length > 0
+    fail_msg: "Expected exactly one active crypttab source declaration."
+    quiet: true
+  no_log: true
+
+- name: Resolve the encrypted source device
+  ansible.builtin.command:
+    argv:
+      - "{{ luks_header_escrow_findfs_path }}"
+      - "{{ _luks_header_escrow_crypttab_sources.stdout_lines[0] }}"
+  register: _luks_header_escrow_findfs
+  changed_when: false
+  no_log: true
+
+- name: Canonicalize the encrypted source device on the managed host
+  ansible.builtin.command:
+    argv:
+      - "{{ luks_header_escrow_readlink_path }}"
+      - --canonicalize-existing
+      - "{{ _luks_header_escrow_findfs.stdout | trim }}"
+  register: _luks_header_escrow_device_canonical
+  changed_when: false
+  no_log: true
+
+- name: Require one canonical device below dev
+  ansible.builtin.assert:
+    that:
+      - _luks_header_escrow_findfs.stdout_lines | length == 1
+      - _luks_header_escrow_device_canonical.stdout_lines | length == 1
+      - _luks_header_escrow_device_canonical.stdout | trim is match('^/dev/')
+    fail_msg: "The sole crypttab source must resolve canonically below /dev."
+    quiet: true
+  no_log: true
+
+- name: Inspect the canonical encrypted source device
+  ansible.builtin.stat:
+    path: "{{ _luks_header_escrow_device_canonical.stdout | trim }}"
+    follow: false
+    get_checksum: false
+    get_mime: false
+  register: _luks_header_escrow_device_stat
+  changed_when: false
+  no_log: true
+
+- name: Require a block device unless regular-file mode is explicitly enabled
+  ansible.builtin.assert:
+    that:
+      - _luks_header_escrow_device_stat.stat.exists | default(false)
+      - not (_luks_header_escrow_device_stat.stat.islnk | default(false))
+      - >-
+        _luks_header_escrow_device_stat.stat.isblk | default(false)
+        or (
+          luks_header_escrow_allow_regular_file_device | bool
+          and _luks_header_escrow_device_stat.stat.isreg | default(false)
+        )
+    fail_msg: >-
+      The canonical crypttab source must be a block device. Regular-file LUKS
+      sources require the explicit test/lab opt-in.
+    quiet: true
+  no_log: true
+
+- name: Record the canonical encrypted source device
+  ansible.builtin.set_fact:
+    _luks_header_escrow_device: >-
+      {{ _luks_header_escrow_device_canonical.stdout | trim }}
+  changed_when: false
+  no_log: true
+
+- name: Require installed LUKS2 JSON metadata
+  ansible.builtin.command:
+    argv:
+      - "{{ luks_header_escrow_cryptsetup_path }}"
+      - luksDump
+      - --dump-json-metadata
+      - "{{ _luks_header_escrow_device }}"
+  changed_when: false
+  no_log: true
+
+- name: Read the installed LUKS UUID
+  ansible.builtin.command:
+    argv:
+      - "{{ luks_header_escrow_cryptsetup_path }}"
+      - luksUUID
+      - "{{ _luks_header_escrow_device }}"
+  register: _luks_header_escrow_uuid
+  changed_when: false
+  no_log: true
+
+- name: Require a non-empty installed LUKS UUID
+  ansible.builtin.assert:
+    that:
+      - _luks_header_escrow_uuid.stdout | trim | length > 0
+    fail_msg: "The installed LUKS2 source did not return a UUID."
+    quiet: true
+  no_log: true

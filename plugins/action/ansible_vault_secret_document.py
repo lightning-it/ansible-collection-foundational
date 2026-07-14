@@ -411,7 +411,14 @@ class _VaultSecretDocumentStore:
             digest = self._load_race_winner(path, **validation_args)
         return self._result(path, created=created, exists=True, digest=digest)
 
-    def ensure_exact(self, path, document, check_mode=False):
+    def ensure_exact(
+        self,
+        path,
+        document,
+        check_mode=False,
+        vault_secret=None,
+        vault_id=None,
+    ):
         """Create an exact immutable mapping or validate the existing mapping."""
 
         expected_document = _normalize_document_mapping(document)
@@ -432,11 +439,19 @@ class _VaultSecretDocumentStore:
         encrypted = None
         try:
             plaintext = self._serialize_document(expected_document)
-            encrypted = self._vault.encrypt(plaintext)
+            encrypted = self._vault.encrypt(
+                plaintext,
+                secret=vault_secret,
+                vault_id=vault_id,
+            )
             if not isinstance(encrypted, bytes):
                 encrypted = bytes(encrypted)
             if len(encrypted) > self._max_ciphertext_bytes:
                 _fail("The encrypted document is unexpectedly large.")
+            # Fail closed before the immutable create-if-absent publication if
+            # the Vault backend produced ciphertext that cannot be read back
+            # exactly with the controller's loaded identities.
+            self._validate_exact_ciphertext(encrypted, expected_document)
             created = self._exclusive_create(path, encrypted)
         except AnsibleActionFail:
             raise

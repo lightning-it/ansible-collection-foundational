@@ -8,6 +8,7 @@ from __future__ import absolute_import, division, print_function
 __metaclass__ = type
 
 import os
+import re
 
 from ansible.parsing.vault import VaultLib
 from ansible.plugins.action import ActionBase
@@ -41,8 +42,17 @@ options:
       - The task must set C(no_log=true); the action fails closed before inspecting this value otherwise.
     type: dict
     required: true
+  vault_id:
+    version_added: "1.29.0"
+    description:
+      - Loaded Ansible Vault identity label to use when creating an absent document.
+      - The label may contain only ASCII letters, digits, dots, underscores, and hyphens.
+      - The action never accepts or loads Vault password material.
+      - Existing documents are validated with the identities already loaded by Ansible.
+    type: str
 notes:
   - This action never contacts a managed host and never accepts a Vault password or password-file argument.
+  - Set C(vault_id) when more than one identity is loaded so creation cannot silently use the wrong identity.
   - The action requires task-level C(no_log=true) to suppress secret task arguments at every callback verbosity.
   - Plaintext is serialized, encrypted, decrypted, and compared only in controller process memory.
   - Plaintext and ciphertext each have a fixed 128 MiB safety limit; the limit is not caller-configurable.
@@ -57,6 +67,7 @@ EXAMPLES = r"""
 - name: Persist an immutable encrypted bootstrap document
   lit.foundational.ansible_vault_document:
     path: /secure/inventory/bootstrap/service01.vault.yml
+    vault_id: production
     document:
       schema_version: 1
       subject: service01.example.test
@@ -84,8 +95,9 @@ ciphertext_sha256:
 """
 
 
-_EXPECTED_ARGS = frozenset(("path", "document"))
+_EXPECTED_ARGS = frozenset(("path", "document", "vault_id"))
 _MAX_DOCUMENT_BYTES = 128 * 1024 * 1024
+_VAULT_ID_PATTERN = re.compile(r"[A-Za-z0-9_.-]+\Z", re.ASCII)
 
 
 def _normalize_arguments(args):
@@ -110,9 +122,19 @@ def _normalize_arguments(args):
         _fail("document is required.")
     document = _normalize_document_mapping(args["document"])
 
+    vault_id = args.get("vault_id")
+    if vault_id is not None:
+        if not isinstance(vault_id, str) or not _VAULT_ID_PATTERN.fullmatch(vault_id):
+            _fail(
+                "vault_id may contain only ASCII letters, digits, dots, "
+                "underscores, and hyphens."
+            )
+        vault_id = str.__str__(vault_id)
+
     return {
         "path": normalized_path,
         "document": document,
+        "vault_id": vault_id,
     }
 
 
@@ -128,6 +150,22 @@ def _new_document_store(vault):
         max_ciphertext_bytes=_MAX_DOCUMENT_BYTES,
         max_plaintext_bytes=_MAX_DOCUMENT_BYTES,
     )
+
+
+def _select_vault_secret(vault, vault_id):
+    """Resolve one explicitly labelled identity without accepting secret input."""
+
+    if vault_id is None:
+        return None, None
+
+    matches = [
+        secret
+        for loaded_vault_id, secret in vault.secrets
+        if loaded_vault_id == vault_id
+    ]
+    if len(matches) != 1:
+        _fail("vault_id must identify exactly one loaded Ansible Vault identity.")
+    return matches[0], vault_id
 
 
 class ActionModule(ActionBase):
@@ -149,8 +187,12 @@ class ActionModule(ActionBase):
         if not isinstance(vault, VaultLib) or not getattr(vault, "secrets", None):
             _fail("An Ansible Vault identity must already be loaded for this action.")
 
+        vault_secret, vault_id = _select_vault_secret(vault, config["vault_id"])
+
         return _new_document_store(vault).ensure_exact(
             path=config["path"],
             document=config["document"],
             check_mode=bool(self._task.check_mode),
+            vault_secret=vault_secret,
+            vault_id=vault_id,
         )

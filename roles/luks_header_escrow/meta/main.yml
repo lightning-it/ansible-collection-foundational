@@ -1,0 +1,22 @@
+---
+galaxy_info:
+  role_name: luks_header_escrow
+  namespace: lit
+  author: Lightning IT
+  company: Lightning IT
+  description: Persist one installed LUKS2 header as immutable controller-side Ansible Vault ciphertext.
+  license: MIT
+  min_ansible_version: "2.18"
+  platforms:
+    - name: GenericLinux
+      versions:
+        - all
+  galaxy_tags:
+    - backup
+    - encryption
+    - linux
+    - luks
+    - security
+    - vault
+
+dependencies: []
