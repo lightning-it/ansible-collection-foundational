@@ -1,4 +1,0 @@
----
-bugfixes:
-  - collection - Ignore root-level ``ansible_collections/`` directories created by local dependency installs so
-    generated collection content does not pollute the Git working tree.
