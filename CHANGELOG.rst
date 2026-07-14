@@ -4,6 +4,16 @@ Lightning IT Collection Release Notes Release Notes
 
 .. contents:: Topics
 
+v1.30.0
+=======
+
+Bugfixes
+--------
+
+- collection - Ignore root-level ``ansible_collections/`` directories created by local dependency installs so generated collection content does not pollute the Git working tree.
+- collection - Pin ``community.hashi_vault`` 7.1.0 and make ``galaxy.yml`` the single source of truth for dependency versions so consumer dependency resolution cannot select the incompatible 6.x release line.
+- secret_resolver - Treat a missing persistent Vault target as categorized read state without leaking internal Ansible rescue context into successful callers under ``community.hashi_vault`` 7.1.0.
+
 v1.29.0
 =======
 
