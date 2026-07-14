@@ -1,0 +1,661 @@
+---
+- name: Verify LUKS-header escrow
+  hosts: luks-header-escrow-target
+  gather_facts: false
+  become: false
+  vars:
+    luks_header_escrow_molecule_uuid: 11111111-2222-4333-8444-555555555555
+    luks_header_escrow_molecule_root: >-
+      {{ lookup('ansible.builtin.env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}
+    luks_header_escrow_molecule_device_root: >-
+      /dev/shm/lit-foundational-luks-header-escrow-basic
+    luks_header_escrow_molecule_device: >-
+      {{ luks_header_escrow_molecule_device_root }}/device.img
+    luks_header_escrow_molecule_fixture_root: >-
+      {{ luks_header_escrow_molecule_root }}/fixtures
+    luks_header_escrow_molecule_controller_root: >-
+      {{ luks_header_escrow_molecule_root }}/controller-escrow
+    luks_header_escrow_molecule_runtime_root: >-
+      {{ luks_header_escrow_molecule_device_root }}/runtime
+    luks_header_escrow_molecule_path: >-
+      {{ luks_header_escrow_molecule_controller_root }}/header.vault.yml
+
+  tasks:
+    - name: Inspect the encrypted controller document
+      ansible.builtin.stat:
+        path: "{{ luks_header_escrow_molecule_path }}"
+        follow: false
+        get_checksum: true
+        checksum_algorithm: sha256
+      register: luks_header_escrow_molecule_ciphertext_stat
+      changed_when: false
+
+    - name: Read the encrypted controller document signature
+      ansible.builtin.slurp:
+        src: "{{ luks_header_escrow_molecule_path }}"
+      register: luks_header_escrow_molecule_ciphertext
+      changed_when: false
+
+    - name: Require protected ciphertext without plaintext markers
+      ansible.builtin.assert:
+        that:
+          - luks_header_escrow_molecule_ciphertext_stat.stat.isreg | default(false)
+          - luks_header_escrow_molecule_ciphertext_stat.stat.mode == '0600'
+          - >-
+            (luks_header_escrow_molecule_ciphertext.content | b64decode)
+            is match('^\\$ANSIBLE_VAULT;')
+          - >-
+            'luks_header_b64'
+            not in (luks_header_escrow_molecule_ciphertext.content | b64decode)
+          - >-
+            inventory_hostname
+            not in (luks_header_escrow_molecule_ciphertext.content | b64decode)
+        quiet: true
+
+    - name: Decrypt the controller document only into protected Ansible memory
+      ansible.builtin.include_vars:
+        file: "{{ luks_header_escrow_molecule_path }}"
+        name: luks_header_escrow_molecule_document
+      no_log: true
+
+    - name: Create an independent expected header backup
+      ansible.builtin.command:
+        argv:
+          - /usr/sbin/cryptsetup
+          - luksHeaderBackup
+          - "{{ luks_header_escrow_molecule_device }}"
+          - --header-backup-file
+          - "{{ luks_header_escrow_molecule_device_root }}/expected-header.luks"
+      changed_when: true
+      no_log: true
+
+    - name: Inspect the independent expected header backup
+      ansible.builtin.stat:
+        path: "{{ luks_header_escrow_molecule_device_root }}/expected-header.luks"
+        get_checksum: true
+        checksum_algorithm: sha256
+      register: luks_header_escrow_molecule_expected_header_stat
+      changed_when: false
+      no_log: true
+
+    - name: Read the independent expected header backup
+      ansible.builtin.slurp:
+        src: "{{ luks_header_escrow_molecule_device_root }}/expected-header.luks"
+      register: luks_header_escrow_molecule_expected_header
+      changed_when: false
+      no_log: true
+
+    - name: Derive secret-free exact document checks
+      ansible.builtin.set_fact:
+        luks_header_escrow_molecule_document_keys_match: >-
+          {{
+            luks_header_escrow_molecule_document.keys() | list | sort
+            == [
+              'luks_format',
+              'luks_header_b64',
+              'luks_header_raw_size_bytes',
+              'luks_header_sha256_raw',
+              'luks_uuid',
+              'schema_version',
+              'subject'
+            ]
+          }}
+        luks_header_escrow_molecule_schema_type_matches: >-
+          {{
+            luks_header_escrow_molecule_document.schema_version
+            | type_debug == 'int'
+          }}
+        luks_header_escrow_molecule_schema_value_matches: >-
+          {{ luks_header_escrow_molecule_document.schema_version == 1 }}
+        luks_header_escrow_molecule_subject_matches: >-
+          {{
+            luks_header_escrow_molecule_document.subject
+            == inventory_hostname
+          }}
+        luks_header_escrow_molecule_format_matches: >-
+          {{ luks_header_escrow_molecule_document.luks_format == 'luks2' }}
+        luks_header_escrow_molecule_uuid_matches: >-
+          {{
+            luks_header_escrow_molecule_document.luks_uuid
+            == luks_header_escrow_molecule_uuid
+          }}
+        luks_header_escrow_molecule_size_type_matches: >-
+          {{
+            luks_header_escrow_molecule_document.luks_header_raw_size_bytes
+            | type_debug == 'int'
+          }}
+        luks_header_escrow_molecule_header_checksum_matches: >-
+          {{
+            luks_header_escrow_molecule_document.luks_header_sha256_raw
+            == luks_header_escrow_molecule_expected_header_stat.stat.checksum
+          }}
+        luks_header_escrow_molecule_header_size_matches: >-
+          {{
+            luks_header_escrow_molecule_document.luks_header_raw_size_bytes
+            == luks_header_escrow_molecule_expected_header_stat.stat.size
+          }}
+        luks_header_escrow_molecule_header_payload_matches: >-
+          {{
+            luks_header_escrow_molecule_document.luks_header_b64
+            == luks_header_escrow_molecule_expected_header.content
+          }}
+      changed_when: false
+      no_log: true
+
+    - name: Require the exact LUKS2 escrow document
+      ansible.builtin.assert:
+        that:
+          - luks_header_escrow_molecule_document_keys_match | bool
+          - luks_header_escrow_molecule_schema_type_matches | bool
+          - luks_header_escrow_molecule_schema_value_matches | bool
+          - luks_header_escrow_molecule_subject_matches | bool
+          - luks_header_escrow_molecule_format_matches | bool
+          - luks_header_escrow_molecule_uuid_matches | bool
+          - luks_header_escrow_molecule_size_type_matches | bool
+          - luks_header_escrow_molecule_header_checksum_matches | bool
+          - luks_header_escrow_molecule_header_size_matches | bool
+          - luks_header_escrow_molecule_header_payload_matches | bool
+        quiet: true
+
+    - name: Remove the independent expected header backup
+      ansible.builtin.file:
+        path: "{{ luks_header_escrow_molecule_device_root }}/expected-header.luks"
+        state: absent
+      no_log: true
+
+    - name: Find leaked remote header directories
+      ansible.builtin.find:
+        paths: "{{ luks_header_escrow_molecule_runtime_root }}"
+        patterns: lit-luks-header-escrow-*
+        file_type: directory
+      register: luks_header_escrow_molecule_leaked_directories
+      changed_when: false
+
+    - name: Require remote raw-header cleanup
+      ansible.builtin.assert:
+        that:
+          - luks_header_escrow_molecule_leaked_directories.matched == 0
+        quiet: true
+
+    - name: Create an intentionally attacker-writable remote root
+      ansible.builtin.file:
+        path: "{{ luks_header_escrow_molecule_device_root }}/insecure-remote-root"
+        state: directory
+        mode: "0777"
+
+    - name: Initialize insecure remote root refusal result
+      ansible.builtin.set_fact:
+        luks_header_escrow_molecule_insecure_remote_root_refused: false
+      changed_when: false
+
+    - name: Exercise attacker-writable remote root refusal
+      block:
+        - name: Attempt escrow with an attacker-writable remote root
+          ansible.builtin.include_role:
+            name: lit.foundational.luks_header_escrow
+          vars:
+            luks_header_escrow_enabled: true
+            luks_header_escrow_path: >-
+              {{ luks_header_escrow_molecule_controller_root }}/insecure-remote.vault.yml
+            luks_header_escrow_controller_root_path: >-
+              {{ luks_header_escrow_molecule_controller_root }}
+            luks_header_escrow_crypttab_path: >-
+              {{ luks_header_escrow_molecule_fixture_root }}/crypttab
+            luks_header_escrow_findfs_path: >-
+              {{ luks_header_escrow_molecule_fixture_root }}/findfs
+            luks_header_escrow_remote_temporary_root: >-
+              {{ luks_header_escrow_molecule_device_root }}/insecure-remote-root
+            luks_header_escrow_allow_regular_file_device: true
+
+      rescue:
+        - name: Require protected-root validation to reject remote permissions
+          ansible.builtin.assert:
+            that:
+              - >-
+                'Require a protected managed-host temporary root'
+                in ansible_failed_task.name
+            quiet: true
+
+        - name: Record insecure remote root refusal
+          ansible.builtin.set_fact:
+            luks_header_escrow_molecule_insecure_remote_root_refused: true
+          changed_when: false
+
+    - name: Inspect refused remote-root ciphertext path
+      ansible.builtin.stat:
+        path: >-
+          {{ luks_header_escrow_molecule_controller_root }}/insecure-remote.vault.yml
+      register: luks_header_escrow_molecule_insecure_remote_ciphertext
+      changed_when: false
+
+    - name: Require safe attacker-writable remote root refusal
+      ansible.builtin.assert:
+        that:
+          - luks_header_escrow_molecule_insecure_remote_root_refused
+          - >-
+            not (
+              luks_header_escrow_molecule_insecure_remote_ciphertext.stat.exists
+              | default(false)
+            )
+        quiet: true
+
+    - name: Remove the intentionally attacker-writable remote root
+      ansible.builtin.file:
+        path: "{{ luks_header_escrow_molecule_device_root }}/insecure-remote-root"
+        state: absent
+
+    - name: Create an attacker-writable remote-root parent
+      ansible.builtin.file:
+        path: "{{ luks_header_escrow_molecule_device_root }}/insecure-remote-parent"
+        state: directory
+        mode: "0777"
+
+    - name: Create a private leaf below the attacker-writable parent
+      ansible.builtin.file:
+        path: >-
+          {{ luks_header_escrow_molecule_device_root }}/insecure-remote-parent/private
+        state: directory
+        mode: "0700"
+
+    - name: Initialize insecure remote ancestry refusal result
+      ansible.builtin.set_fact:
+        luks_header_escrow_molecule_insecure_remote_ancestry_refused: false
+      changed_when: false
+
+    - name: Exercise attacker-writable remote ancestry refusal
+      block:
+        - name: Attempt escrow below attacker-writable remote ancestry
+          ansible.builtin.include_role:
+            name: lit.foundational.luks_header_escrow
+          vars:
+            luks_header_escrow_enabled: true
+            luks_header_escrow_path: >-
+              {{ luks_header_escrow_molecule_controller_root }}/insecure-ancestry.vault.yml
+            luks_header_escrow_controller_root_path: >-
+              {{ luks_header_escrow_molecule_controller_root }}
+            luks_header_escrow_crypttab_path: >-
+              {{ luks_header_escrow_molecule_fixture_root }}/crypttab
+            luks_header_escrow_findfs_path: >-
+              {{ luks_header_escrow_molecule_fixture_root }}/findfs
+            luks_header_escrow_remote_temporary_root: >-
+              {{ luks_header_escrow_molecule_device_root }}/insecure-remote-parent/private
+            luks_header_escrow_allow_regular_file_device: true
+
+      rescue:
+        - name: Require ancestry validation to reject remote permissions
+          ansible.builtin.assert:
+            that:
+              - >-
+                'Require protected managed-host temporary-root ancestry'
+                in ansible_failed_task.name
+            quiet: true
+
+        - name: Record insecure remote ancestry refusal
+          ansible.builtin.set_fact:
+            luks_header_escrow_molecule_insecure_remote_ancestry_refused: true
+          changed_when: false
+
+    - name: Inspect refused remote-ancestry ciphertext path
+      ansible.builtin.stat:
+        path: >-
+          {{ luks_header_escrow_molecule_controller_root }}/insecure-ancestry.vault.yml
+      register: luks_header_escrow_molecule_insecure_ancestry_ciphertext
+      changed_when: false
+
+    - name: Require safe attacker-writable remote ancestry refusal
+      ansible.builtin.assert:
+        that:
+          - luks_header_escrow_molecule_insecure_remote_ancestry_refused
+          - >-
+            not (
+              luks_header_escrow_molecule_insecure_ancestry_ciphertext.stat.exists
+              | default(false)
+            )
+        quiet: true
+
+    - name: Remove the attacker-writable remote-root parent
+      ansible.builtin.file:
+        path: "{{ luks_header_escrow_molecule_device_root }}/insecure-remote-parent"
+        state: absent
+
+    - name: Create an intentionally insecure controller escrow root
+      ansible.builtin.file:
+        path: "{{ luks_header_escrow_molecule_root }}/insecure-controller-root"
+        state: directory
+        mode: "0755"
+
+    - name: Initialize insecure controller root refusal result
+      ansible.builtin.set_fact:
+        luks_header_escrow_molecule_insecure_root_refused: false
+      changed_when: false
+
+    - name: Exercise insecure controller root refusal
+      block:
+        - name: Attempt preflight with an insecure controller root
+          ansible.builtin.include_role:
+            name: lit.foundational.luks_header_escrow
+            tasks_from: preflight
+          vars:
+            luks_header_escrow_enabled: true
+            luks_header_escrow_controller_root_path: >-
+              {{ luks_header_escrow_molecule_root }}/insecure-controller-root
+            luks_header_escrow_path: >-
+              {{ luks_header_escrow_molecule_root }}/insecure-controller-root/header.vault.yml
+
+      rescue:
+        - name: Require private-root validation to reject insecure permissions
+          ansible.builtin.assert:
+            that:
+              - >-
+                'Require a private controller-owned escrow root'
+                in ansible_failed_task.name
+            quiet: true
+
+        - name: Record insecure controller root refusal
+          ansible.builtin.set_fact:
+            luks_header_escrow_molecule_insecure_root_refused: true
+          changed_when: false
+
+    - name: Remove the intentionally insecure controller root
+      ansible.builtin.file:
+        path: "{{ luks_header_escrow_molecule_root }}/insecure-controller-root"
+        state: absent
+
+    - name: Initialize controller path escape refusal result
+      ansible.builtin.set_fact:
+        luks_header_escrow_molecule_path_escape_refused: false
+      changed_when: false
+
+    - name: Exercise controller path escape refusal
+      block:
+        - name: Attempt preflight with an escaping controller path
+          ansible.builtin.include_role:
+            name: lit.foundational.luks_header_escrow
+            tasks_from: preflight
+          vars:
+            luks_header_escrow_enabled: true
+            luks_header_escrow_controller_root_path: >-
+              {{ luks_header_escrow_molecule_controller_root }}
+            luks_header_escrow_path: >-
+              {{ luks_header_escrow_molecule_controller_root }}/../escaped.vault.yml
+
+      rescue:
+        - name: Require path containment validation to reject escape
+          ansible.builtin.assert:
+            that:
+              - >-
+                'Require the canonical escrow path below the controller root'
+                in ansible_failed_task.name
+            quiet: true
+
+        - name: Record controller path escape refusal
+          ansible.builtin.set_fact:
+            luks_header_escrow_molecule_path_escape_refused: true
+          changed_when: false
+
+    - name: Require controller root and path safety refusals
+      ansible.builtin.assert:
+        that:
+          - luks_header_escrow_molecule_insecure_root_refused
+          - luks_header_escrow_molecule_path_escape_refused
+        quiet: true
+
+    - name: Write an ambiguous multi-source crypttab fixture
+      ansible.builtin.copy:
+        dest: "{{ luks_header_escrow_molecule_fixture_root }}/crypttab-multiple"
+        mode: "0600"
+        content: |
+          cryptroot UUID={{ luks_header_escrow_molecule_uuid }} none luks
+          cryptdata UUID=aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee none luks
+
+    - name: Initialize multiple crypttab source refusal result
+      ansible.builtin.set_fact:
+        luks_header_escrow_molecule_multiple_sources_refused: false
+      changed_when: false
+
+    - name: Exercise multiple crypttab source refusal
+      block:
+        - name: Attempt escrow with multiple crypttab sources
+          ansible.builtin.include_role:
+            name: lit.foundational.luks_header_escrow
+          vars:
+            luks_header_escrow_enabled: true
+            luks_header_escrow_path: >-
+              {{ luks_header_escrow_molecule_controller_root }}/multiple.vault.yml
+            luks_header_escrow_controller_root_path: >-
+              {{ luks_header_escrow_molecule_controller_root }}
+            luks_header_escrow_crypttab_path: >-
+              {{ luks_header_escrow_molecule_fixture_root }}/crypttab-multiple
+            luks_header_escrow_findfs_path: >-
+              {{ luks_header_escrow_molecule_fixture_root }}/findfs
+            luks_header_escrow_remote_temporary_root: >-
+              {{ luks_header_escrow_molecule_runtime_root }}
+            luks_header_escrow_allow_regular_file_device: true
+
+      rescue:
+        - name: Require exact-source validation to reject ambiguity
+          ansible.builtin.assert:
+            that:
+              - >-
+                'Require exactly one encrypted source declaration'
+                in ansible_failed_task.name
+            quiet: true
+
+        - name: Record multiple crypttab source refusal
+          ansible.builtin.set_fact:
+            luks_header_escrow_molecule_multiple_sources_refused: true
+          changed_when: false
+
+    - name: Require multiple crypttab source refusal
+      ansible.builtin.assert:
+        that:
+          - luks_header_escrow_molecule_multiple_sources_refused
+        quiet: true
+
+    - name: Generate a second ephemeral LUKS fixture key
+      ansible.builtin.shell: |
+        set -o pipefail
+        umask 077
+        head -c 48 /dev/urandom \
+          | base64 > "${_LUKS_HEADER_ESCROW_MOLECULE_KEY_FILE}"
+      args:
+        executable: /bin/bash
+      environment:
+        _LUKS_HEADER_ESCROW_MOLECULE_KEY_FILE: >-
+          {{ luks_header_escrow_molecule_device_root }}/luks-key-two
+      changed_when: true
+      no_log: true
+
+    - name: Reformat the regular-file fixture with a different UUID
+      ansible.builtin.command:
+        argv:
+          - /usr/sbin/cryptsetup
+          - luksFormat
+          - --type
+          - luks2
+          - --batch-mode
+          - --pbkdf
+          - pbkdf2
+          - --pbkdf-force-iterations
+          - "1000"
+          - --uuid
+          - aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee
+          - --key-file
+          - "{{ luks_header_escrow_molecule_device_root }}/luks-key-two"
+          - "{{ luks_header_escrow_molecule_device }}"
+      changed_when: true
+      no_log: true
+
+    - name: Remove the second ephemeral LUKS fixture key
+      ansible.builtin.file:
+        path: "{{ luks_header_escrow_molecule_device_root }}/luks-key-two"
+        state: absent
+      no_log: true
+
+    - name: Initialize immutable-drift refusal result
+      ansible.builtin.set_fact:
+        luks_header_escrow_molecule_drift_refused: false
+      changed_when: false
+
+    - name: Exercise immutable ciphertext drift refusal
+      block:
+        - name: Attempt escrow after the LUKS2 UUID changed
+          ansible.builtin.include_role:
+            name: lit.foundational.luks_header_escrow
+          vars:
+            luks_header_escrow_enabled: true
+            luks_header_escrow_path: "{{ luks_header_escrow_molecule_path }}"
+            luks_header_escrow_controller_root_path: >-
+              {{ luks_header_escrow_molecule_controller_root }}
+            luks_header_escrow_crypttab_path: >-
+              {{ luks_header_escrow_molecule_fixture_root }}/crypttab
+            luks_header_escrow_findfs_path: >-
+              {{ luks_header_escrow_molecule_fixture_root }}/findfs
+            luks_header_escrow_remote_temporary_root: >-
+              {{ luks_header_escrow_molecule_runtime_root }}
+            luks_header_escrow_allow_regular_file_device: true
+
+      rescue:
+        - name: Require the immutable document action to reject drift
+          ansible.builtin.assert:
+            that:
+              - >-
+                'Persist the immutable encrypted controller escrow'
+                in ansible_failed_task.name
+            quiet: true
+
+        - name: Record immutable ciphertext drift refusal
+          ansible.builtin.set_fact:
+            luks_header_escrow_molecule_drift_refused: true
+          changed_when: false
+
+    - name: Reinspect ciphertext after refused drift
+      ansible.builtin.stat:
+        path: "{{ luks_header_escrow_molecule_path }}"
+        get_checksum: true
+        checksum_algorithm: sha256
+      register: luks_header_escrow_molecule_ciphertext_after_drift
+      changed_when: false
+
+    - name: Find leaked directories after refused drift
+      ansible.builtin.find:
+        paths: "{{ luks_header_escrow_molecule_runtime_root }}"
+        patterns: lit-luks-header-escrow-*
+        file_type: directory
+      register: luks_header_escrow_molecule_drift_leaks
+      changed_when: false
+
+    - name: Require immutable refusal, unchanged ciphertext, and cleanup
+      ansible.builtin.assert:
+        that:
+          - luks_header_escrow_molecule_drift_refused
+          - >-
+            luks_header_escrow_molecule_ciphertext_after_drift.stat.checksum
+            == luks_header_escrow_molecule_ciphertext_stat.stat.checksum
+          - luks_header_escrow_molecule_drift_leaks.matched == 0
+        quiet: true
+
+    - name: Initialize unmatched Vault identity refusal result
+      ansible.builtin.set_fact:
+        luks_header_escrow_molecule_vault_id_refused: false
+      changed_when: false
+
+    - name: Exercise unmatched loaded Vault identity refusal
+      block:
+        - name: Attempt escrow with an unloaded Vault identity
+          ansible.builtin.include_role:
+            name: lit.foundational.luks_header_escrow
+          vars:
+            luks_header_escrow_enabled: true
+            luks_header_escrow_path: >-
+              {{ luks_header_escrow_molecule_controller_root }}/unmatched.vault.yml
+            luks_header_escrow_controller_root_path: >-
+              {{ luks_header_escrow_molecule_controller_root }}
+            luks_header_escrow_vault_id: identity-not-loaded
+            luks_header_escrow_crypttab_path: >-
+              {{ luks_header_escrow_molecule_fixture_root }}/crypttab
+            luks_header_escrow_findfs_path: >-
+              {{ luks_header_escrow_molecule_fixture_root }}/findfs
+            luks_header_escrow_remote_temporary_root: >-
+              {{ luks_header_escrow_molecule_runtime_root }}
+            luks_header_escrow_allow_regular_file_device: true
+
+      rescue:
+        - name: Require identity selection to fail at encrypted persistence
+          ansible.builtin.assert:
+            that:
+              - >-
+                'Persist the immutable encrypted controller escrow'
+                in ansible_failed_task.name
+            quiet: true
+
+        - name: Record unmatched Vault identity refusal
+          ansible.builtin.set_fact:
+            luks_header_escrow_molecule_vault_id_refused: true
+          changed_when: false
+
+    - name: Inspect an unmatched-identity ciphertext path
+      ansible.builtin.stat:
+        path: >-
+          {{ luks_header_escrow_molecule_controller_root }}/unmatched.vault.yml
+      register: luks_header_escrow_molecule_unmatched_ciphertext
+      changed_when: false
+
+    - name: Find leaked directories after unmatched identity refusal
+      ansible.builtin.find:
+        paths: "{{ luks_header_escrow_molecule_runtime_root }}"
+        patterns: lit-luks-header-escrow-*
+        file_type: directory
+      register: luks_header_escrow_molecule_identity_leaks
+      changed_when: false
+
+    - name: Require safe unmatched identity refusal and cleanup
+      ansible.builtin.assert:
+        that:
+          - luks_header_escrow_molecule_vault_id_refused
+          - not (luks_header_escrow_molecule_unmatched_ciphertext.stat.exists | default(false))
+          - luks_header_escrow_molecule_identity_leaks.matched == 0
+        quiet: true
+
+    - name: Initialize regular-file source refusal result
+      ansible.builtin.set_fact:
+        luks_header_escrow_molecule_regular_file_refused: false
+      changed_when: false
+
+    - name: Exercise regular-file source refusal without explicit opt-in
+      block:
+        - name: Attempt escrow from a regular file without test mode
+          ansible.builtin.include_role:
+            name: lit.foundational.luks_header_escrow
+          vars:
+            luks_header_escrow_enabled: true
+            luks_header_escrow_path: >-
+              {{ luks_header_escrow_molecule_controller_root }}/regular.vault.yml
+            luks_header_escrow_controller_root_path: >-
+              {{ luks_header_escrow_molecule_controller_root }}
+            luks_header_escrow_crypttab_path: >-
+              {{ luks_header_escrow_molecule_fixture_root }}/crypttab
+            luks_header_escrow_findfs_path: >-
+              {{ luks_header_escrow_molecule_fixture_root }}/findfs
+            luks_header_escrow_remote_temporary_root: >-
+              {{ luks_header_escrow_molecule_runtime_root }}
+
+      rescue:
+        - name: Require canonical device-type validation to reject the source
+          ansible.builtin.assert:
+            that:
+              - >-
+                'Require a block device unless regular-file mode is explicitly enabled'
+                in ansible_failed_task.name
+            quiet: true
+
+        - name: Record regular-file source refusal
+          ansible.builtin.set_fact:
+            luks_header_escrow_molecule_regular_file_refused: true
+          changed_when: false
+
+    - name: Require regular-file refusal without ciphertext creation
+      ansible.builtin.assert:
+        that:
+          - luks_header_escrow_molecule_regular_file_refused
+        quiet: true

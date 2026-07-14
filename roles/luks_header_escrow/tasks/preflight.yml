@@ -1,0 +1,9 @@
+---
+- name: Prechecks
+  ansible.builtin.import_tasks: assert.yml
+  tags: always
+
+- name: Validate controller escrow state
+  ansible.builtin.import_tasks: controller_preflight.yml
+  when: luks_header_escrow_enabled | bool
+  tags: always

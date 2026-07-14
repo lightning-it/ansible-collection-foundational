@@ -1,0 +1,97 @@
+---
+- name: Prepare a regular-file LUKS2 fixture
+  hosts: luks-header-escrow-target
+  gather_facts: false
+  become: false
+  vars:
+    luks_header_escrow_molecule_uuid: 11111111-2222-4333-8444-555555555555
+    luks_header_escrow_molecule_device_root: >-
+      /dev/shm/lit-foundational-luks-header-escrow-basic
+    luks_header_escrow_molecule_device: >-
+      {{ luks_header_escrow_molecule_device_root }}/device.img
+    luks_header_escrow_molecule_key_file: >-
+      {{ luks_header_escrow_molecule_device_root }}/luks-key
+    luks_header_escrow_molecule_fixture_root: >-
+      {{ lookup('ansible.builtin.env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/fixtures
+
+  tasks:
+    - name: Reset the regular-file LUKS2 fixture root
+      ansible.builtin.file:
+        path: "{{ luks_header_escrow_molecule_device_root }}"
+        state: absent
+
+    - name: Create protected fixture directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0700"
+      loop:
+        - "{{ luks_header_escrow_molecule_device_root }}"
+        - "{{ luks_header_escrow_molecule_fixture_root }}"
+
+    - name: Allocate a sparse regular-file LUKS2 device
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/truncate
+          - --size
+          - 32M
+          - "{{ luks_header_escrow_molecule_device }}"
+      changed_when: true
+
+    - name: Generate an ephemeral LUKS fixture key
+      ansible.builtin.shell: |
+        set -o pipefail
+        umask 077
+        head -c 48 /dev/urandom \
+          | base64 > "${_LUKS_HEADER_ESCROW_MOLECULE_KEY_FILE}"
+      args:
+        executable: /bin/bash
+      environment:
+        _LUKS_HEADER_ESCROW_MOLECULE_KEY_FILE: >-
+          {{ luks_header_escrow_molecule_key_file }}
+      changed_when: true
+      no_log: true
+
+    - name: Format the regular file as LUKS2 without opening it
+      ansible.builtin.command:
+        argv:
+          - /usr/sbin/cryptsetup
+          - luksFormat
+          - --type
+          - luks2
+          - --batch-mode
+          - --pbkdf
+          - pbkdf2
+          - --pbkdf-force-iterations
+          - "1000"
+          - --uuid
+          - "{{ luks_header_escrow_molecule_uuid }}"
+          - --key-file
+          - "{{ luks_header_escrow_molecule_key_file }}"
+          - "{{ luks_header_escrow_molecule_device }}"
+      changed_when: true
+      no_log: true
+
+    - name: Remove the ephemeral LUKS fixture key
+      ansible.builtin.file:
+        path: "{{ luks_header_escrow_molecule_key_file }}"
+        state: absent
+      no_log: true
+
+    - name: Write the single-source crypttab fixture
+      ansible.builtin.copy:
+        dest: "{{ luks_header_escrow_molecule_fixture_root }}/crypttab"
+        content: >-
+          cryptroot UUID={{ luks_header_escrow_molecule_uuid }} none luks
+        mode: "0600"
+
+    - name: Write the constrained findfs fixture
+      ansible.builtin.copy:
+        dest: "{{ luks_header_escrow_molecule_fixture_root }}/findfs"
+        mode: "0700"
+        content: |
+          #!/bin/bash
+          set -euo pipefail
+          test "$#" -eq 1
+          test "$1" = "UUID={{ luks_header_escrow_molecule_uuid }}"
+          printf '%s\n' '{{ luks_header_escrow_molecule_device }}'

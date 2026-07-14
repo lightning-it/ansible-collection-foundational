@@ -1,0 +1,19 @@
+---
+luks_header_escrow_enabled: false
+luks_header_escrow_schema_version: 1
+luks_header_escrow_max_raw_bytes: 20971520
+luks_header_escrow_path: ""
+luks_header_escrow_subject: "{{ inventory_hostname }}"
+
+luks_header_escrow_controller_root_path: ""
+luks_header_escrow_vault_id: default
+
+luks_header_escrow_crypttab_path: /etc/crypttab
+luks_header_escrow_awk_path: /usr/bin/awk
+luks_header_escrow_findfs_path: /usr/sbin/findfs
+luks_header_escrow_readlink_path: /usr/bin/readlink
+luks_header_escrow_id_path: /usr/bin/id
+luks_header_escrow_cryptsetup_path: /usr/sbin/cryptsetup
+luks_header_escrow_bash_path: /bin/bash
+luks_header_escrow_remote_temporary_root: /run
+luks_header_escrow_allow_regular_file_device: false

@@ -1,0 +1,49 @@
+---
+dependency:
+  name: shell
+  command: |-
+    set -euo pipefail
+    install -d -m 0700 "${MOLECULE_EPHEMERAL_DIRECTORY}"
+    if [ ! -s "${MOLECULE_EPHEMERAL_DIRECTORY}/ansible-vault-password" ]; then
+      umask 077
+      head -c 48 /dev/urandom | base64 > "${MOLECULE_EPHEMERAL_DIRECTORY}/ansible-vault-password"
+    fi
+    chmod 0600 "${MOLECULE_EPHEMERAL_DIRECTORY}/ansible-vault-password"
+
+driver:
+  name: default
+
+platforms:
+  - name: luks-header-escrow-target
+    managed: false
+
+provisioner:
+  name: ansible
+  env:
+    ANSIBLE_VAULT_PASSWORD_FILE: "${MOLECULE_EPHEMERAL_DIRECTORY}/ansible-vault-password"
+  inventory:
+    host_vars:
+      luks-header-escrow-target:
+        ansible_connection: local
+  playbooks:
+    prepare: prepare.yml
+    converge: converge.yml
+    verify: verify.yml
+    cleanup: cleanup.yml
+
+scenario:
+  name: luks-header-escrow-basic
+  test_sequence:
+    - destroy
+    - dependency
+    - cleanup
+    - syntax
+    - prepare
+    - converge
+    - idempotence
+    - verify
+    - cleanup
+    - destroy
+
+verifier:
+  name: ansible

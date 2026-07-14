@@ -1,0 +1,80 @@
+---
+- name: Converge LUKS-header escrow
+  hosts: luks-header-escrow-target
+  gather_facts: false
+  become: false
+  vars:
+    luks_header_escrow_molecule_root: >-
+      {{ lookup('ansible.builtin.env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}
+    luks_header_escrow_molecule_fixture_root: >-
+      {{ luks_header_escrow_molecule_root }}/fixtures
+    luks_header_escrow_molecule_controller_root: >-
+      {{ luks_header_escrow_molecule_root }}/controller-escrow
+    luks_header_escrow_molecule_runtime_root: >-
+      /dev/shm/lit-foundational-luks-header-escrow-basic/runtime
+    luks_header_escrow_molecule_path: >-
+      {{ luks_header_escrow_molecule_controller_root }}/header.vault.yml
+
+  pre_tasks:
+    - name: Create protected escrow and runtime roots
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0700"
+      loop:
+        - "{{ luks_header_escrow_molecule_controller_root }}"
+        - "{{ luks_header_escrow_molecule_runtime_root }}"
+
+  tasks:
+    - name: Exercise the disabled no-op contract
+      ansible.builtin.include_role:
+        name: lit.foundational.luks_header_escrow
+      vars:
+        luks_header_escrow_enabled: false
+
+    - name: Exercise the controller-only preflight entrypoint
+      ansible.builtin.include_role:
+        name: lit.foundational.luks_header_escrow
+        tasks_from: preflight
+      vars:
+        luks_header_escrow_enabled: true
+        luks_header_escrow_path: "{{ luks_header_escrow_molecule_path }}"
+        luks_header_escrow_controller_root_path: >-
+          {{ luks_header_escrow_molecule_controller_root }}
+        luks_header_escrow_crypttab_path: >-
+          {{ luks_header_escrow_molecule_fixture_root }}/crypttab
+        luks_header_escrow_findfs_path: >-
+          {{ luks_header_escrow_molecule_fixture_root }}/findfs
+        luks_header_escrow_remote_temporary_root: >-
+          {{ luks_header_escrow_molecule_runtime_root }}
+
+    - name: Persist the real LUKS2 fixture header as immutable ciphertext
+      ansible.builtin.include_role:
+        name: lit.foundational.luks_header_escrow
+      vars:
+        luks_header_escrow_enabled: true
+        luks_header_escrow_path: "{{ luks_header_escrow_molecule_path }}"
+        luks_header_escrow_controller_root_path: >-
+          {{ luks_header_escrow_molecule_controller_root }}
+        luks_header_escrow_crypttab_path: >-
+          {{ luks_header_escrow_molecule_fixture_root }}/crypttab
+        luks_header_escrow_findfs_path: >-
+          {{ luks_header_escrow_molecule_fixture_root }}/findfs
+        luks_header_escrow_remote_temporary_root: >-
+          {{ luks_header_escrow_molecule_runtime_root }}
+        luks_header_escrow_allow_regular_file_device: true
+
+    - name: Require a secret-free successful result
+      ansible.builtin.assert:
+        that:
+          - luks_header_escrow_result.created is boolean
+          - luks_header_escrow_result.exists is boolean
+          - luks_header_escrow_result.exists
+          - luks_header_escrow_result.path == luks_header_escrow_molecule_path
+          - >-
+            luks_header_escrow_result.ciphertext_sha256
+            is match('^[0-9a-f]{64}$')
+          - >-
+            luks_header_escrow_result.luks_uuid
+            == '11111111-2222-4333-8444-555555555555'
+        quiet: true
