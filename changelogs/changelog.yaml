@@ -150,3 +150,12 @@ releases:
       - hashivault-7-compat.yml
       - ignore-local-ansible-collections.yml
     release_date: '2026-07-14'
+  1.31.0:
+    changes:
+      bugfixes:
+        - collection - Lower the declared ``ansible.posix`` minimum to 2.1.0 so the
+          collection can be resolved alongside ``fedora.linux_system_roles`` 1.127.2,
+          which requires ``ansible.posix`` below 2.2.0.
+    fragments:
+      - ansible-posix-21-compat.yml
+    release_date: '2026-07-14'
