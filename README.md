@@ -167,8 +167,15 @@ by this collection:
 ```yaml
 dependencies:
   community.general: ">=11.4.9,<12.0.0"
-  community.hashi_vault: ">=6.2.1,<7.0.0"
+  community.hashi_vault: 7.1.0
 ```
+
+`galaxy.yml` is the source of truth for collection dependency versions. The
+repository does not duplicate those versions in a root
+`collections/requirements.yml`; devtools, smoke, and lightweight Molecule
+preparation install the dependency set directly from the collection metadata.
+Scenario-local requirements remain allowed when a scenario intentionally
+builds a dedicated test environment.
 
 Vault access also requires the `hvac` Python package in the controller or
 execution-environment interpreter. 1Password access requires an authenticated

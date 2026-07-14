@@ -1,9 +1,4 @@
 ---
-dependency:
-  name: galaxy
-  options:
-    requirements-file: "${MOLECULE_PROJECT_DIRECTORY}/collections/requirements.yml"
-
 provisioner:
   name: ansible
   env:

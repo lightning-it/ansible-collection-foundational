@@ -81,7 +81,7 @@
               secret_resolver_hashi_vault_manifest.content
               | b64decode
               | from_json
-            ).collection_info.version == '6.2.1'
+            ).collection_info.version == '7.1.0'
           - secret_resolver_hvac_version.stdout == '2.4.0'
         quiet: true
 
