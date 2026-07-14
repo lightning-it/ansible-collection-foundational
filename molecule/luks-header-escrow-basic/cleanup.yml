@@ -1,0 +1,17 @@
+---
+- name: Clean up regular-file LUKS2 fixtures
+  hosts: luks-header-escrow-target
+  gather_facts: false
+  become: false
+  vars:
+    luks_header_escrow_molecule_root: >-
+      {{ lookup('ansible.builtin.env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}
+  tasks:
+    - name: Remove scenario-owned fixture and escrow roots
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /dev/shm/lit-foundational-luks-header-escrow-basic
+        - "{{ luks_header_escrow_molecule_root }}/fixtures"
+        - "{{ luks_header_escrow_molecule_root }}/controller-escrow"

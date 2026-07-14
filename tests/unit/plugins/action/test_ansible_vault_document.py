@@ -16,6 +16,7 @@ from plugins.action import ansible_vault_secret_document as secret_plugin
 
 
 TEST_VAULT_PASSWORD = b"unit-test-only-vault-password"
+SECOND_VAULT_PASSWORD = b"unit-test-only-second-vault-password"
 SECRET_SENTINEL = "unit-test-only-root-token-must-not-leak"
 
 
@@ -74,6 +75,44 @@ def test_exact_document_is_created_once_and_rerun_is_unchanged(tmp_path, vault):
     assert stat.S_IMODE(path.parent.stat().st_mode) == 0o700
     assert yaml.safe_load(vault.decrypt(path.read_bytes())) == _document()
     assert SECRET_SENTINEL not in repr(created)
+
+
+def test_explicit_vault_id_selects_exactly_one_loaded_identity(tmp_path):
+    path = tmp_path / "private" / "selected.vault.yml"
+    selected_secret = VaultSecret(SECOND_VAULT_PASSWORD)
+    vault = VaultLib(
+        [
+            ("primary", VaultSecret(TEST_VAULT_PASSWORD)),
+            ("secondary", selected_secret),
+        ]
+    )
+
+    vault_secret, vault_id = plugin._select_vault_secret(vault, "secondary")
+    result = _store(vault).ensure_exact(
+        str(path),
+        _document(),
+        vault_secret=vault_secret,
+        vault_id=vault_id,
+    )
+
+    assert result["created"] is True
+    assert path.read_bytes().splitlines()[0] == b"$ANSIBLE_VAULT;1.2;AES256;secondary"
+    selected_vault = VaultLib([("secondary", selected_secret)])
+    assert yaml.safe_load(selected_vault.decrypt(path.read_bytes())) == _document()
+
+
+def test_explicit_vault_id_must_match_one_loaded_identity():
+    duplicate_vault = VaultLib(
+        [
+            ("duplicate", VaultSecret(TEST_VAULT_PASSWORD)),
+            ("duplicate", VaultSecret(SECOND_VAULT_PASSWORD)),
+        ]
+    )
+
+    with pytest.raises(AnsibleActionFail):
+        plugin._select_vault_secret(duplicate_vault, "missing")
+    with pytest.raises(AnsibleActionFail):
+        plugin._select_vault_secret(duplicate_vault, "duplicate")
 
 
 def test_ansible_unsafe_strings_are_normalized_to_exact_builtin_strings(
@@ -354,6 +393,55 @@ def test_argument_validation_rejects_password_relative_and_noncanonical_paths():
         plugin._normalize_arguments(
             {"path": "/secure/../document.vault.yml", "document": {}}
         )
+    normalized = plugin._normalize_arguments(
+        {
+            "path": "/secure/document.vault.yml",
+            "document": {},
+            "vault_id": "production",
+        }
+    )
+    assert normalized["vault_id"] == "production"
+
+
+@pytest.mark.parametrize(
+    "vault_id",
+    (
+        "",
+        "ümlaut",
+        "bad;identity",
+        "bad identity",
+        " leading",
+        "trailing ",
+        "bad\nidentity",
+    ),
+)
+def test_invalid_vault_id_fails_before_path_creation(tmp_path, vault_id):
+    path = tmp_path / "must-not-exist" / "document.vault.yml"
+
+    with pytest.raises(AnsibleActionFail):
+        plugin._normalize_arguments(
+            {
+                "path": str(path),
+                "document": {},
+                "vault_id": vault_id,
+            }
+        )
+
+    assert not path.parent.exists()
+
+
+def test_generated_ciphertext_is_validated_before_publication(
+    tmp_path,
+    vault,
+    monkeypatch,
+):
+    path = tmp_path / "must-not-exist" / "document.vault.yml"
+    monkeypatch.setattr(vault, "encrypt", lambda *args, **kwargs: b"not-vault-ciphertext")
+
+    with pytest.raises(AnsibleActionFail):
+        _store(vault).ensure_exact(str(path), _document())
+
+    assert not path.parent.exists()
 
 
 def test_task_no_log_is_required_and_failure_is_suppressed():

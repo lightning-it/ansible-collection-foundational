@@ -1,0 +1,50 @@
+---
+- name: Validate the LUKS-header escrow enablement contract
+  ansible.builtin.assert:
+    that:
+      - luks_header_escrow_enabled is boolean
+    fail_msg: "luks_header_escrow_enabled must be a boolean."
+    quiet: true
+
+- name: Validate enabled LUKS-header escrow inputs
+  ansible.builtin.assert:
+    that:
+      - luks_header_escrow_schema_version | type_debug == 'int'
+      - luks_header_escrow_schema_version == 1
+      - luks_header_escrow_max_raw_bytes | type_debug == 'int'
+      - luks_header_escrow_max_raw_bytes > 0
+      - luks_header_escrow_max_raw_bytes <= _luks_header_escrow_safe_raw_max_bytes
+      - luks_header_escrow_path is string
+      - luks_header_escrow_path | length > 0
+      - luks_header_escrow_path is match('^/')
+      - luks_header_escrow_subject is string
+      - luks_header_escrow_subject | trim | length > 0
+      - luks_header_escrow_controller_root_path is string
+      - luks_header_escrow_controller_root_path is match('^/')
+      - luks_header_escrow_vault_id is string
+      - luks_header_escrow_vault_id is match('^[A-Za-z0-9_.-]+$')
+      - luks_header_escrow_crypttab_path is string
+      - luks_header_escrow_crypttab_path is match('^/')
+      - luks_header_escrow_awk_path is string
+      - luks_header_escrow_awk_path is match('^/')
+      - luks_header_escrow_findfs_path is string
+      - luks_header_escrow_findfs_path is match('^/')
+      - luks_header_escrow_readlink_path is string
+      - luks_header_escrow_readlink_path is match('^/')
+      - luks_header_escrow_id_path is string
+      - luks_header_escrow_id_path is match('^/')
+      - luks_header_escrow_cryptsetup_path is string
+      - luks_header_escrow_cryptsetup_path is match('^/')
+      - luks_header_escrow_bash_path is string
+      - luks_header_escrow_bash_path is match('^/')
+      - luks_header_escrow_remote_temporary_root is string
+      - luks_header_escrow_remote_temporary_root is match('^/')
+      - luks_header_escrow_allow_regular_file_device is boolean
+      - not ansible_check_mode
+    fail_msg: >-
+      Enabled LUKS-header escrow requires schema version 1, a safe positive
+      size ceiling, absolute controller and managed-host paths, a loaded Vault
+      identity label containing only ASCII letters, digits, dots, underscores,
+      and hyphens, a non-empty subject, and normal execution outside check mode.
+    quiet: true
+  when: luks_header_escrow_enabled | bool

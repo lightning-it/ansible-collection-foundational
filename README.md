@@ -89,6 +89,14 @@ The current collection compatibility baseline is `ansible-core` 2.18.0 or newer.
   - keeps fallback explicit and disabled by default,
   - supports Vault KV v2 write-back and controlled bootstrap migration.
 
+- `lit.foundational.luks_header_escrow`
+  Persists one installed LUKS2 header as immutable controller-side Ansible
+  Vault ciphertext:
+  - validates one `crypttab` source, LUKS2 metadata, UUID, size, checksum, and
+    controller path containment,
+  - keeps raw header bytes off controller storage and always removes the
+    protected managed-host temporary copy.
+
 - `lit.foundational.terragrunt`
   Terragrunt wrapper that:
   - prepares a per-cluster working directory on the control host,
