@@ -25,6 +25,7 @@ npm-debug.log
 # Local collection installs from tests/hooks
 collections/**
 !collections/requirements.yml
+/ansible_collections/
 .ansible/
 
 # Ansible logs
