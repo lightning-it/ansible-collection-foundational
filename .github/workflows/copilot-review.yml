@@ -237,7 +237,6 @@ jobs:
                 fi
               done <<<"${candidate_review_ids}"
               if [ "${review_complete}" = true ]; then
-                review_complete=true
                 break 2
               fi
               if [ "${request_failed}" = true ]; then
