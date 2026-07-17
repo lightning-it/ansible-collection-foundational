@@ -1,0 +1,48 @@
+---
+- name: Validate Vault PKI certificate variables
+  ansible.builtin.assert:
+    that:
+      - vault_pki_cert_addr | default('', true) | trim | length > 0
+      - vault_pki_cert_auth_method in ['token', 'approle']
+      - vault_pki_cert_mount_point | default('', true) | trim | length > 0
+      - vault_pki_cert_service_names is sequence
+      - vault_pki_cert_service_names is not string
+      - vault_pki_cert_service_names | length > 0
+      - vault_pki_cert_services is mapping
+      - vault_pki_cert_validate_certs is boolean
+      - vault_pki_cert_require_shared_ca is boolean
+      - vault_pki_cert_read_issuer is boolean
+      - vault_pki_cert_require_trust_anchor is boolean
+    fail_msg: "Vault PKI certificate variables are missing or invalid."
+  tags: always
+
+- name: Validate Vault PKI token auth inputs
+  ansible.builtin.assert:
+    that:
+      - vault_pki_cert_token | default('', true) | trim | length > 0
+    fail_msg: "Vault PKI token auth requires vault_pki_cert_token."
+  when: vault_pki_cert_auth_method == 'token'
+  tags: always
+
+- name: Validate Vault PKI AppRole auth inputs
+  ansible.builtin.assert:
+    that:
+      - vault_pki_cert_role_id | default('', true) | trim | length > 0
+      - vault_pki_cert_secret_id | default('', true) | trim | length > 0
+    fail_msg: "Vault PKI AppRole auth requires role_id and secret_id."
+  when: vault_pki_cert_auth_method == 'approle'
+  tags: always
+
+- name: Validate Vault PKI service requests
+  ansible.builtin.assert:
+    that:
+      - vault_pki_cert_services[item] is mapping
+      - vault_pki_cert_services[item].role_name | default('', true) | trim | length > 0
+      - vault_pki_cert_services[item].common_name | default('', true) | trim | length > 0
+      - vault_pki_cert_services[item].alt_names | default([]) is sequence
+      - vault_pki_cert_services[item].alt_names | default([]) is not string
+      - vault_pki_cert_services[item].ip_sans | default([]) is sequence
+      - vault_pki_cert_services[item].ip_sans | default([]) is not string
+    fail_msg: "Each Vault PKI service request needs role_name, common_name, alt_names, and ip_sans."
+  loop: "{{ vault_pki_cert_service_names }}"
+  tags: always

@@ -1,0 +1,63 @@
+---
+- name: Prechecks
+  ansible.builtin.import_tasks: assert.yml
+  tags: always
+
+- name: Publish secret-free Hetzner Robot reconciliation plan
+  ansible.builtin.set_fact:
+    hetzner_robot_cac_plan:
+      default_state: "{{ hetzner_robot_cac_state }}"
+      validate_only: "{{ hetzner_robot_cac_validate_only | bool }}"
+      destructive_allowed: "{{ hetzner_robot_cac_allow_destructive | bool }}"
+      resource_counts:
+        server_metadata: "{{ hetzner_robot_cac_server_metadata | length }}"
+        firewalls: "{{ hetzner_robot_cac_firewalls | length }}"
+        vswitches: "{{ hetzner_robot_cac_vswitches | length }}"
+        reverse_dns: "{{ hetzner_robot_cac_reverse_dns | length }}"
+        ssh_keys: "{{ hetzner_robot_cac_ssh_keys | length }}"
+        failover_ips: "{{ hetzner_robot_cac_failover_ips | length }}"
+    cacheable: false
+  changed_when: false
+
+- name: Reconcile Hetzner Robot resources on the controller
+  when: not (hetzner_robot_cac_validate_only | bool)
+  delegate_to: localhost
+  become: false
+  run_once: true
+  block:
+    - name: Reconcile present Hetzner Robot resources
+      ansible.builtin.include_tasks: present.yml
+
+    - name: Reconcile absent Hetzner Robot resources
+      ansible.builtin.include_tasks: absent.yml
+
+    - name: Publish sanitized Hetzner Robot results
+      ansible.builtin.include_tasks: outputs.yml
+
+  always:
+    - name: Remove sensitive Robot module results from controller facts
+      ansible.builtin.set_fact:
+        hetzner_robot_cac_server_metadata_present_operations: {}
+        hetzner_robot_cac_firewall_present_operations: {}
+        hetzner_robot_cac_firewall_absent_operations: {}
+        hetzner_robot_cac_vswitch_present_operations: {}
+        hetzner_robot_cac_vswitch_absent_operations: {}
+        hetzner_robot_cac_reverse_dns_present_operations: {}
+        hetzner_robot_cac_reverse_dns_absent_operations: {}
+        hetzner_robot_cac_ssh_key_present_operations: {}
+        hetzner_robot_cac_ssh_key_absent_operations: {}
+        hetzner_robot_cac_failover_ip_present_operations: {}
+        hetzner_robot_cac_failover_ip_absent_operations: {}
+        cacheable: false
+      changed_when: false
+      no_log: true
+
+- name: Publish validation-only result
+  ansible.builtin.set_fact:
+    hetzner_robot_cac_result:
+      changed: false
+      validated: true
+      resources: "{{ hetzner_robot_cac_plan.resource_counts }}"
+    cacheable: false
+  when: hetzner_robot_cac_validate_only | bool
+  changed_when: false

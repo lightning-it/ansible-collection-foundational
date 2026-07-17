@@ -1,0 +1,50 @@
+---
+- name: Audit one explicitly selected live Hetzner Robot server
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - live-vars
+  tasks:
+    - name: Enforce the read-only live Robot gate
+      ansible.builtin.assert:
+        that:
+          - hetzner_robot_live_enabled | lower == 'true'
+          - hetzner_robot_live_user | trim | length > 0
+          - hetzner_robot_live_password | length > 0
+          - hetzner_robot_live_server_ip is match('^(?:[0-9]{1,3}\\.){3}[0-9]{1,3}$')
+          - hetzner_robot_live_server_name | trim | length > 0
+        fail_msg: >-
+          Set HROBOT_LIVE_ENABLED=true and the HROBOT_LIVE_USER, HROBOT_LIVE_PASSWORD,
+          HROBOT_LIVE_SERVER_IP, and HROBOT_LIVE_SERVER_NAME gates to run this read-only scenario.
+        quiet: true
+      changed_when: false
+      no_log: true
+
+    - name: Audit the exact live server through official Robot modules
+      ansible.builtin.include_role:
+        name: lit.foundational.hetzner_robot_cac
+        tasks_from: audit
+      vars:
+        hetzner_robot_cac_user: "{{ hetzner_robot_live_user }}"
+        hetzner_robot_cac_password: "{{ hetzner_robot_live_password }}"
+        hetzner_robot_cac_audit_servers:
+          - server_ip: "{{ hetzner_robot_live_server_ip }}"
+            server_name: "{{ hetzner_robot_live_server_name }}"
+            status: ready
+            cancelled: false
+      register: hetzner_robot_cac_live_audit
+      no_log: true
+
+    - name: Require a read-only sanitized live audit result
+      ansible.builtin.assert:
+        that:
+          - not (hetzner_robot_cac_live_audit.changed | bool)
+          - hetzner_robot_cac_audit_result.validated | bool
+          - hetzner_robot_cac_audit_result.queried | bool
+          - hetzner_robot_cac_audit_result.resources.servers | int == 1
+          - hetzner_robot_cac_audit_result.resources.firewalls | int == 0
+          - hetzner_robot_cac_audit_result.resources.vswitches | int == 0
+        quiet: true
+      changed_when: false
+      no_log: true

@@ -1,0 +1,22 @@
+---
+- name: Validate ansible_remote_tmp role inputs
+  ansible.builtin.assert:
+    that:
+      - ansible_remote_tmp_enabled is boolean
+      - ansible_remote_tmp_bootstrap_raw is boolean
+      - ansible_remote_tmp_path is string
+      - ansible_remote_tmp_path | trim | length > 0
+      - ansible_remote_tmp_path.startswith('/')
+      - ansible_remote_tmp_owner | trim | length > 0
+      - ansible_remote_tmp_group | trim | length > 0
+      - ansible_remote_tmp_mode | string | trim | length > 0
+      - ansible_remote_tmp_validate_users is sequence
+      - ansible_remote_tmp_validate_users is not string
+      - ansible_remote_tmp_validate_skip_missing_users is boolean
+    fail_msg: >-
+      Invalid configuration for lit.foundational.ansible_remote_tmp.
+      Set ansible_remote_tmp_path to an absolute managed-host path.
+    quiet: true
+  changed_when: false
+  when: ansible_remote_tmp_enabled | bool
+  tags: always

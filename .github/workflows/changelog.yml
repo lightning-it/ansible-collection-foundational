@@ -1,0 +1,30 @@
+# yamllint disable rule:truthy rule:line-length
+---
+name: Changelog
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  changelog:
+    name: Changelog fragments
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Validate changelog policy via devtools
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          LABELS_JSON: ${{ toJson(github.event.pull_request.labels.*.name) }}
+          REQUIRE_FRAGMENT: "true"
+        run: |
+          bash scripts/devtools-changelog-check.sh

@@ -1,0 +1,382 @@
+---
+- name: Validate global Hetzner Cloud role policy
+  ansible.builtin.assert:
+    that:
+      - hetzner_cloud_ipv4_only | bool
+      - hetzner_cloud_api_endpoint | trim | length > 0
+      - hetzner_cloud_api_endpoint is match('^https://')
+      - hetzner_cloud_api_endpoint is not search('[\r\n]')
+      - >-
+        hetzner_cloud_validate_only | bool
+        or hetzner_cloud_api_token | default('', true) | trim | length > 0
+        or lookup('ansible.builtin.env', 'HCLOUD_TOKEN') | default('', true) | trim | length > 0
+      - >-
+        not (
+          hetzner_cloud_state == 'absent'
+          or
+          (
+            (
+              hetzner_cloud_ssh_keys
+              + hetzner_cloud_firewalls_effective
+              + hetzner_cloud_networks
+              + hetzner_cloud_subnetworks
+              + hetzner_cloud_primary_ips
+              + hetzner_cloud_floating_ips
+              + hetzner_cloud_placement_groups
+              + hetzner_cloud_servers
+              + hetzner_cloud_server_networks
+              + hetzner_cloud_firewall_resources
+              + hetzner_cloud_reverse_dns
+            )
+            | selectattr('state', 'defined')
+            | selectattr('state', 'equalto', 'absent')
+            | list
+            | length > 0
+          )
+        )
+        or hetzner_cloud_allow_destructive | bool
+    fail_msg: >-
+      Invalid Hetzner Cloud global policy. IPv4-only mode is mandatory, API execution needs a token, and
+      absent state requires hetzner_cloud_allow_destructive=true.
+    quiet: true
+  changed_when: false
+  no_log: true
+  tags: always
+
+- name: Validate generated IPv4 firewall profile
+  ansible.builtin.assert:
+    that:
+      - hetzner_cloud_default_firewall_effective.name | default('', true) | trim | length > 0
+      - hetzner_cloud_default_firewall_effective.name is not search('[\r\n]')
+      - >-
+        (
+          hetzner_cloud_default_firewall_effective.ssh_source_ips
+          + hetzner_cloud_default_firewall_effective.wireguard_source_ips
+        )
+        | select('search', ':')
+        | list
+        | length == 0
+      - >-
+        (
+          hetzner_cloud_default_firewall_effective.ssh_source_ips
+          + hetzner_cloud_default_firewall_effective.wireguard_source_ips
+        )
+        | reject('match', hetzner_cloud_ipv4_cidr_pattern)
+        | list
+        | length == 0
+      - >-
+        hetzner_cloud_firewalls_effective
+        | selectattr('name', 'defined')
+        | map(attribute='name')
+        | list
+        | length
+        ==
+        (
+          hetzner_cloud_firewalls_effective
+          | selectattr('name', 'defined')
+          | map(attribute='name')
+          | unique
+          | list
+          | length
+        )
+    fail_msg: "The generated firewall accepts only unique names and newline-free IPv4 CIDRs."
+    quiet: true
+  changed_when: false
+  tags: always
+
+- name: Validate SSH key resources
+  ansible.builtin.assert:
+    that:
+      - >-
+        hetzner_cloud_ssh_key.id | default(0) | int > 0
+        or hetzner_cloud_ssh_key.name | default('', true) | trim | length > 0
+        or hetzner_cloud_ssh_key.fingerprint | default('', true) | trim | length > 0
+      - hetzner_cloud_ssh_key.name | default('') is not search('[\r\n]')
+      - hetzner_cloud_ssh_key.public_key | default('') is not search('[\r\n].+[\r\n]')
+    fail_msg: "Each SSH key needs a safe ID, name, or fingerprint."
+    quiet: true
+  loop: "{{ hetzner_cloud_ssh_keys }}"
+  loop_control:
+    loop_var: hetzner_cloud_ssh_key
+    label: "{{ hetzner_cloud_ssh_key.name | default(hetzner_cloud_ssh_key.id | default('unnamed')) }}"
+  changed_when: false
+  tags: always
+
+- name: Validate firewall resources
+  ansible.builtin.assert:
+    that:
+      - >-
+        hetzner_cloud_firewall.id | default(0) | int > 0
+        or hetzner_cloud_firewall.name | default('', true) | trim | length > 0
+      - hetzner_cloud_firewall.name | default('') is not search('[\r\n]')
+    fail_msg: "Each firewall needs a safe ID or name."
+    quiet: true
+  loop: "{{ hetzner_cloud_firewalls_effective }}"
+  loop_control:
+    loop_var: hetzner_cloud_firewall
+    label: "{{ hetzner_cloud_firewall.name | default(hetzner_cloud_firewall.id | default('unnamed')) }}"
+  changed_when: false
+  tags: always
+
+- name: Validate IPv4-only firewall rules
+  ansible.builtin.assert:
+    that:
+      - hetzner_cloud_firewall_rule.direction in ['in', 'out']
+      - hetzner_cloud_firewall_rule.protocol in ['icmp', 'tcp', 'udp', 'esp', 'gre']
+      - >-
+        hetzner_cloud_firewall_rule.protocol not in ['tcp', 'udp']
+        or hetzner_cloud_firewall_rule.port | default('', true) | length > 0
+      - >-
+        (
+          hetzner_cloud_firewall_rule.source_ips | default([])
+          + hetzner_cloud_firewall_rule.destination_ips | default([])
+        )
+        | select('search', ':')
+        | list
+        | length == 0
+      - >-
+        (
+          hetzner_cloud_firewall_rule.source_ips | default([])
+          + hetzner_cloud_firewall_rule.destination_ips | default([])
+        )
+        | reject('match', hetzner_cloud_ipv4_cidr_pattern)
+        | list
+        | length == 0
+    fail_msg: "Firewall rules must be valid IPv4-only allow rules."
+    quiet: true
+  loop: >-
+    {{
+      hetzner_cloud_firewalls_effective
+      | selectattr('rules', 'defined')
+      | map(attribute='rules')
+      | flatten
+    }}
+  loop_control:
+    loop_var: hetzner_cloud_firewall_rule
+    label: "{{ hetzner_cloud_firewall_rule.description | default('firewall rule') }}"
+  changed_when: false
+  tags: always
+
+- name: Validate private Network resources
+  ansible.builtin.assert:
+    that:
+      - >-
+        hetzner_cloud_network.id | default(0) | int > 0
+        or hetzner_cloud_network.name | default('', true) | trim | length > 0
+      - >-
+        ':' not in (hetzner_cloud_network.ip_range | default(''))
+      - >-
+        hetzner_cloud_network.ip_range | default('') | length == 0
+        or hetzner_cloud_network.ip_range is match(hetzner_cloud_ipv4_cidr_pattern)
+    fail_msg: "Each Network needs a safe ID or name and an IPv4 range when supplied."
+    quiet: true
+  loop: "{{ hetzner_cloud_networks }}"
+  loop_control:
+    loop_var: hetzner_cloud_network
+    label: "{{ hetzner_cloud_network.name | default(hetzner_cloud_network.id | default('unnamed')) }}"
+  changed_when: false
+  tags: always
+
+- name: Validate subnetwork resources
+  ansible.builtin.assert:
+    that:
+      - hetzner_cloud_subnetwork.network | default('', true) | length > 0
+      - hetzner_cloud_subnetwork.ip_range | default('') is match(hetzner_cloud_ipv4_cidr_pattern)
+      - >-
+        ':' not in hetzner_cloud_subnetwork.ip_range
+      - hetzner_cloud_subnetwork.type in ['server', 'cloud', 'vswitch']
+      - hetzner_cloud_subnetwork.network_zone | default('', true) | length > 0
+      - >-
+        hetzner_cloud_subnetwork.type != 'vswitch'
+        or hetzner_cloud_subnetwork.vswitch_id | default(0) | int > 0
+    fail_msg: "Each subnetwork needs a parent, IPv4 range, type, zone, and vSwitch ID when applicable."
+    quiet: true
+  loop: "{{ hetzner_cloud_subnetworks }}"
+  loop_control:
+    loop_var: hetzner_cloud_subnetwork
+    label: "{{ hetzner_cloud_subnetwork.ip_range | default('unnamed') }}"
+  changed_when: false
+  tags: always
+
+- name: Validate Primary IPv4 resources
+  ansible.builtin.assert:
+    that:
+      - >-
+        hetzner_cloud_primary_ip.id | default(0) | int > 0
+        or hetzner_cloud_primary_ip.name | default('', true) | trim | length > 0
+      - hetzner_cloud_primary_ip.type | default('ipv4') == 'ipv4'
+      - >-
+        not (
+          hetzner_cloud_primary_ip.location is defined
+          and hetzner_cloud_primary_ip.server is defined
+        )
+      - >-
+        ':' not in (hetzner_cloud_primary_ip.expected_ip | default(''))
+      - >-
+        hetzner_cloud_primary_ip.expected_ip | default('') | length == 0
+        or hetzner_cloud_primary_ip.expected_ip is match(hetzner_cloud_ipv4_address_pattern)
+      - >-
+        not (hetzner_cloud_primary_ip.prevent_create | default(false) | bool)
+        or hetzner_cloud_primary_ip.expected_ip | default('', true) | length > 0
+    fail_msg: >-
+      Primary IP declarations must be IPv4, location and server are mutually exclusive, and adopted fixed
+      addresses need expected_ip.
+    quiet: true
+  loop: "{{ hetzner_cloud_primary_ips }}"
+  loop_control:
+    loop_var: hetzner_cloud_primary_ip
+    label: "{{ hetzner_cloud_primary_ip.name | default(hetzner_cloud_primary_ip.id | default('unnamed')) }}"
+  changed_when: false
+  tags: always
+
+- name: Validate Floating IPv4 resources
+  ansible.builtin.assert:
+    that:
+      - >-
+        hetzner_cloud_floating_ip.id | default(0) | int > 0
+        or hetzner_cloud_floating_ip.name | default('', true) | trim | length > 0
+      - hetzner_cloud_floating_ip.type | default('ipv4') == 'ipv4'
+      - >-
+        not (
+          hetzner_cloud_floating_ip.home_location is defined
+          and hetzner_cloud_floating_ip.server is defined
+        )
+      - >-
+        ':' not in (hetzner_cloud_floating_ip.expected_ip | default(''))
+      - >-
+        hetzner_cloud_floating_ip.expected_ip | default('') | length == 0
+        or hetzner_cloud_floating_ip.expected_ip is match(hetzner_cloud_ipv4_address_pattern)
+      - >-
+        not (hetzner_cloud_floating_ip.prevent_create | default(false) | bool)
+        or hetzner_cloud_floating_ip.expected_ip | default('', true) | length > 0
+    fail_msg: >-
+      Floating IP declarations must be IPv4, home_location and server are mutually exclusive, and adopted fixed
+      addresses need expected_ip.
+    quiet: true
+  loop: "{{ hetzner_cloud_floating_ips }}"
+  loop_control:
+    loop_var: hetzner_cloud_floating_ip
+    label: "{{ hetzner_cloud_floating_ip.name | default(hetzner_cloud_floating_ip.id | default('unnamed')) }}"
+  changed_when: false
+  tags: always
+
+- name: Validate placement groups
+  ansible.builtin.assert:
+    that:
+      - >-
+        hetzner_cloud_placement_group.id | default(0) | int > 0
+        or hetzner_cloud_placement_group.name | default('', true) | trim | length > 0
+      - hetzner_cloud_placement_group.type | default('spread') == 'spread'
+    fail_msg: "Placement groups need an ID or name and support only the spread strategy."
+    quiet: true
+  loop: "{{ hetzner_cloud_placement_groups }}"
+  loop_control:
+    loop_var: hetzner_cloud_placement_group
+    label: "{{ hetzner_cloud_placement_group.name | default(hetzner_cloud_placement_group.id | default('unnamed')) }}"
+  changed_when: false
+  tags: always
+
+- name: Validate server resources
+  ansible.builtin.assert:
+    that:
+      - >-
+        hetzner_cloud_server.id | default(0) | int > 0
+        or hetzner_cloud_server.name | default('', true) | trim | length > 0
+      - not (hetzner_cloud_server.enable_ipv6 | default(false) | bool)
+      - >-
+        (hetzner_cloud_server.state | default(hetzner_cloud_state)) == 'absent'
+        or hetzner_cloud_allow_server_root_password | bool
+        or hetzner_cloud_server.ssh_keys | default([]) | length > 0
+      - >-
+        (hetzner_cloud_server.delete_protection is defined)
+        == (hetzner_cloud_server.rebuild_protection is defined)
+    fail_msg: >-
+      Servers need an ID or name, IPv6 must be disabled, protected flags must be paired, and present servers need
+      SSH keys unless root-password creation was explicitly permitted.
+    quiet: true
+  loop: "{{ hetzner_cloud_servers }}"
+  loop_control:
+    loop_var: hetzner_cloud_server
+    label: "{{ hetzner_cloud_server.name | default(hetzner_cloud_server.id | default('unnamed')) }}"
+  changed_when: false
+  tags: always
+
+- name: Validate exact server Network relationships
+  ansible.builtin.assert:
+    that:
+      - hetzner_cloud_server_network.server | default('', true) | length > 0
+      - hetzner_cloud_server_network.network | default('', true) | length > 0
+      - >-
+        ':' not in (hetzner_cloud_server_network.ip | default(''))
+      - >-
+        ':' not in (hetzner_cloud_server_network.expected_ip | default(''))
+      - >-
+        hetzner_cloud_server_network.ip | default('') | length == 0
+        or hetzner_cloud_server_network.ip is match(hetzner_cloud_ipv4_address_pattern)
+      - >-
+        hetzner_cloud_server_network.expected_ip | default('') | length == 0
+        or hetzner_cloud_server_network.expected_ip is match(hetzner_cloud_ipv4_address_pattern)
+      - >-
+        hetzner_cloud_server_network.alias_ips
+        | default([])
+        | reject('match', hetzner_cloud_ipv4_address_pattern)
+        | list
+        | length == 0
+      - >-
+        (hetzner_cloud_server_network.state | default(hetzner_cloud_state)) == 'absent'
+        or hetzner_cloud_server_network.ip | default('', true) | length > 0
+    fail_msg: "Present server Network relationships require server, Network, and an exact IPv4 address."
+    quiet: true
+  loop: "{{ hetzner_cloud_server_networks }}"
+  loop_control:
+    loop_var: hetzner_cloud_server_network
+    label: >-
+      {{ hetzner_cloud_server_network.server | default('?') }} ->
+      {{ hetzner_cloud_server_network.network | default('?') }}
+  changed_when: false
+  tags: always
+
+- name: Validate firewall relationships
+  ansible.builtin.assert:
+    that:
+      - hetzner_cloud_firewall_resource.firewall | default('', true) | length > 0
+      - >-
+        hetzner_cloud_firewall_resource.servers | default([]) | length > 0
+        or hetzner_cloud_firewall_resource.label_selectors | default([]) | length > 0
+    fail_msg: "Firewall relationships require a firewall and at least one server or label selector."
+    quiet: true
+  loop: "{{ hetzner_cloud_firewall_resources }}"
+  loop_control:
+    loop_var: hetzner_cloud_firewall_resource
+    label: "{{ hetzner_cloud_firewall_resource.firewall | default('unnamed') }}"
+  changed_when: false
+  tags: always
+
+- name: Validate reverse DNS resources
+  ansible.builtin.assert:
+    that:
+      - hetzner_cloud_reverse_dns_item.ip_address | default('', true) | length > 0
+      - >-
+        ':' not in hetzner_cloud_reverse_dns_item.ip_address
+      - hetzner_cloud_reverse_dns_item.ip_address is match(hetzner_cloud_ipv4_address_pattern)
+      - >-
+        [
+          hetzner_cloud_reverse_dns_item.server | default(''),
+          hetzner_cloud_reverse_dns_item.primary_ip | default(''),
+          hetzner_cloud_reverse_dns_item.floating_ip | default('')
+        ]
+        | reject('equalto', '')
+        | list
+        | length == 1
+      - >-
+        (hetzner_cloud_reverse_dns_item.state | default(hetzner_cloud_state)) == 'absent'
+        or hetzner_cloud_reverse_dns_item.dns_ptr | default('', true) | trim | length > 0
+      - hetzner_cloud_reverse_dns_item.dns_ptr | default('') is not search('[\r\n]')
+    fail_msg: "Reverse DNS needs one IPv4 address, exactly one owning resource, and a PTR for present state."
+    quiet: true
+  loop: "{{ hetzner_cloud_reverse_dns }}"
+  loop_control:
+    loop_var: hetzner_cloud_reverse_dns_item
+    label: "{{ hetzner_cloud_reverse_dns_item.ip_address | default('unnamed') }}"
+  changed_when: false
+  tags: always

@@ -1,0 +1,320 @@
+---
+- name: Check the controller Python Vault dependency for persistence
+  community.general.python_requirements_info:
+    dependencies:
+      - hvac
+  register: __secret_resolver_persist_hvac_check
+  changed_when: false
+  failed_when: false
+  no_log: true
+
+- name: Verify the controller Python Vault module can import hvac for persistence
+  ansible.builtin.command:
+    argv:
+      - "{{ __secret_resolver_persist_hvac_check.python }}"
+      - -c
+      - import hvac
+  register: __secret_resolver_persist_hvac_import_check
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  no_log: true
+  when: __secret_resolver_persist_hvac_check.python is defined
+
+- name: Normalize persistent controller Python Vault dependency state
+  ansible.builtin.set_fact:
+    __secret_resolver_persist_hvac_available: >-
+      {{
+        not (__secret_resolver_persist_hvac_check.failed | default(false) | bool)
+        and __secret_resolver_persist_hvac_check.failed_when_suppressed_exception is not defined
+        and (__secret_resolver_persist_hvac_import_check.rc | default(1) | int == 0)
+        and 'hvac' not in (__secret_resolver_persist_hvac_check.not_found | default([]))
+        and 'hvac' not in (__secret_resolver_persist_hvac_check.mismatched | default({}))
+      }}
+  changed_when: false
+  no_log: true
+
+- name: Fail safely when Vault persistence dependency is missing
+  ansible.builtin.fail:
+    msg: >-
+      secret_resolver request '{{ __secret_resolver_request.name }}' failed:
+      provider=hashicorp_vault; category={{ 'migration_failed' if __secret_resolver_persist_operation == 'migration'
+      else 'write_back_failed' }}; cause=dependency_missing;
+      fallback_attempted={{ __secret_resolver_request_fallback_attempted | bool }};
+      required={{ __secret_resolver_request.required | default(true) | bool }}.
+      {{ secret_resolver_corrective_actions.dependency_missing }}
+  when: not __secret_resolver_persist_hvac_available
+
+- name: Query persistent HashiCorp Vault target
+  community.hashi_vault.vault_kv2_get:
+    url: "{{ __secret_resolver_vault_addr }}"
+    namespace: >-
+      {{ __secret_resolver_vault_namespace if (__secret_resolver_vault_namespace | length > 0) else omit }}
+    validate_certs: "{{ __secret_resolver_vault_validate_certs }}"
+    ca_cert: "{{ secret_resolver_vault_ca_cert | default(omit, true) }}"
+    timeout: "{{ secret_resolver_vault_timeout | default(omit) }}"
+    retries: "{{ secret_resolver_vault_retries | default(omit) }}"
+    auth_method: "{{ __secret_resolver_vault_auth_method }}"
+    mount_point: "{{ secret_resolver_vault_auth_mount_point | default(omit, true) }}"
+    token: "{{ secret_resolver_vault_token | default(omit, true) }}"
+    token_validate: "{{ __secret_resolver_vault_token_validate }}"
+    role_id: "{{ secret_resolver_vault_role_id | default(omit, true) }}"
+    secret_id: "{{ secret_resolver_vault_secret_id | default(omit, true) }}"
+    jwt: "{{ secret_resolver_vault_jwt | default(omit, true) }}"
+    engine_mount_point: >-
+      {{ __secret_resolver_persist_target.mount_point | default(__secret_resolver_vault_mount_point) }}
+    path: "{{ __secret_resolver_persist_target.path }}"
+  register: __secret_resolver_persist_read
+  changed_when: false
+  failed_when: false
+  diff: false
+  no_log: true
+  when: __secret_resolver_persist_hvac_available
+
+- name: Categorize persistent target read
+  ansible.builtin.set_fact:
+    __secret_resolver_persist_read_text: >-
+      {{
+        (
+          (__secret_resolver_persist_read.msg | default('') | string)
+          ~ ' '
+          ~ (__secret_resolver_persist_read.exception | default('') | string)
+        )
+        | lower
+      }}
+    __secret_resolver_persist_path_exists: >-
+      {{
+        __secret_resolver_persist_read.secret is defined
+        and __secret_resolver_persist_read.secret is mapping
+        and __secret_resolver_persist_read.metadata.version is defined
+      }}
+    __secret_resolver_persist_read_failure: >-
+      {%- set failure_text =
+        (
+          (__secret_resolver_persist_read.msg | default('') | string)
+          ~ ' '
+          ~ (__secret_resolver_persist_read.exception | default('') | string)
+        )
+        | lower
+      -%}
+      {%- if
+        __secret_resolver_persist_read.secret is defined
+        and __secret_resolver_persist_read.secret is mapping
+        and __secret_resolver_persist_read.metadata.version is defined
+      -%}
+      none
+      {%- elif
+        'invalid or missing path' in failure_text
+        or 'invalidpath' in failure_text
+      -%}
+      secret_not_found
+      {%- elif
+        'forbidden' in failure_text
+        or 'permission denied' in failure_text
+      -%}
+      authorization_failed
+      {%- elif
+        'certificate verify failed' in failure_text
+        or 'sslerror' in failure_text
+        or 'tls handshake' in failure_text
+        or 'wrong version number' in failure_text
+      -%}
+      tls_failed
+      {%- elif
+        'authentication' in failure_text
+        or 'invalid token' in failure_text
+        or 'invalid vault token' in failure_text
+        or 'invalid secret id' in failure_text
+        or 'failed to authenticate' in failure_text
+        or 'no vault token' in failure_text
+        or 'token specified or discovered' in failure_text
+      -%}
+      authentication_failed
+      {%- elif
+        'connection' in failure_text
+        or 'timed out' in failure_text
+        or 'unreachable' in failure_text
+      -%}
+      provider_unavailable
+      {%- else -%}
+      invalid_response
+      {%- endif -%}
+  changed_when: false
+  no_log: true
+
+- name: Fail safely when the persistent target cannot be verified
+  ansible.builtin.fail:
+    msg: >-
+      secret_resolver request '{{ __secret_resolver_request.name }}' failed:
+      provider=hashicorp_vault; category={{ 'migration_failed' if __secret_resolver_persist_operation == 'migration'
+      else 'write_back_failed' }}; cause={{ __secret_resolver_persist_read_failure }};
+      fallback_attempted={{ __secret_resolver_request_fallback_attempted | bool }};
+      required={{ __secret_resolver_request.required | default(true) | bool }}.
+      {{ secret_resolver_corrective_actions[__secret_resolver_persist_read_failure] }}
+  when: __secret_resolver_persist_read_failure not in ['none', 'secret_not_found']
+
+- name: Reject malformed persistent target response
+  ansible.builtin.fail:
+    msg: >-
+      secret_resolver request '{{ __secret_resolver_request.name }}' failed:
+      provider=hashicorp_vault; category={{ 'migration_failed' if __secret_resolver_persist_operation == 'migration'
+      else 'write_back_failed' }}; cause=invalid_response;
+      fallback_attempted={{ __secret_resolver_request_fallback_attempted | bool }};
+      required={{ __secret_resolver_request.required | default(true) | bool }}.
+      {{ secret_resolver_corrective_actions.invalid_response }}
+  when:
+    - __secret_resolver_persist_path_exists
+    - >-
+      (__secret_resolver_persist_read.secret is not defined)
+      or (__secret_resolver_persist_read.secret is not mapping)
+      or (__secret_resolver_persist_read.metadata.version is not defined)
+
+- name: Normalize persistent target state
+  ansible.builtin.set_fact:
+    __secret_resolver_persist_existing_data: >-
+      {{ __secret_resolver_persist_read.secret if __secret_resolver_persist_path_exists else {} }}
+    __secret_resolver_persist_key_exists: >-
+      {{
+        __secret_resolver_persist_path_exists
+        and __secret_resolver_persist_target.key in __secret_resolver_persist_read.secret
+      }}
+    __secret_resolver_persist_same_value: >-
+      {{
+        __secret_resolver_persist_path_exists
+        and __secret_resolver_persist_target.key in __secret_resolver_persist_read.secret
+        and __secret_resolver_persist_read.secret[__secret_resolver_persist_target.key]
+            == __secret_resolver_persist_value
+      }}
+  changed_when: false
+  no_log: true
+
+- name: Enforce non-overwrite persistence policy
+  ansible.builtin.fail:
+    msg: >-
+      secret_resolver request '{{ __secret_resolver_request.name }}' failed:
+      provider=hashicorp_vault; category={{ 'migration_failed' if __secret_resolver_persist_operation == 'migration'
+      else 'write_back_failed' }}; cause=overwrite_policy;
+      fallback_attempted={{ __secret_resolver_request_fallback_attempted | bool }};
+      required={{ __secret_resolver_request.required | default(true) | bool }}.
+      The target key already exists with a different value and overwrite=false.
+  when:
+    - __secret_resolver_persist_key_exists
+    - not __secret_resolver_persist_same_value
+    - not (__secret_resolver_persist_policy.overwrite | default(false) | bool)
+
+- name: Build CAS-protected persistent target document
+  ansible.builtin.set_fact:
+    __secret_resolver_persist_data: >-
+      {{
+        __secret_resolver_persist_existing_data
+        | combine({__secret_resolver_persist_target.key: __secret_resolver_persist_value})
+      }}
+    __secret_resolver_persist_cas: >-
+      {{
+        __secret_resolver_persist_read.metadata.version
+        if __secret_resolver_persist_path_exists
+        else 0
+      }}
+  changed_when: false
+  no_log: true
+  when: not __secret_resolver_persist_same_value
+
+- name: Write HashiCorp Vault KV version 2 target with CAS
+  when: not __secret_resolver_persist_same_value
+  block:
+    - name: Apply the CAS-protected HashiCorp Vault target
+      community.hashi_vault.vault_kv2_write:
+        url: "{{ __secret_resolver_vault_addr }}"
+        namespace: >-
+          {{ __secret_resolver_vault_namespace if (__secret_resolver_vault_namespace | length > 0) else omit }}
+        validate_certs: "{{ __secret_resolver_vault_validate_certs }}"
+        ca_cert: "{{ secret_resolver_vault_ca_cert | default(omit, true) }}"
+        timeout: "{{ secret_resolver_vault_timeout | default(omit) }}"
+        retries: "{{ secret_resolver_vault_retries | default(omit) }}"
+        auth_method: "{{ __secret_resolver_vault_auth_method }}"
+        mount_point: "{{ secret_resolver_vault_auth_mount_point | default(omit, true) }}"
+        token: "{{ secret_resolver_vault_token | default(omit, true) }}"
+        token_validate: "{{ __secret_resolver_vault_token_validate }}"
+        role_id: "{{ secret_resolver_vault_role_id | default(omit, true) }}"
+        secret_id: "{{ secret_resolver_vault_secret_id | default(omit, true) }}"
+        jwt: "{{ secret_resolver_vault_jwt | default(omit, true) }}"
+        engine_mount_point: >-
+          {{ __secret_resolver_persist_target.mount_point | default(__secret_resolver_vault_mount_point) }}
+        path: "{{ __secret_resolver_persist_target.path }}"
+        data: "{{ __secret_resolver_persist_data }}"
+        cas: "{{ __secret_resolver_persist_cas | int }}"
+        read_before_write: true
+      register: __secret_resolver_persist_write
+      diff: false
+      no_log: true
+  rescue:
+    - name: Mark the persistent Vault write as rejected
+      ansible.builtin.set_fact:
+        __secret_resolver_persist_write_failed: true
+      changed_when: false
+      no_log: true
+
+- name: Fail safely when HashiCorp Vault rejects persistence
+  ansible.builtin.fail:
+    msg: >-
+      secret_resolver request '{{ __secret_resolver_request.name }}' failed:
+      provider=hashicorp_vault; category={{ 'migration_failed' if __secret_resolver_persist_operation == 'migration'
+      else 'write_back_failed' }};
+      fallback_attempted={{ __secret_resolver_request_fallback_attempted | bool }};
+      required={{ __secret_resolver_request.required | default(true) | bool }}.
+      Check authorization, target policy, and concurrent CAS updates.
+  when:
+    - __secret_resolver_persist_write_failed | default(false) | bool
+
+- name: Reject persistence-required generation in check mode
+  ansible.builtin.fail:
+    msg: >-
+      secret_resolver request '{{ __secret_resolver_request.name }}' failed:
+      provider=hashicorp_vault; category=write_back_failed;
+      fallback_attempted={{ __secret_resolver_request_fallback_attempted | bool }};
+      required={{ __secret_resolver_request.required | default(true) | bool }};
+      check mode cannot satisfy persistence_required.
+  when:
+    - ansible_check_mode
+    - __secret_resolver_persist_operation == 'write_back'
+    - __secret_resolver_request.generation.persistence_required | default(false) | bool
+    - not __secret_resolver_persist_same_value
+
+- name: Record non-sensitive persistence outcome
+  ansible.builtin.set_fact:
+    __secret_resolver_persist_changed: >-
+      {{
+        __secret_resolver_persist_write.changed | default(false) | bool
+        and not ansible_check_mode
+      }}
+    __secret_resolver_persist_state: >-
+      {{
+        'already_present'
+        if
+        (
+          __secret_resolver_persist_same_value
+          or not (__secret_resolver_persist_write.changed | default(false) | bool)
+        )
+        else
+        (
+          'would_write'
+          if ansible_check_mode
+          else 'written'
+        )
+      }}
+  changed_when: false
+  no_log: true
+
+- name: Clear persistent secret response and document state
+  ansible.builtin.set_fact:
+    __secret_resolver_persist_data: {}
+    __secret_resolver_persist_existing_data: {}
+    __secret_resolver_persist_hvac_check: {}
+    __secret_resolver_persist_hvac_import_check: {}
+    __secret_resolver_persist_read: {}
+    __secret_resolver_persist_read_text: ""
+    __secret_resolver_persist_value: null
+    __secret_resolver_persist_write: {}
+    __secret_resolver_persist_write_failed: false
+  changed_when: false
+  no_log: true

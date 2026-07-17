@@ -6,7 +6,7 @@ Role to execute terraform via dynamic terragrunt.hcl file
 
 No.
 
-## Role Variables
+## Variables
 
 See defaults/main.yml
 
@@ -15,6 +15,7 @@ See defaults/main.yml
 No.
 
 ## Example Playbook
+
 ```
 - name: "Execute Terragrunt"
   hosts: localhost
@@ -29,8 +30,8 @@ No.
 
 ## License
 
-BSD
+MIT
 
-## Author Information
+## Author
 
 Dirk Egert

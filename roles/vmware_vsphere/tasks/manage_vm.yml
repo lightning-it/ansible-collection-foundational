@@ -2,7 +2,7 @@
 # manage_vm.yml
 # Create or delete VM(s) in vCenter.
 # - Create path acts on the current host (inventory_hostname)
-# - Destroy path can act on multiple VMs via vmware_hosts, defaulting to [inventory_hostname]
+# - Destroy path can act on multiple VMs via vmware_hosts, defaulting to the configured VM name
 
 - name: Check if VM already exists
   module_defaults:
@@ -65,6 +65,70 @@
     - manage_vm
     - create_vm
 
+- name: Check vSphere template before clone
+  module_defaults:
+    group/vmware: "{{ vmware_vsphere_module_defaults_vmware_group }}"
+  delegate_to: "{{ vmware_vsphere_delegate_to }}"
+  community.vmware.vmware_guest_info:
+    datacenter: "{{ vmware_vsphere_datacenter }}"
+    name: "{{ vmware_vsphere_template }}"
+    schema: vsphere
+    properties:
+      - config.template
+      - config.guestId
+      - config.guestFullName
+      - guest.guestId
+      - guest.guestFullName
+      - guest.toolsRunningStatus
+  register: vmware_vsphere_template_info
+  failed_when: false
+  changed_when: false
+  when:
+    - not vmware_vsphere_destroy | bool
+    - not vmware_vsphere_vm_exists | default(false) | bool
+    - vmware_vsphere_validate_template | bool
+    - vmware_vsphere_template | default('', true) | length > 0
+  tags:
+    - manage_vm
+    - create_vm
+
+- name: Validate vSphere template before clone
+  vars:
+    _vmware_vsphere_template_instance: "{{ vmware_vsphere_template_info.instance | default({}) }}"
+    _vmware_vsphere_template_config: "{{ _vmware_vsphere_template_instance.config | default({}) }}"
+    _vmware_vsphere_template_guest: "{{ _vmware_vsphere_template_instance.guest | default({}) }}"
+  ansible.builtin.assert:
+    that:
+      - _vmware_vsphere_template_instance | length > 0
+      - _vmware_vsphere_template_config.template | default(false) | bool
+      - >-
+          (vmware_vsphere_guest_id | default('', true) | length == 0)
+          or (_vmware_vsphere_template_config.guestId | default('') == vmware_vsphere_guest_id)
+    fail_msg: >-
+      Invalid vSphere template '{{ vmware_vsphere_template }}' for
+      '{{ vmware_vsphere_vm_name | default(inventory_hostname) }}'.
+      Expected an existing template with guest_id='{{ vmware_vsphere_guest_id | default('') }}'.
+      Found: template={{ _vmware_vsphere_template_config.template | default('unknown') }},
+      config_guest_id={{ _vmware_vsphere_template_config.guestId | default('unknown') }},
+      config_guest_full_name={{ _vmware_vsphere_template_config.guestFullName | default('unknown') }},
+      tools_guest_id={{ _vmware_vsphere_template_guest.guestId | default('unknown') }},
+      tools_guest_full_name={{ _vmware_vsphere_template_guest.guestFullName | default('unknown') }},
+      tools_status={{ _vmware_vsphere_template_guest.toolsRunningStatus | default('unknown') }},
+      module_msg={{ vmware_vsphere_template_info.msg | default('') | trim }}.
+    success_msg: >-
+      vSphere template '{{ vmware_vsphere_template }}' is usable:
+      guest_id={{ _vmware_vsphere_template_config.guestId | default('unknown') }},
+      guest_full_name={{ _vmware_vsphere_template_config.guestFullName | default('unknown') }},
+      tools_guest_full_name={{ _vmware_vsphere_template_guest.guestFullName | default('unknown') }}.
+  when:
+    - not vmware_vsphere_destroy | bool
+    - not vmware_vsphere_vm_exists | default(false) | bool
+    - vmware_vsphere_validate_template | bool
+    - vmware_vsphere_template | default('', true) | length > 0
+  tags:
+    - manage_vm
+    - create_vm
+
 - name: Reconfigure existing VM (hardware/networks)
   module_defaults:
     group/vmware: "{{ vmware_vsphere_module_defaults_vmware_group }}"
@@ -90,15 +154,9 @@
         (vmware_vsphere_vmware_guest_customization_spec | default('') | length > 0)
         | ternary(vmware_vsphere_vmware_guest_customization_spec, omit)
       }}
-    networks: >-
-      {{
-        (
-          vmware_vsphere_vmware_guest_networks
-            if vmware_vsphere_vmware_guest_networks is sequence
-            else [vmware_vsphere_vmware_guest_networks]
-        )
-        | default(omit)
-      }}
+    networks: "{{ vmware_vsphere_vmware_guest_networks | default(omit) }}"
+    wait_for_ip_address: "{{ vmware_vsphere_wait_for_ip | bool }}"
+    wait_for_ip_address_timeout: "{{ vmware_vsphere_wait_for_ip_timeout | int }}"
   when:
     - not vmware_vsphere_destroy | bool
     - vmware_vsphere_vm_exists | default(false) | bool
@@ -145,15 +203,9 @@
         (vmware_vsphere_vmware_guest_customization_spec | default('') | length > 0)
         | ternary(vmware_vsphere_vmware_guest_customization_spec, omit)
       }}
-    networks: >-
-      {{
-        (
-          vmware_vsphere_vmware_guest_networks
-            if vmware_vsphere_vmware_guest_networks is sequence
-            else [vmware_vsphere_vmware_guest_networks]
-        )
-        | default(omit)
-      }}
+    networks: "{{ vmware_vsphere_vmware_guest_networks | default(omit) }}"
+    wait_for_ip_address: "{{ vmware_vsphere_wait_for_ip | bool }}"
+    wait_for_ip_address_timeout: "{{ vmware_vsphere_wait_for_ip_timeout | int }}"
   when:
     - not vmware_vsphere_destroy | bool
     - not vmware_vsphere_vm_exists | default(false) | bool
@@ -172,7 +224,164 @@
     state: powered-on
   when:
     - not vmware_vsphere_destroy | bool
+    - not vmware_vsphere_is_template | bool
     - vmware_vsphere_power_on | default(true) | bool
+  tags:
+    - manage_vm
+    - create_vm
+
+- name: Ask guest OS to shut down before template conversion
+  module_defaults:
+    group/vmware: "{{ vmware_vsphere_module_defaults_vmware_group }}"
+  delegate_to: "{{ vmware_vsphere_delegate_to }}"
+  community.vmware.vmware_guest_powerstate:
+    name: "{{ vmware_vsphere_vm_name | default(inventory_hostname) }}"
+    datacenter: "{{ vmware_vsphere_datacenter | default(omit) }}"
+    folder: "{{ vmware_vsphere_folder_full_path | default(omit) }}"
+    state: shutdown-guest
+    state_change_timeout: "{{ vmware_vsphere_template_shutdown_timeout | int }}"
+  register: vmware_vsphere_template_shutdown_result
+  failed_when: false
+  when:
+    - not vmware_vsphere_destroy | bool
+    - vmware_vsphere_is_template | bool
+  tags:
+    - manage_vm
+    - create_vm
+    - template
+
+- name: Ensure VM is powered off before template conversion
+  module_defaults:
+    group/vmware: "{{ vmware_vsphere_module_defaults_vmware_group }}"
+  delegate_to: "{{ vmware_vsphere_delegate_to }}"
+  community.vmware.vmware_guest_powerstate:
+    name: "{{ vmware_vsphere_vm_name | default(inventory_hostname) }}"
+    datacenter: "{{ vmware_vsphere_datacenter | default(omit) }}"
+    folder: "{{ vmware_vsphere_folder_full_path | default(omit) }}"
+    state: powered-off
+  when:
+    - not vmware_vsphere_destroy | bool
+    - vmware_vsphere_is_template | bool
+  tags:
+    - manage_vm
+    - create_vm
+    - template
+
+- name: Mark VM as vSphere template
+  module_defaults:
+    group/vmware: "{{ vmware_vsphere_module_defaults_vmware_group }}"
+    community.vmware.vmware_guest: "{{ vmware_vsphere_module_defaults_vmware_guest }}"
+  delegate_to: "{{ vmware_vsphere_delegate_to }}"
+  community.vmware.vmware_guest:
+    name: "{{ vmware_vsphere_vm_name | default(inventory_hostname) }}"
+    state: present
+    datacenter: "{{ vmware_vsphere_datacenter | default(omit) }}"
+    folder: "{{ vmware_vsphere_folder_full_path | default(omit) }}"
+    is_template: true
+  when:
+    - not vmware_vsphere_destroy | bool
+    - vmware_vsphere_is_template | bool
+  tags:
+    - manage_vm
+    - create_vm
+    - template
+
+- name: Build expected configured guest IP list
+  ansible.builtin.set_fact:
+    vmware_vsphere_expected_guest_ips: >-
+      {{
+        (
+          vmware_vsphere_vmware_guest_networks
+            if vmware_vsphere_vmware_guest_networks is sequence
+            else [vmware_vsphere_vmware_guest_networks]
+        )
+        | select('mapping')
+        | selectattr('ip', 'defined')
+        | map(attribute='ip')
+        | map('string')
+        | reject('equalto', '')
+        | list
+      }}
+  when:
+    - not vmware_vsphere_destroy | bool
+    - not vmware_vsphere_is_template | bool
+    - vmware_vsphere_validate_configured_ips | bool
+  tags:
+    - manage_vm
+    - create_vm
+
+- name: Read VM guest IPs after customization
+  module_defaults:
+    group/vmware: "{{ vmware_vsphere_module_defaults_vmware_group }}"
+  delegate_to: "{{ vmware_vsphere_delegate_to }}"
+  community.vmware.vmware_guest_info:
+    datacenter: "{{ vmware_vsphere_datacenter }}"
+    name: "{{ vmware_vsphere_vm_name | default(inventory_hostname) }}"
+    folder: "{{ vmware_vsphere_folder_full_path | default(omit) }}"
+    schema: vsphere
+    properties:
+      - guest.hostName
+      - guest.ipAddress
+      - guest.net
+      - guest.toolsRunningStatus
+      - guest.toolsStatus
+  register: vmware_vsphere_guest_ip_info
+  when:
+    - not vmware_vsphere_destroy | bool
+    - not vmware_vsphere_is_template | bool
+    - vmware_vsphere_validate_configured_ips | bool
+    - vmware_vsphere_expected_guest_ips | default([]) | length > 0
+  tags:
+    - manage_vm
+    - create_vm
+
+- name: Build reported guest IP list
+  ansible.builtin.set_fact:
+    vmware_vsphere_reported_guest_ips: >-
+      {{
+        (
+          [vmware_vsphere_guest_ip_info.instance.guest.ipAddress | default('')]
+          + (
+            vmware_vsphere_guest_ip_info.instance.guest.net
+              | default([])
+              | map(attribute='ipAddress')
+              | flatten
+              | list
+          )
+        )
+        | map('string')
+        | reject('equalto', '')
+        | unique
+        | list
+      }}
+  when:
+    - not vmware_vsphere_destroy | bool
+    - not vmware_vsphere_is_template | bool
+    - vmware_vsphere_validate_configured_ips | bool
+    - vmware_vsphere_expected_guest_ips | default([]) | length > 0
+  tags:
+    - manage_vm
+    - create_vm
+
+- name: Validate configured static guest IPs are active
+  ansible.builtin.assert:
+    that:
+      - (vmware_vsphere_expected_guest_ips | difference(vmware_vsphere_reported_guest_ips)) | length == 0
+    fail_msg: >-
+      vSphere guest customization did not report the configured static IPs for
+      '{{ vmware_vsphere_vm_name | default(inventory_hostname) }}'.
+      Expected={{ vmware_vsphere_expected_guest_ips | join(', ') }};
+      reported={{ vmware_vsphere_reported_guest_ips | default([]) | join(', ') }};
+      hostname={{ vmware_vsphere_guest_ip_info.instance.guest.hostName | default('') }};
+      tools_status={{ vmware_vsphere_guest_ip_info.instance.guest.toolsStatus | default('') }};
+      tools_running={{ vmware_vsphere_guest_ip_info.instance.guest.toolsRunningStatus | default('') }}.
+      Verify the template supports vSphere guest customization. RHEL templates
+      normally need open-vm-tools, cloud-init and perl installed.
+  when:
+    - not vmware_vsphere_destroy | bool
+    - not vmware_vsphere_is_template | bool
+    - vmware_vsphere_validate_configured_ips | bool
+    - vmware_vsphere_expected_guest_ips | default([]) | length > 0
   tags:
     - manage_vm
     - create_vm
@@ -185,7 +394,7 @@
     datacenter: "{{ vmware_vsphere_datacenter }}"
     name: "{{ item }}"
     folder: "{{ vmware_vsphere_folder_full_path | default(omit) }}"
-  loop: "{{ vmware_hosts | default([inventory_hostname]) }}"
+  loop: "{{ vmware_hosts | default([vmware_vsphere_vm_name | default(inventory_hostname)]) }}"
   loop_control:
     label: "{{ item }}"
   register: vmware_vsphere_destroy_vm_info
@@ -245,7 +454,11 @@
     # Optional context (safe)
     datacenter: "{{ vmware_vsphere_datacenter | default(omit) }}"
     folder: "{{ vmware_vsphere_folder_full_path | default(omit) }}"
-  loop: "{{ vmware_vsphere_destroy_vm_names | default(vmware_hosts | default([inventory_hostname])) }}"
+  loop: >-
+    {{
+      vmware_vsphere_destroy_vm_names
+        | default(vmware_hosts | default([vmware_vsphere_vm_name | default(inventory_hostname)]))
+    }}
   loop_control:
     label: "{{ item }}"
   when: vmware_vsphere_destroy | bool

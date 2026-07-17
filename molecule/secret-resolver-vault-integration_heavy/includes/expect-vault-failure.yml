@@ -1,0 +1,77 @@
+---
+- name: Exercise an expected real Vault failure
+  block:
+    - name: Run the real Vault failure case
+      ansible.builtin.include_role:
+        name: lit.foundational.secret_resolver
+        apply:
+          no_log: true
+      vars:
+        secret_resolver_provider: hashicorp_vault
+        secret_resolver_provider_order: >-
+          {{ secret_resolver_vault_failure_case.provider_order | default([]) }}
+        secret_resolver_allow_fallback: >-
+          {{ secret_resolver_vault_failure_case.allow_fallback | default(false) }}
+        secret_resolver_fallback_on: >-
+          {{ secret_resolver_vault_failure_case.fallback_on | default(['secret_not_found', 'secret_key_missing']) }}
+        secret_resolver_vault_addr: >-
+          {{ secret_resolver_vault_failure_case.addr | default(secret_resolver_vault_test_addr) }}
+        secret_resolver_vault_token: >-
+          {{ secret_resolver_vault_failure_case.token | default('molecule-root-token') }}
+        secret_resolver_vault_auth_method: >-
+          {{ secret_resolver_vault_failure_case.auth_method | default('token') }}
+        secret_resolver_vault_role_id: >-
+          {{ secret_resolver_vault_failure_case.role_id | default('') }}
+        secret_resolver_vault_secret_id: >-
+          {{ secret_resolver_vault_failure_case.secret_id | default('') }}
+        secret_resolver_vault_token_validate: >-
+          {{ secret_resolver_vault_failure_case.token_validate | default(true) }}
+        secret_resolver_vault_validate_certs: false
+        secret_resolver_vault_timeout: 1
+        secret_resolver_vault_retries: 0
+        secret_resolver_requests:
+          - "{{ secret_resolver_vault_failure_case.request }}"
+      no_log: true
+
+    - name: Fail if the real Vault failure case unexpectedly succeeded
+      ansible.builtin.fail:
+        msg: Expected categorized Vault failure did not occur.
+  rescue:
+    - name: Derive the safe observed Vault failure category
+      ansible.builtin.set_fact:
+        secret_resolver_vault_observed_category: >-
+          {{
+            ansible_failed_result.msg
+            | regex_findall('category=([a-z_]+)')
+            | first
+            | default('missing')
+          }}
+      changed_when: false
+      no_log: true
+
+    - name: Report a Vault failure taxonomy mismatch safely
+      ansible.builtin.fail:
+        msg: >-
+          Vault failure taxonomy mismatch for {{ secret_resolver_vault_failure_case.name }}:
+          expected={{ secret_resolver_vault_failure_case.category }};
+          observed={{ secret_resolver_vault_observed_category }}.
+      when: secret_resolver_vault_observed_category != secret_resolver_vault_failure_case.category
+
+    - name: Assert the complete sanitized Vault failure contract
+      ansible.builtin.assert:
+        that:
+          - >-
+            ("secret_resolver request '" ~ secret_resolver_vault_failure_case.name ~ "' failed:")
+            in ansible_failed_result.msg
+          - '''provider=hashicorp_vault;'' in ansible_failed_result.msg'
+          - >-
+            ('category=' ~ secret_resolver_vault_failure_case.category ~ ';')
+            in ansible_failed_result.msg
+          - '''fallback_attempted=False;'' in ansible_failed_result.msg'
+          - ansible_failed_result.msg is search('required=(?:True|true)\.')
+          - secret_resolver_vault_failure_case.corrective_fragment in ansible_failed_result.msg
+          - '''invalid-molecule-token'' not in ansible_failed_result.msg'
+          - '''molecule-denied-token'' not in ansible_failed_result.msg'
+          - '''environment-fallback-input'' not in ansible_failed_result.msg'
+        quiet: true
+      no_log: true

@@ -1,0 +1,46 @@
+---
+- name: Initialize expected-failure outcome
+  ansible.builtin.set_fact:
+    secret_resolver_molecule_failure_outcomes: >-
+      {{
+        secret_resolver_molecule_failure_outcomes
+        | combine({secret_resolver_molecule_failure_case.name: false})
+      }}
+  changed_when: false
+
+- name: Exercise an expected secret resolver failure
+  block:
+    - name: Run the failure case
+      ansible.builtin.include_role:
+        name: lit.foundational.secret_resolver
+        apply:
+          no_log: true
+      vars:
+        secret_resolver_provider: >-
+          {{ secret_resolver_molecule_failure_case.provider | default('runtime') }}
+        secret_resolver_provider_order: >-
+          {{ secret_resolver_molecule_failure_case.provider_order | default([]) }}
+        secret_resolver_allow_fallback: >-
+          {{ secret_resolver_molecule_failure_case.allow_fallback | default(false) }}
+        secret_resolver_phase: >-
+          {{ secret_resolver_molecule_failure_case.phase | default('operational') }}
+        secret_resolver_vault_addr: https://vault.molecule.invalid
+        secret_resolver_requests: "{{ secret_resolver_molecule_failure_case.requests }}"
+      no_log: true
+  rescue:
+    - name: Record the expected failure without retaining failure details
+      ansible.builtin.set_fact:
+        secret_resolver_molecule_failure_outcomes: >-
+          {{
+            secret_resolver_molecule_failure_outcomes
+            | combine(
+                {
+                  secret_resolver_molecule_failure_case.name: (
+                    secret_resolver_molecule_failure_case.expected_fragment
+                    in (ansible_failed_result | to_json)
+                  )
+                }
+              )
+          }}
+      changed_when: false
+      no_log: true

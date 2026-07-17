@@ -1,0 +1,38 @@
+---
+- name: Overwrite private secret-bearing variables
+  ansible.builtin.set_fact:
+    __secret_resolver_attempt_value: null
+    __secret_resolver_environment_candidate: null
+    __secret_resolver_generated_raw: null
+    __secret_resolver_generation_options: {}
+    __secret_resolver_hvac_check: {}
+    __secret_resolver_hvac_import_check: {}
+    __secret_resolver_hvac_available: false
+    __secret_resolver_onepassword_items: []
+    __secret_resolver_onepassword_item_shape_valid: false
+    __secret_resolver_onepassword_matching_fields: []
+    __secret_resolver_onepassword_options: {}
+    __secret_resolver_onepassword_version: {}
+    __secret_resolver_onepassword_whoami: {}
+    __secret_resolver_onepassword_whoami_argv: []
+    __secret_resolver_persist_data: {}
+    __secret_resolver_persist_existing_data: {}
+    __secret_resolver_persist_hvac_check: {}
+    __secret_resolver_persist_hvac_import_check: {}
+    __secret_resolver_persist_hvac_available: false
+    __secret_resolver_persist_read: {}
+    __secret_resolver_persist_read_text: ""
+    __secret_resolver_persist_value: null
+    __secret_resolver_persist_write: {}
+    __secret_resolver_persist_write_failed: false
+    __secret_resolver_request_value: null
+    __secret_resolver_request_attempt_failures: []
+    __secret_resolver_requests: []
+    __secret_resolver_result: {}
+    __secret_resolver_metadata: {}
+    __secret_resolver_validation_target: {}
+    __secret_resolver_value_to_validate: null
+    __secret_resolver_vault_failure_text: ""
+    __secret_resolver_vault_read: {}
+  changed_when: false
+  no_log: true

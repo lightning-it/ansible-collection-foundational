@@ -1,0 +1,178 @@
+---
+- name: Initialize current request state
+  ansible.builtin.set_fact:
+    __secret_resolver_request_provider_order: >-
+      {{
+        [__secret_resolver_request.migration.source_provider]
+        if (__secret_resolver_request.migration.enabled | default(false) | bool)
+        else
+        (
+          (
+            __secret_resolver_request.provider_order
+            | default(__secret_resolver_provider_order)
+          )
+          +
+          (
+            ['generated']
+            if
+            (
+              __secret_resolver_request.generation.enabled | default(false) | bool
+              and 'generated' not in
+              (__secret_resolver_request.provider_order | default(__secret_resolver_provider_order))
+            )
+            else []
+          )
+        )
+      }}
+    __secret_resolver_request_allow_fallback: >-
+      {{
+        false
+        if (__secret_resolver_request.migration.enabled | default(false) | bool)
+        else (__secret_resolver_request.allow_fallback | default(__secret_resolver_allow_fallback) | bool)
+      }}
+    __secret_resolver_request_fallback_on: >-
+      {{
+        []
+        if (__secret_resolver_request.migration.enabled | default(false) | bool)
+        else (__secret_resolver_request.fallback_on | default(__secret_resolver_fallback_on))
+      }}
+    __secret_resolver_request_resolved: false
+    __secret_resolver_request_value: null
+    __secret_resolver_request_provider: null
+    __secret_resolver_request_generated: false
+    __secret_resolver_request_written_back: false
+    __secret_resolver_request_migrated: false
+    __secret_resolver_request_persistence_state: not_requested
+    __secret_resolver_request_fallback_used: false
+    __secret_resolver_request_fallback_attempted: false
+    __secret_resolver_request_attempt_count: 0
+    __secret_resolver_request_attempted_providers: []
+    __secret_resolver_request_attempt_failures: []
+    __secret_resolver_request_last_failure: secret_not_found
+    __secret_resolver_request_last_provider: null
+  changed_when: false
+  no_log: true
+
+- name: Attempt configured providers in deterministic order
+  ansible.builtin.include_tasks: attempt_provider.yml
+  loop: "{{ __secret_resolver_request_provider_order }}"
+  loop_control:
+    loop_var: __secret_resolver_attempt_provider
+    label: "provider attempt"
+  no_log: true
+
+- name: Apply an explicitly configured default after ordinary absence
+  ansible.builtin.set_fact:
+    __secret_resolver_request_value: "{{ __secret_resolver_request.default }}"
+    __secret_resolver_request_provider: default
+    __secret_resolver_request_resolved: true
+    __secret_resolver_request_last_failure: null
+  changed_when: false
+  no_log: true
+  when:
+    - not __secret_resolver_request_resolved
+    - __secret_resolver_request_last_failure in secret_resolver_absence_categories
+    - not (__secret_resolver_request.migration.enabled | default(false) | bool)
+    - '''default'' in __secret_resolver_request'
+
+- name: Validate an explicitly configured default
+  ansible.builtin.include_tasks: validate_resolved_value.yml
+  vars:
+    __secret_resolver_value_to_validate: "{{ __secret_resolver_request_value }}"
+  when:
+    - __secret_resolver_request_resolved
+    - __secret_resolver_request_provider == 'default'
+  no_log: true
+
+- name: Reject an invalid explicitly configured default
+  ansible.builtin.set_fact:
+    __secret_resolver_request_resolved: false
+    __secret_resolver_request_last_failure: validation_failed
+    __secret_resolver_request_last_provider: default
+  changed_when: false
+  no_log: true
+  when:
+    - __secret_resolver_request_provider == 'default'
+    - __secret_resolver_value_validation_error != 'valid'
+
+- name: Fail closed for a provider or validation error
+  ansible.builtin.fail:
+    msg: >-
+      secret_resolver request '{{ __secret_resolver_request.name }}' failed:
+      provider={{ __secret_resolver_request_last_provider | default('none', true) }};
+      category={{ __secret_resolver_request_last_failure }};
+      fallback_attempted={{ __secret_resolver_request_fallback_attempted | bool }};
+      required={{ __secret_resolver_request.required | default(true) | bool }}.
+      {{ secret_resolver_corrective_actions[__secret_resolver_request_last_failure] }}
+  when:
+    - not __secret_resolver_request_resolved
+    - __secret_resolver_request_last_failure not in secret_resolver_absence_categories
+
+- name: Fail an unresolved required request
+  ansible.builtin.fail:
+    msg: >-
+      secret_resolver request '{{ __secret_resolver_request.name }}' failed:
+      provider={{ __secret_resolver_request_last_provider | default('none', true) }};
+      category={{ __secret_resolver_request_last_failure }};
+      fallback_attempted={{ __secret_resolver_request_fallback_attempted | bool }};
+      required=true. {{ secret_resolver_corrective_actions[__secret_resolver_request_last_failure] }}
+  when:
+    - not __secret_resolver_request_resolved
+    - __secret_resolver_request.required | default(true) | bool
+
+- name: Persist a generated secret when write-back is enabled
+  ansible.builtin.include_tasks: write_back.yml
+  when:
+    - __secret_resolver_request_resolved
+    - __secret_resolver_request_generated
+    - __secret_resolver_request.write_back.enabled | default(false) | bool
+  no_log: true
+
+- name: Migrate a resolved source secret when migration is enabled
+  ansible.builtin.include_tasks: migrate.yml
+  when:
+    - __secret_resolver_request_resolved
+    - __secret_resolver_request.migration.enabled | default(false) | bool
+  no_log: true
+
+- name: Add resolved secret to normalized result
+  ansible.builtin.set_fact:
+    __secret_resolver_result: >-
+      {{
+        __secret_resolver_result
+        | combine({__secret_resolver_request.name: __secret_resolver_request_value})
+      }}
+  changed_when: false
+  no_log: true
+  when: __secret_resolver_request_resolved
+
+- name: Add non-sensitive request metadata
+  ansible.builtin.set_fact:
+    __secret_resolver_metadata: >-
+      {{
+        __secret_resolver_metadata
+        | combine(
+            {
+              __secret_resolver_request.name: {
+                'resolved': __secret_resolver_request_resolved | bool,
+                'provider': __secret_resolver_request_provider if __secret_resolver_request_resolved else none,
+                'generated': __secret_resolver_request_generated | bool,
+                'written_back': __secret_resolver_request_written_back | bool,
+                'migrated': __secret_resolver_request_migrated | bool,
+                'persistence_state': __secret_resolver_request_persistence_state,
+                'fallback_used': __secret_resolver_request_fallback_used | bool,
+                'fallback_attempted': __secret_resolver_request_fallback_attempted | bool,
+                'attempted_providers': __secret_resolver_request_attempted_providers,
+                'attempt_failures': __secret_resolver_request_attempt_failures,
+                'failure_category': (
+                  none if __secret_resolver_request_resolved else __secret_resolver_request_last_failure
+                ),
+                'required': __secret_resolver_request.required | default(true) | bool,
+                'sensitive': __secret_resolver_request.sensitive | default(true) | bool
+              }
+            },
+            recursive=true
+          )
+      }}
+  changed_when: false
+  no_log: true

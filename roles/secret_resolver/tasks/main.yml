@@ -1,0 +1,25 @@
+---
+- name: Run the secret resolver controller transaction
+  delegate_to: localhost
+  become: false
+  run_once: true
+  block:
+    - name: Clear public outputs before resolution
+      ansible.builtin.set_fact:
+        secret_resolver_result: {}
+        secret_resolver_metadata: {}
+        cacheable: false
+      changed_when: false
+      no_log: true
+
+    - name: Validate secret resolver configuration
+      ansible.builtin.include_tasks: validate.yml
+
+    - name: Resolve configured secret requests
+      ansible.builtin.include_tasks: resolve.yml
+
+    - name: Publish normalized secret resolver outputs
+      ansible.builtin.include_tasks: finalize.yml
+  always:
+    - name: Clear role-private secret-bearing state
+      ansible.builtin.include_tasks: cleanup.yml

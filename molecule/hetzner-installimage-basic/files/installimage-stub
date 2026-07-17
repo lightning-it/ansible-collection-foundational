@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+set -euo pipefail
+trap 'printf "installimage-stub failed at line %s\n" "$LINENO" >&2' ERR
+
+fixture_root=/tmp/lit-hetzner-installimage-test
+installimage_workdir=/installimage.M0L3C
+config_path=""
+post_install_path=""
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -a)
+      shift
+      ;;
+    -c)
+      config_path="$2"
+      shift 2
+      ;;
+    -x)
+      post_install_path="$2"
+      shift 2
+      ;;
+    *)
+      printf 'Unexpected installimage-stub argument: %s\n' "$1" >&2
+      exit 2
+      ;;
+  esac
+done
+
+test -n "$config_path"
+test -r "$config_path"
+test "$(stat -c %a "$config_path")" = "600"
+grep -q '^DRIVE1 /dev/lit-system$' "$config_path"
+! grep -q '/dev/lit-preserve' "$config_path"
+grep -q '^PART lvm vg0 all crypt$' "$config_path"
+grep -q '^CRYPTPASSWORD ' "$config_path"
+grep -q '^TAKE_OVER_RESCUE_SYSTEM_SSH_PUBLIC_KEYS yes$' "$config_path"
+test "$post_install_path" = "$fixture_root/post-install.sh"
+
+rm -rf "$installimage_workdir"
+mkdir -m 0700 "$installimage_workdir"
+mkdir -p "$fixture_root/installed"
+cp "$config_path" "$installimage_workdir/install.conf"
+/post-mount
+cp "$installimage_workdir/install.conf" "$fixture_root/installed/installimage.conf"
+rm -rf "$installimage_workdir"
+
+cp "$config_path" /autosetup
+mv /autosetup /autosetup.bak-molecule
+ln -s "$post_install_path" /post-install
+
+printf '%s\n' "$config_path" > "$fixture_root/config-path"
+printf '%s\n' "$post_install_path" > "$fixture_root/post-install-path"
+touch "$fixture_root/installimage-called"
+
+if [ -e "$fixture_root/force-failure" ]; then
+  exit 3
+fi

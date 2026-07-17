@@ -1,0 +1,30 @@
+---
+- name: Validate secret backend variables
+  ansible.builtin.assert:
+    that:
+      - secret_backend_enabled is boolean
+      - secret_backend_name in secret_backend_allowed_backends
+      - secret_backend_allowed_backends is sequence
+      - secret_backend_allowed_backends is not string
+    fail_msg: "Secret backend variables are missing or invalid."
+  tags: always
+
+- name: Validate HashiCorp Vault backend variables
+  ansible.builtin.assert:
+    that:
+      - secret_backend_vault_addr | default('', true) | trim | length > 0
+      - secret_backend_vault_kv_mount_point | default('', true) | trim | length > 0
+      - secret_backend_vault_validate_certs is boolean
+      - secret_backend_vault_auth_method in ['token', 'approle']
+      - >-
+        (secret_backend_vault_auth_method == 'token'
+         and secret_backend_vault_token | default('', true) | trim | length > 0)
+        or
+        (secret_backend_vault_auth_method == 'approle'
+         and secret_backend_vault_role_id | default('', true) | trim | length > 0
+         and secret_backend_vault_secret_id | default('', true) | trim | length > 0)
+    fail_msg: "HashiCorp Vault backend requires address, KV mount, and token or AppRole credentials."
+  when:
+    - secret_backend_enabled | bool
+    - secret_backend_name == 'hashicorp_vault'
+  tags: always

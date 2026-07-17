@@ -1,0 +1,26 @@
+---
+galaxy_info:
+  role_name: vmware_vsphere_guest_bootstrap
+  namespace: lit
+  author: Lightning IT
+  description: Bootstrap Linux vSphere guests through VMware Tools so clones expose Ansible SSH access.
+  company: Lightning IT
+  license: MIT
+  min_ansible_version: "2.16"
+
+  platforms:
+    - name: EL
+      versions:
+        - all
+    - name: Ubuntu
+      versions:
+        - all
+
+  galaxy_tags:
+    - modulix
+    - vmware
+    - vsphere
+    - bootstrap
+    - template
+
+dependencies: []

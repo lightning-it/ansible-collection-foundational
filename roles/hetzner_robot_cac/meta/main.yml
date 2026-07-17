@@ -1,0 +1,20 @@
+---
+galaxy_info:
+  role_name: hetzner_robot_cac
+  namespace: lit
+  author: Lightning IT
+  description: Declaratively reconcile Hetzner Robot configuration-as-code resources.
+  company: Lightning IT
+  license: MIT
+  min_ansible_version: "2.18"
+  platforms:
+    - name: GenericLinux
+      versions:
+        - all
+  galaxy_tags:
+    - automation
+    - cloud
+    - hetzner
+    - infrastructure
+
+dependencies: []

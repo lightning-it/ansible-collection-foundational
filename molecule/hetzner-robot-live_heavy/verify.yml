@@ -1,0 +1,42 @@
+---
+- name: Verify the read-only live Hetzner Robot audit
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - live-vars
+  tasks:
+    - name: Recheck the protected live Robot gate
+      ansible.builtin.assert:
+        that:
+          - hetzner_robot_live_enabled | lower == 'true'
+          - hetzner_robot_live_user | trim | length > 0
+          - hetzner_robot_live_password | length > 0
+          - hetzner_robot_live_server_ip | trim | length > 0
+          - hetzner_robot_live_server_name | trim | length > 0
+        fail_msg: "The live Robot verification gate is incomplete."
+        quiet: true
+      changed_when: false
+      no_log: true
+
+    - name: Query the selected server directly with the official info module
+      community.hrobot.server_info:
+        hetzner_user: "{{ hetzner_robot_live_user }}"
+        hetzner_password: "{{ hetzner_robot_live_password }}"
+        server_name: "{{ hetzner_robot_live_server_name }}"
+        full_info: false
+        rate_limit_retry_timeout: 120
+      register: hetzner_robot_live_server_info
+      changed_when: false
+      no_log: true
+
+    - name: Require the exact selected live server identity
+      ansible.builtin.assert:
+        that:
+          - hetzner_robot_live_server_info.servers | length == 1
+          - hetzner_robot_live_server_info.servers[0].server_ip == hetzner_robot_live_server_ip
+          - not (hetzner_robot_live_server_info.servers[0].cancelled | bool)
+          - hetzner_robot_live_server_info.servers[0].status == 'ready'
+        quiet: true
+      changed_when: false
+      no_log: true

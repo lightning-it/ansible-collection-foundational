@@ -1,0 +1,16 @@
+---
+- name: Initialize secret resolver output state
+  ansible.builtin.set_fact:
+    __secret_resolver_result: {}
+    __secret_resolver_metadata: {}
+  changed_when: false
+  no_log: true
+
+- name: Resolve each normalized secret request
+  ansible.builtin.include_tasks: resolve_request.yml
+  loop: "{{ __secret_resolver_requests }}"
+  loop_control:
+    loop_var: __secret_resolver_request
+    index_var: __secret_resolver_request_index
+    label: "request #{{ __secret_resolver_request_index + 1 }}"
+  no_log: true

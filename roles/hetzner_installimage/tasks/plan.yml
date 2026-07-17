@@ -1,0 +1,151 @@
+---
+- name: Render post-mount password sanitizer in memory
+  ansible.builtin.set_fact:
+    hetzner_installimage_post_mount_sanitizer_content: >-
+      {{ lookup('ansible.builtin.template', 'post-mount-sanitize.sh.j2') }}
+  changed_when: false
+
+- name: Calculate post-mount password sanitizer hash
+  ansible.builtin.set_fact:
+    hetzner_installimage_post_mount_sanitizer_sha256: >-
+      {{ hetzner_installimage_post_mount_sanitizer_content | hash('sha256') }}
+  changed_when: false
+
+- name: Render redacted installimage configuration in memory
+  vars:
+    hetzner_installimage_template_crypt_password: "<redacted>"
+  ansible.builtin.set_fact:
+    hetzner_installimage_redacted_configuration: >-
+      {{ lookup('ansible.builtin.template', 'installimage.conf.j2') }}
+  changed_when: false
+
+- name: Build stable secret-free installation plan payload
+  ansible.builtin.set_fact:
+    hetzner_installimage_plan_payload:
+      hostname: "{{ hetzner_installimage_hostname }}"
+      identity:
+        public_ipv4: "{{ hetzner_installimage_expected_identity.public_ipv4 }}"
+        gateway_ipv4: "{{ hetzner_installimage_expected_identity.gateway_ipv4 }}"
+        prefix_length: "{{ hetzner_installimage_expected_identity.prefix_length | int }}"
+        primary_interface: "{{ hetzner_installimage_live_default_route.dev }}"
+        primary_mac: "{{ hetzner_installimage_live_primary_link.address | lower }}"
+        boot_mode: "{{ hetzner_installimage_live_boot_mode }}"
+        system_uuid: "{{ hetzner_installimage_live_system_uuid }}"
+      installimage:
+        path: "{{ hetzner_installimage_binary }}"
+        sha256: "{{ hetzner_installimage_binary_stat.stat.checksum }}"
+      image:
+        path: "{{ hetzner_installimage_image }}"
+        sha256: "{{ hetzner_installimage_image_stat.stat.checksum }}"
+      post_install_script:
+        path: "{{ hetzner_installimage_post_install_script_path }}"
+        sha256: >-
+          {{
+            hetzner_installimage_post_install_script_stat.stat.checksum
+            | default('')
+          }}
+      rescue_ssh_public_keys:
+        take_over: "{{ hetzner_installimage_take_over_rescue_ssh_public_keys | bool }}"
+        path: >-
+          {{
+            hetzner_installimage_rescue_ssh_public_keys_path
+            if (hetzner_installimage_take_over_rescue_ssh_public_keys | bool)
+            else ''
+          }}
+        sha256: >-
+          {{
+            hetzner_installimage_rescue_ssh_public_keys_stat.stat.checksum
+            | default('')
+          }}
+      post_mount_sanitizer:
+        enabled: "{{ hetzner_installimage_encryption_requested | bool }}"
+        path: >-
+          {{
+            hetzner_installimage_post_mount_sanitizer_path
+            if (hetzner_installimage_encryption_requested | bool)
+            else ''
+          }}
+        version: "{{ hetzner_installimage_post_mount_sanitizer_version | int }}"
+        sha256: >-
+          {{
+            hetzner_installimage_post_mount_sanitizer_sha256
+            if (hetzner_installimage_encryption_requested | bool)
+            else ''
+          }}
+        success_marker_path: >-
+          {{
+            hetzner_installimage_post_mount_success_marker_path
+            if (hetzner_installimage_encryption_requested | bool)
+            else ''
+          }}
+        success_marker_content: >-
+          {{
+            'sanitized-v' ~ (hetzner_installimage_post_mount_sanitizer_version | string)
+            if (hetzner_installimage_encryption_requested | bool)
+            else ''
+          }}
+      installed_config_validation_path: "{{ hetzner_installimage_installed_config_validation_path }}"
+      system_disks: "{{ hetzner_installimage_system_disks | sort(attribute='serial') }}"
+      preserved_disks: "{{ hetzner_installimage_preserved_disks | sort(attribute='serial') }}"
+      configuration_redacted: "{{ hetzner_installimage_redacted_configuration }}"
+  changed_when: false
+
+- name: Canonicalize secret-free installation plan
+  ansible.builtin.set_fact:
+    hetzner_installimage_plan_canonical: >-
+      {{ hetzner_installimage_plan_payload | to_json(sort_keys=true) }}
+  changed_when: false
+
+- name: Calculate installation plan approval hash
+  ansible.builtin.set_fact:
+    hetzner_installimage_plan_sha256: "{{ hetzner_installimage_plan_canonical | hash('sha256') }}"
+  changed_when: false
+
+- name: Publish installation plan
+  ansible.builtin.set_fact:
+    hetzner_installimage_plan:
+      sha256: "{{ hetzner_installimage_plan_sha256 }}"
+      required_confirmation: >-
+        ERASE:{{ hetzner_installimage_hostname }}:{{ hetzner_installimage_plan_sha256 }}
+      image_sha256: "{{ hetzner_installimage_image_stat.stat.checksum }}"
+      installimage_sha256: "{{ hetzner_installimage_binary_stat.stat.checksum }}"
+      post_install_script_sha256: >-
+        {{ hetzner_installimage_post_install_script_stat.stat.checksum | default('') }}
+      rescue_ssh_public_keys_sha256: >-
+        {{ hetzner_installimage_rescue_ssh_public_keys_stat.stat.checksum | default('') }}
+      post_mount_sanitizer_version: "{{ hetzner_installimage_post_mount_sanitizer_version | int }}"
+      post_mount_sanitizer_sha256: >-
+        {{
+          hetzner_installimage_post_mount_sanitizer_sha256
+          if (hetzner_installimage_encryption_requested | bool)
+          else ''
+        }}
+      system_disks: "{{ hetzner_installimage_system_disks | sort(attribute='serial') }}"
+      preserved_disks: "{{ hetzner_installimage_preserved_disks | sort(attribute='serial') }}"
+      configuration_redacted: "{{ hetzner_installimage_redacted_configuration }}"
+    hetzner_installimage_result:
+      action: "{{ hetzner_installimage_action }}"
+      plan_sha256: "{{ hetzner_installimage_plan_sha256 }}"
+      install_complete: false
+      reboot_performed: false
+  changed_when: false
+
+- name: Show safe installation plan summary
+  ansible.builtin.debug:
+    msg:
+      action: "{{ hetzner_installimage_action }}"
+      hostname: "{{ hetzner_installimage_hostname }}"
+      public_ipv4: "{{ hetzner_installimage_expected_identity.public_ipv4 }}"
+      image_sha256: "{{ hetzner_installimage_plan.image_sha256 }}"
+      post_install_script_sha256: "{{ hetzner_installimage_plan.post_install_script_sha256 }}"
+      rescue_ssh_public_keys_sha256: "{{ hetzner_installimage_plan.rescue_ssh_public_keys_sha256 }}"
+      post_mount_sanitizer_sha256: "{{ hetzner_installimage_plan.post_mount_sanitizer_sha256 }}"
+      system_disks: >-
+        {{ hetzner_installimage_system_disks | map(attribute='serial') | list }}
+      preserved_disks: >-
+        {{ hetzner_installimage_preserved_disks | map(attribute='serial') | list }}
+      plan_sha256: "{{ hetzner_installimage_plan.sha256 }}"
+      required_confirmation: "{{ hetzner_installimage_plan.required_confirmation }}"
+      note: "No reboot is performed by this role."
+  changed_when: false
+  when: hetzner_installimage_show_plan | bool

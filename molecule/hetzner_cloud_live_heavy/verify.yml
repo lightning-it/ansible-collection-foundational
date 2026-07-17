@@ -1,0 +1,109 @@
+---
+- name: Verify disposable live Hetzner Cloud infrastructure
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - live-vars
+  tasks:
+    - name: Enforce the live-test verification gate
+      ansible.builtin.assert:
+        that:
+          - hetzner_cloud_live_enabled | lower == 'true'
+          - hetzner_cloud_live_token_present | bool
+          - hetzner_cloud_live_test_id is match('^[a-z0-9][a-z0-9-]{7,23}$')
+          - '''mgmt01'' not in hetzner_cloud_live_name'
+        fail_msg: "Refusing live verification without the complete safe test gate."
+        quiet: true
+      changed_when: false
+      no_log: true
+
+    - name: Read the disposable Primary IPv4
+      hetzner.hcloud.primary_ip_info:
+        name: "{{ hetzner_cloud_live_name }}-primary"
+      register: hetzner_cloud_live_verify_primary
+      no_log: true
+
+    - name: Read the disposable server
+      hetzner.hcloud.server_info:
+        name: "{{ hetzner_cloud_live_name }}-server"
+      register: hetzner_cloud_live_verify_server
+      no_log: true
+
+    - name: Read the disposable Floating IPv4
+      hetzner.hcloud.floating_ip_info:
+        name: "{{ hetzner_cloud_live_name }}-floating"
+      register: hetzner_cloud_live_verify_floating
+      no_log: true
+
+    - name: Verify live identities and IPv4-only state
+      ansible.builtin.assert:
+        that:
+          - hetzner_cloud_live_verify_primary.hcloud_primary_ip_info | length == 1
+          - hetzner_cloud_live_verify_server.hcloud_server_info | length == 1
+          - hetzner_cloud_live_verify_floating.hcloud_floating_ip_info | length == 1
+          - >-
+            hetzner_cloud_live_verify_server.hcloud_server_info[0].ipv4_address
+            == hetzner_cloud_live_verify_primary.hcloud_primary_ip_info[0].ip
+          - hetzner_cloud_live_verify_server.hcloud_server_info[0].ipv6 is none
+          - >-
+            hetzner_cloud_live_verify_floating.hcloud_floating_ip_info[0].ip
+            is match('^[0-9]+(?:\.[0-9]+){3}$')
+          - >-
+            hetzner_cloud_live_verify_server.hcloud_server_info[0].private_networks_info
+            | selectattr('ip', 'equalto', '10.254.1.10')
+            | list
+            | length == 1
+        quiet: true
+      changed_when: false
+      no_log: true
+
+    - name: Write a disposable official dynamic-inventory source
+      ansible.builtin.copy:
+        dest: "{{ hetzner_cloud_live_inventory_path }}"
+        mode: "0600"
+        content: |
+          ---
+          plugin: hetzner.hcloud.hcloud
+          label_selector: "managed-by=molecule,test-id={{ hetzner_cloud_live_test_id }},fqdn"
+          connect_with: public_ipv4
+          hostname: "{% raw %}{{ hcloud_labels.fqdn | default(hcloud_name, true) }}{% endraw %}"
+          groups:
+            molecule_hosts: "{% raw %}hcloud_labels.role | default('') == 'molecule'{% endraw %}"
+          strict: true
+      no_log: true
+
+    - name: Resolve the live server through official dynamic inventory
+      ansible.builtin.command:
+        argv:
+          - ansible-inventory
+          - --inventory
+          - "{{ hetzner_cloud_live_inventory_path }}"
+          - --list
+      register: hetzner_cloud_live_inventory_command
+      changed_when: false
+      no_log: true
+
+    - name: Verify FQDN inventory naming and composed grouping
+      ansible.builtin.assert:
+        that:
+          - >-
+            hetzner_cloud_live_name ~ '.example.com'
+            in (hetzner_cloud_live_inventory_command.stdout | from_json)['_meta']['hostvars']
+          - >-
+            hetzner_cloud_live_name ~ '.example.com'
+            in (hetzner_cloud_live_inventory_command.stdout | from_json)['molecule_hosts']['hosts']
+          - >-
+            (hetzner_cloud_live_inventory_command.stdout | from_json)['molecule_hosts']['hosts']
+            == [hetzner_cloud_live_name ~ '.example.com']
+          - >-
+            (
+              (hetzner_cloud_live_inventory_command.stdout | from_json)['_meta']['hostvars']
+              | dict2items
+              | map(attribute='key')
+              | list
+            )
+            == [hetzner_cloud_live_name ~ '.example.com']
+        quiet: true
+      changed_when: false
+      no_log: true

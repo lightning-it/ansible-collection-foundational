@@ -1,0 +1,24 @@
+---
+# Explicit one-shot action. The safe default performs no Robot API operation.
+hetzner_robot_ops_action: none
+
+# Robot API credentials. Resolve these outside this role and inject them securely.
+hetzner_robot_ops_hetzner_user: ""
+hetzner_robot_ops_hetzner_password: ""
+
+# Exactly one dedicated server is targeted by each role invocation.
+hetzner_robot_ops_server_number: 0
+hetzner_robot_ops_server_ip: ""
+hetzner_robot_ops_rate_limit_retry_timeout: 60
+
+# Boot configuration actions require the exact phrase "BOOT <server_number>".
+hetzner_robot_ops_boot_confirmation: ""
+hetzner_robot_ops_rescue_os: linux
+hetzner_robot_ops_rescue_authorized_keys: []
+
+# Reset actions require the exact phrase "RESET <server_number>".
+hetzner_robot_ops_reset_confirmation: ""
+hetzner_robot_ops_reset_type: software
+
+# Manual reset additionally requires the exact phrase "MANUAL RESET <server_number>".
+hetzner_robot_ops_manual_reset_confirmation: ""

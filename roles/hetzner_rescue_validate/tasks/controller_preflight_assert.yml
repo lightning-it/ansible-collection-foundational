@@ -1,0 +1,93 @@
+---
+- name: Validate controller preflight trust and observation declarations
+  ansible.builtin.assert:
+    that:
+      - hetzner_rescue_validate_only | bool or not ansible_check_mode
+      - hetzner_rescue_validate_known_hosts_path | trim | length > 0
+      - hetzner_rescue_validate_known_hosts_path is not search('[\r\n]')
+      - hetzner_rescue_validate_public_ipv4 is match('^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$')
+      - >-
+        hetzner_rescue_validate_public_ipv4.split('.')
+        | map('int')
+        | select('gt', 255)
+        | list
+        | length == 0
+      - hetzner_rescue_validate_ssh_ed25519_sha256 is match('^SHA256:[A-Za-z0-9+/]{43}$')
+      - hetzner_rescue_validate_controller_required_ssh_public_keys | length > 0
+      - >-
+        hetzner_rescue_validate_controller_required_ssh_public_keys | unique | length
+        == hetzner_rescue_validate_controller_required_ssh_public_keys | length
+      - hetzner_rescue_validate_controller_dns_resolver | trim | length > 0
+      - hetzner_rescue_validate_controller_dns_resolver is not search('[\s@]')
+      - hetzner_rescue_validate_controller_dns_resolver | length <= 253
+      - hetzner_rescue_validate_controller_dns_records | length > 0
+    fail_msg: >-
+      Controller preflight requires one safe trust destination and pin, unique required SSH public keys, an explicit
+      DNS resolver, and at least one authoritative DNS observation.
+    quiet: true
+  changed_when: false
+  no_log: true
+  delegate_to: localhost
+  become: false
+  tags: always
+
+- name: Validate required controller SSH public-key schemas
+  ansible.builtin.assert:
+    that:
+      - >-
+        hetzner_rescue_validate_controller_required_ssh_public_key
+        is match(
+          '^(?:ssh-[A-Za-z0-9@.-]+|ecdsa-sha2-[A-Za-z0-9@.-]+|sk-[^ ]+) '
+          ~ '[A-Za-z0-9+/]+={0,3}(?: [^\r\n]*)?$'
+        )
+    fail_msg: "Every required controller identity must be a single OpenSSH public-key line."
+    quiet: true
+  loop: "{{ hetzner_rescue_validate_controller_required_ssh_public_keys }}"
+  loop_control:
+    loop_var: hetzner_rescue_validate_controller_required_ssh_public_key
+    index_var: hetzner_rescue_validate_controller_required_ssh_public_key_index
+    label: >-
+      required SSH public key {{ hetzner_rescue_validate_controller_required_ssh_public_key_index | int + 1 }}
+  changed_when: false
+  no_log: true
+  delegate_to: localhost
+  become: false
+  tags: always
+
+- name: Validate authoritative DNS observation schemas
+  ansible.builtin.assert:
+    that:
+      - hetzner_rescue_validate_controller_dns_record.name | trim | length > 0
+      - hetzner_rescue_validate_controller_dns_record.name is not search('[\s@]')
+      - hetzner_rescue_validate_controller_dns_record.type in ['A', 'PTR', 'CNAME']
+      - hetzner_rescue_validate_controller_dns_record.value | trim | length > 0
+      - hetzner_rescue_validate_controller_dns_record.value is not search('[\s]')
+      - >-
+        hetzner_rescue_validate_controller_dns_record.type != 'A'
+        or
+        (
+          hetzner_rescue_validate_controller_dns_record.value is match('^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$')
+          and
+          (
+            hetzner_rescue_validate_controller_dns_record.value.split('.')
+            | map('int')
+            | select('gt', 255)
+            | list
+            | length == 0
+          )
+        )
+    fail_msg: >-
+      Every DNS observation needs a safe name, an A, PTR, or CNAME type, and one exact expected value; A values must
+      be valid IPv4 addresses.
+    quiet: true
+  loop: "{{ hetzner_rescue_validate_controller_dns_records }}"
+  loop_control:
+    loop_var: hetzner_rescue_validate_controller_dns_record
+    index_var: hetzner_rescue_validate_controller_dns_record_index
+    label: >-
+      DNS observation {{ hetzner_rescue_validate_controller_dns_record_index | int + 1 }}
+  changed_when: false
+  no_log: true
+  delegate_to: localhost
+  become: false
+  tags: always

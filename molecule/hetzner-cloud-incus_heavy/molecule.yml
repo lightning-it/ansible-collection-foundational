@@ -1,0 +1,42 @@
+---
+dependency:
+  name: shell
+  command: ":"
+
+driver:
+  name: default
+
+platforms:
+  - name: lit-hetzner-cloud-floating-ip-ct
+    image: images:ubuntu/24.04
+    type: container
+    network: lit-hc-fip-net
+    owner: lit-foundational-hetzner-cloud-incus-heavy
+
+provisioner:
+  name: ansible
+  inventory:
+    host_vars:
+      lit-hetzner-cloud-floating-ip-ct:
+        ansible_connection: community.general.incus
+        ansible_python_interpreter: /usr/bin/python3
+  playbooks:
+    create: create.yml
+    converge: converge.yml
+    verify: verify.yml
+    cleanup: cleanup.yml
+    destroy: destroy.yml
+
+scenario:
+  name: hetzner-cloud-incus_heavy
+  test_sequence:
+    - dependency
+    - syntax
+    - create
+    - converge
+    - idempotence
+    - verify
+    - destroy
+
+verifier:
+  name: ansible

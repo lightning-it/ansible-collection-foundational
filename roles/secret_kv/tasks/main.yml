@@ -1,0 +1,97 @@
+---
+- name: Prechecks
+  ansible.builtin.import_tasks: assert.yml
+  tags: always
+
+- name: Skip secret KV action when disabled
+  ansible.builtin.debug:
+    msg: "Secret KV action skipped because secret_kv_enabled=false."
+  changed_when: false
+  when: not secret_kv_enabled | bool
+  tags: always
+
+- name: Fail for Ansible Vault KV operations
+  ansible.builtin.fail:
+    msg: "secret_kv does not read or write Ansible Vault files; pass decrypted variables directly."
+  when:
+    - secret_kv_enabled | bool
+    - secret_kv_backend == 'ansible_vault'
+
+- name: Read HashiCorp Vault KV secret
+  community.hashi_vault.vault_kv2_get:
+    url: "{{ secret_kv_vault_addr }}"
+    auth_method: "{{ secret_kv_vault_auth_method }}"
+    token: >-
+      {{ secret_kv_vault_token
+         if (secret_kv_vault_token | default('', true) | trim | length > 0)
+         else omit }}
+    role_id: >-
+      {{ secret_kv_vault_role_id
+         if (secret_kv_vault_role_id | default('', true) | trim | length > 0)
+         else omit }}
+    secret_id: >-
+      {{ secret_kv_vault_secret_id
+         if (secret_kv_vault_secret_id | default('', true) | trim | length > 0)
+         else omit }}
+    validate_certs: "{{ secret_kv_vault_validate_certs | bool }}"
+    engine_mount_point: "{{ secret_kv_vault_mount_point }}"
+    path: "{{ secret_kv_path }}"
+  register: secret_kv_read
+  delegate_to: localhost
+  become: false
+  failed_when: false
+  when:
+    - secret_kv_enabled | bool
+    - secret_kv_backend == 'hashicorp_vault'
+    - secret_kv_action in ['read', 'upsert']
+  no_log: true
+
+- name: Write HashiCorp Vault KV secret
+  community.hashi_vault.vault_kv2_write:
+    url: "{{ secret_kv_vault_addr }}"
+    auth_method: "{{ secret_kv_vault_auth_method }}"
+    token: >-
+      {{ secret_kv_vault_token
+         if (secret_kv_vault_token | default('', true) | trim | length > 0)
+         else omit }}
+    role_id: >-
+      {{ secret_kv_vault_role_id
+         if (secret_kv_vault_role_id | default('', true) | trim | length > 0)
+         else omit }}
+    secret_id: >-
+      {{ secret_kv_vault_secret_id
+         if (secret_kv_vault_secret_id | default('', true) | trim | length > 0)
+         else omit }}
+    validate_certs: "{{ secret_kv_vault_validate_certs | bool }}"
+    engine_mount_point: "{{ secret_kv_vault_mount_point }}"
+    path: "{{ secret_kv_path }}"
+    data: >-
+      {{
+        (
+          (secret_kv_read.data.data | default({}))
+          if (secret_kv_action == 'upsert' and secret_kv_merge_existing | bool)
+          else {}
+        )
+        | combine(secret_kv_data, recursive=true)
+      }}
+  register: secret_kv_write
+  delegate_to: localhost
+  become: false
+  when:
+    - secret_kv_enabled | bool
+    - secret_kv_backend == 'hashicorp_vault'
+    - secret_kv_action in ['write', 'upsert']
+  no_log: true
+
+- name: Record secret KV result
+  ansible.builtin.set_fact:
+    secret_kv_result:
+      backend: "{{ secret_kv_backend }}"
+      action: "{{ secret_kv_action }}"
+      path: "{{ secret_kv_path }}"
+      exists: "{{ not (secret_kv_read.failed | default(false) | bool) if secret_kv_read is defined else omit }}"
+      secret: "{{ secret_kv_read.data.data | default({}) if secret_kv_read is defined else omit }}"
+      changed: "{{ secret_kv_write.changed | default(false) if secret_kv_write is defined else false }}"
+  changed_when: false
+  when: secret_kv_enabled | bool
+  no_log: true

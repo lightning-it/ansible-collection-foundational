@@ -78,6 +78,12 @@
       # folder
       - vmware_vsphere_folder_full_path | default('') | length > 0
       - vmware_vsphere_folder_name | default('') | length > 0
+      - vmware_vsphere_wait_for_ip is boolean
+      - vmware_vsphere_wait_for_ip_timeout is number
+      - vmware_vsphere_wait_for_ip_timeout | int > 0
+      - vmware_vsphere_validate_configured_ips is boolean
+      - vmware_vsphere_is_template is boolean
+      - vmware_vsphere_template_shutdown_timeout is number
     fail_msg: >-
       Missing required variables for VM create (host={{ inventory_hostname }}).
 
@@ -116,6 +122,8 @@
 
       - vmware_vsphere_folder_full_path | default('') | length > 0
       - vmware_vsphere_folder_name | default('') | length > 0
+      - vmware_vsphere_is_template is boolean
+      - vmware_vsphere_template_shutdown_timeout is number
     fail_msg: >-
       Missing required variables for VM destroy (host={{ inventory_hostname }}).
 

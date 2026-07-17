@@ -1,0 +1,87 @@
+---
+- name: Exercise read-only guest Floating IPv4 detection on Incus
+  hosts: all
+  gather_facts: false
+  become: false
+  vars:
+    hetzner_cloud_incus_missing_ipv4: 192.0.2.254
+    hetzner_cloud_incus_fixture_path: /etc/netplan/99-molecule-floating-ip-observation.yaml
+  tasks:
+    - name: Read global runtime IPv4 addresses
+      ansible.builtin.command:
+        argv:
+          - ip
+          - -j
+          - -4
+          - address
+          - show
+          - scope
+          - global
+      register: hetzner_cloud_incus_runtime_addresses
+      changed_when: false
+
+    - name: Select an existing runtime IPv4 address
+      ansible.builtin.set_fact:
+        hetzner_cloud_incus_present_ipv4: >-
+          {{
+            hetzner_cloud_incus_runtime_addresses.stdout
+            | from_json
+            | map(attribute='addr_info')
+            | flatten
+            | map(attribute='local')
+            | first
+          }}
+      changed_when: false
+
+    - name: Assert the guest supplied a safe observation address
+      ansible.builtin.assert:
+        that:
+          - hetzner_cloud_incus_present_ipv4 | default('') is match('^[0-9]+(?:\.[0-9]+){3}$')
+          - not hetzner_cloud_incus_present_ipv4.startswith('127.')
+          - hetzner_cloud_incus_present_ipv4 != hetzner_cloud_incus_missing_ipv4
+        fail_msg: "The Incus container did not expose a usable runtime IPv4 address."
+        quiet: true
+      changed_when: false
+
+    - name: Record the existing address in a persistence-detection fixture
+      ansible.builtin.copy:
+        dest: "{{ hetzner_cloud_incus_fixture_path }}"
+        content: |
+          # Molecule read-only observation fixture; this file is never applied.
+          network:
+            version: 2
+            ethernets:
+              molecule-observation-only:
+                addresses:
+                  - {{ hetzner_cloud_incus_present_ipv4 }}/32
+        owner: root
+        group: root
+        mode: "0600"
+
+    - name: Detect present and missing Floating IPv4 guest state
+      ansible.builtin.include_role:
+        name: lit.foundational.hetzner_cloud
+        tasks_from: guest_floating_ip
+      vars:
+        hetzner_cloud_guest_floating_ips:
+          - name: incus_present_and_persisted
+            address: "{{ hetzner_cloud_incus_present_ipv4 }}"
+          - name: incus_missing
+            address: "{{ hetzner_cloud_incus_missing_ipv4 }}"
+        hetzner_cloud_guest_require_persistent: true
+      register: hetzner_cloud_incus_detection_run
+
+    - name: Assert read-only Floating IPv4 detection outcomes
+      ansible.builtin.assert:
+        that:
+          - not (hetzner_cloud_incus_detection_run.changed | bool)
+          - hetzner_cloud_guest_floating_ip_status.incus_present_and_persisted.runtime_configured | bool
+          - hetzner_cloud_guest_floating_ip_status.incus_present_and_persisted.persistent_config_detected | bool
+          - >-
+            not
+            (hetzner_cloud_guest_floating_ip_status.incus_present_and_persisted.manual_configuration_required | bool)
+          - not (hetzner_cloud_guest_floating_ip_status.incus_missing.runtime_configured | bool)
+          - not (hetzner_cloud_guest_floating_ip_status.incus_missing.persistent_config_detected | bool)
+          - hetzner_cloud_guest_floating_ip_status.incus_missing.manual_configuration_required | bool
+        quiet: true
+      changed_when: false

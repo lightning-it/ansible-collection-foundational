@@ -1,0 +1,57 @@
+---
+- name: Verify repeatable read-only guest Floating IPv4 detection
+  hosts: all
+  gather_facts: false
+  become: false
+  vars:
+    hetzner_cloud_incus_missing_ipv4: 192.0.2.254
+  tasks:
+    - name: Read global runtime IPv4 addresses for verification
+      ansible.builtin.command:
+        argv:
+          - ip
+          - -j
+          - -4
+          - address
+          - show
+          - scope
+          - global
+      register: hetzner_cloud_incus_verify_runtime_addresses
+      changed_when: false
+
+    - name: Select the verification IPv4 address
+      ansible.builtin.set_fact:
+        hetzner_cloud_incus_verify_present_ipv4: >-
+          {{
+            hetzner_cloud_incus_verify_runtime_addresses.stdout
+            | from_json
+            | map(attribute='addr_info')
+            | flatten
+            | map(attribute='local')
+            | first
+          }}
+      changed_when: false
+
+    - name: Repeat guest Floating IPv4 detection
+      ansible.builtin.include_role:
+        name: lit.foundational.hetzner_cloud
+        tasks_from: guest_floating_ip
+      vars:
+        hetzner_cloud_guest_floating_ips:
+          - name: incus_present_and_persisted
+            address: "{{ hetzner_cloud_incus_verify_present_ipv4 }}"
+          - name: incus_missing
+            address: "{{ hetzner_cloud_incus_missing_ipv4 }}"
+        hetzner_cloud_guest_require_persistent: true
+      register: hetzner_cloud_incus_verify_detection
+
+    - name: Verify detection remains read-only and stable
+      ansible.builtin.assert:
+        that:
+          - not (hetzner_cloud_incus_verify_detection.changed | bool)
+          - >-
+            not
+            (hetzner_cloud_guest_floating_ip_status.incus_present_and_persisted.manual_configuration_required | bool)
+          - hetzner_cloud_guest_floating_ip_status.incus_missing.manual_configuration_required | bool
+        quiet: true
+      changed_when: false

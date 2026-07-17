@@ -1,0 +1,22 @@
+---
+- name: Validate podman_systemd variables
+  ansible.builtin.assert:
+    that:
+      - podman_systemd_action in podman_systemd_allowed_actions
+      - podman_systemd_allowed_actions is sequence
+      - podman_systemd_allowed_actions is not string
+      - podman_systemd_unit_name | default('', true) | trim | length > 0
+      - podman_systemd_description | default('', true) | trim | length > 0
+      - podman_systemd_manifest_path | default('', true) | trim | length > 0
+      - podman_systemd_scope in ['system', 'user']
+      - podman_systemd_quadlet_dir | default('', true) | trim | length > 0
+      - podman_systemd_quadlet_path | default('', true) | trim | length > 0
+      - podman_systemd_service_name | default('', true) | trim | length > 0
+      - podman_systemd_enabled is boolean
+      - podman_systemd_remove_quadlet is boolean
+      - podman_systemd_after is sequence
+      - podman_systemd_after is not string
+      - podman_systemd_wants is sequence
+      - podman_systemd_wants is not string
+    fail_msg: "podman_systemd variables are missing or invalid."
+  tags: always

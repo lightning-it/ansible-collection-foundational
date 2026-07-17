@@ -1,0 +1,81 @@
+---
+- name: Inspect the Hetzner Rescue marker executable
+  ansible.builtin.stat:
+    path: "{{ hetzner_rescue_validate_rescue_marker_path }}"
+    follow: false
+    get_attributes: false
+    get_checksum: false
+    get_mime: false
+  register: hetzner_rescue_validate_marker
+  changed_when: false
+
+- name: Require the expected root-owned Rescue marker
+  ansible.builtin.assert:
+    that:
+      - hetzner_rescue_validate_marker.stat.exists | default(false)
+      - hetzner_rescue_validate_marker.stat.isreg | default(false)
+      - not (hetzner_rescue_validate_marker.stat.islnk | default(false))
+      - hetzner_rescue_validate_marker.stat.uid | default(-1) | int == 0
+      - hetzner_rescue_validate_marker.stat.executable | default(false)
+    fail_msg: "The target is not the expected Hetzner Rescue environment."
+    quiet: true
+
+- name: Inspect the Hetzner-managed Rescue public-key file
+  ansible.builtin.stat:
+    path: "{{ hetzner_rescue_validate_robot_user_keys_path }}"
+    follow: false
+    get_attributes: false
+    get_checksum: false
+    get_mime: false
+  register: hetzner_rescue_validate_robot_keys
+  changed_when: false
+
+- name: Require safe Rescue public-key file metadata
+  ansible.builtin.assert:
+    that:
+      - hetzner_rescue_validate_robot_keys.stat.exists | default(false)
+      - hetzner_rescue_validate_robot_keys.stat.isreg | default(false)
+      - not (hetzner_rescue_validate_robot_keys.stat.islnk | default(false))
+      - hetzner_rescue_validate_robot_keys.stat.uid | default(-1) | int == 0
+      - hetzner_rescue_validate_robot_keys.stat.gid | default(-1) | int == 0
+      - hetzner_rescue_validate_robot_keys.stat.nlink | default(0) | int == 1
+      - >-
+        hetzner_rescue_validate_robot_keys.stat.mode | default('')
+        is match('^0[0-7][0145][0145]$')
+      - hetzner_rescue_validate_robot_keys.stat.size | default(0) | int > 0
+      - >-
+        hetzner_rescue_validate_robot_keys.stat.size | int
+        <= hetzner_rescue_validate_robot_user_keys_max_bytes | int
+    fail_msg: "The Rescue public-key file is absent or unsafe."
+    quiet: true
+
+- name: Read the Hetzner-managed Rescue public keys
+  ansible.builtin.slurp:
+    src: "{{ hetzner_rescue_validate_robot_user_keys_path }}"
+  register: hetzner_rescue_validate_robot_keys_content
+  changed_when: false
+  no_log: true
+
+- name: Require exact inventory deployment keys in Rescue
+  vars:
+    hetzner_rescue_validate_actual_keys: >-
+      {{
+        (hetzner_rescue_validate_robot_keys_content.content | b64decode).split('\n')
+        | map('trim') | reject('equalto', '') | map('regex_replace', '\\s+', ' ') | list
+      }}
+    hetzner_rescue_validate_expected_keys: >-
+      {{
+        hetzner_rescue_validate_deploy_ssh_public_keys
+        | map('trim') | reject('equalto', '') | map('regex_replace', '\\s+', ' ') | list
+      }}
+  ansible.builtin.assert:
+    that:
+      - hetzner_rescue_validate_expected_keys | length > 0
+      - >-
+        hetzner_rescue_validate_expected_keys | length
+        == hetzner_rescue_validate_deploy_ssh_public_keys | length
+      - hetzner_rescue_validate_expected_keys | unique | length == hetzner_rescue_validate_expected_keys | length
+      - hetzner_rescue_validate_actual_keys == hetzner_rescue_validate_expected_keys
+    fail_msg: "Hetzner Rescue was not activated with exactly the declared deployment keys."
+    quiet: true
+  no_log: true

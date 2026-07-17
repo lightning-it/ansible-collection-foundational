@@ -1,0 +1,15 @@
+---
+ansible_remote_tmp_enabled: true
+
+# General Ansible module staging directory on the managed host.
+# Defaults to Ansible's own ansible_remote_tmp variable when inventory defines it.
+ansible_remote_tmp_path: "{{ ansible_remote_tmp | default('', true) }}"
+ansible_remote_tmp_owner: root
+ansible_remote_tmp_group: root
+ansible_remote_tmp_mode: "1777"
+
+# The raw bootstrap runs before normal modules, so it can repair a broken
+# ansible_remote_tmp that would otherwise prevent file/assert/setup tasks.
+ansible_remote_tmp_bootstrap_raw: true
+ansible_remote_tmp_validate_users: []
+ansible_remote_tmp_validate_skip_missing_users: true

@@ -2,7 +2,63 @@
 
 Creates or destroys vSphere folders and virtual machines required for agent-based OpenShift installs, pulling credentials from Vault when available.
 
-## Usage
+## Requirements
+
+None.
+
+## Variables
+
+- `vmware_vsphere_datacenter`, `vmware_vsphere_folder_name`, `vmware_vsphere_resource_pool`, `vmware_vsphere_vmware_guest_datastore`, `vmware_vsphere_vmware_iso_datastore`, `vmware_vsphere_network`: describe where the role should create resources.
+- `vmware_vsphere_module_defaults_vmware_*` and `vmware_vsphere_vmware_guest_*` structures let you tune CPU, memory, disks, and ISO/CD-ROM settings for created guests.
+- `vmware_vsphere_vmware_guest_customization` (alias: `vmware_vsphere_customization`) and `vmware_vsphere_vmware_guest_customization_spec` (alias: `vmware_vsphere_customization_spec`) pass guest customization to vCenter for IP/DNS/hostname configuration.
+- If `nic_setting_map` is present in the customization block, the role maps it onto `vmware_vsphere_vmware_guest_networks` and removes it before calling `vmware_guest` (module does not accept `nic_setting_map`).
+- `vmware_vsphere_wait_for_ip` and `vmware_vsphere_wait_for_ip_timeout` make
+  `community.vmware.vmware_guest` wait for VMware Tools to report an IP.
+- `vmware_vsphere_validate_configured_ips` verifies that static `ip` values
+  configured in `vmware_vsphere_vmware_guest_networks` are actually reported by
+  VMware Tools after clone/reconfigure. This catches failed guest customization
+  where a VM falls back to DHCP.
+- `vmware_vsphere_username`, `vmware_vsphere_password` can be supplied directly or pulled from Vault using `vmware_vsphere_vmware_username_lookup` / `vmware_vsphere_vmware_password_lookup`. These lookup vars default to empty strings (and are normalized in `tasks/assets.yaml`); set them to a valid Vault path to enable lookups. The role will fail early if neither direct values nor lookup paths are provided.
+- Set `vmware_vsphere_destroy: true` to remove VMs instead of creating them. Folder deletion is skipped by default for safety; set `vmware_vsphere_destroy_folder: true` if you want the folder removed once it is empty. When folder deletion is requested but the folder still contains VMs, the role reports an informational message and continues. Additional tags (`create_vms`, `destroy_all`, etc.) gate individual task files.
+
+### Required inputs
+
+- `vmware_vsphere_datacenter`, `vmware_vsphere_folder_name`, `vmware_vsphere_vmware_guest_datastore`, `vmware_vsphere_vmware_iso_datastore`, `vmware_vsphere_network`
+- Credentials via `vmware_vsphere_username` / `vmware_vsphere_password` **or** Vault lookup vars (`vmware_vsphere_vmware_username_lookup`, `vmware_vsphere_vmware_password_lookup`)
+
+### Compatibility
+
+- Tested with Ansible `>=2.16` and targeting EL9 runners.
+- Guest customization requires VMware Tools/open-vm-tools in the template.
+  For RHEL templates, include `cloud-init` and `perl` as well so vSphere can
+  apply hostname and static network configuration.
+
+## Dependencies
+
+None.
+
+## Example Playbook
+
+```yaml
+---
+- name: Use lit.foundational.vmware_vsphere
+  hosts: all
+  become: true
+  roles:
+    - role: lit.foundational.vmware_vsphere
+```
+
+## License
+
+MIT
+
+## Author
+
+Lightning IT
+
+## Additional Notes
+
+### Usage
 
 ```yaml
 - hosts: localhost
@@ -31,22 +87,3 @@ Creates or destroys vSphere folders and virtual machines required for agent-base
         vmware_vsphere_destroy: false
         vmware_vsphere_destroy_folder: false
 ```
-
-## Variables
-
-- `vmware_vsphere_datacenter`, `vmware_vsphere_folder_name`, `vmware_vsphere_resource_pool`, `vmware_vsphere_vmware_guest_datastore`, `vmware_vsphere_vmware_iso_datastore`, `vmware_vsphere_network`: describe where the role should create resources.
-- `vmware_vsphere_module_defaults_vmware_*` and `vmware_vsphere_vmware_guest_*` structures let you tune CPU, memory, disks, and ISO/CD-ROM settings for created guests.
-- `vmware_vsphere_vmware_guest_customization` (alias: `vmware_vsphere_customization`) and `vmware_vsphere_vmware_guest_customization_spec` (alias: `vmware_vsphere_customization_spec`) pass guest customization to vCenter for IP/DNS/hostname configuration.
-- If `nic_setting_map` is present in the customization block, the role maps it onto `vmware_vsphere_vmware_guest_networks` and removes it before calling `vmware_guest` (module does not accept `nic_setting_map`).
-- `vmware_vsphere_username`, `vmware_vsphere_password` can be supplied directly or pulled from Vault using `vmware_vsphere_vmware_username_lookup` / `vmware_vsphere_vmware_password_lookup`. These lookup vars default to empty strings (and are normalized in `tasks/assets.yaml`); set them to a valid Vault path to enable lookups. The role will fail early if neither direct values nor lookup paths are provided.
-- Set `vmware_vsphere_destroy: true` to remove VMs instead of creating them. Folder deletion is skipped by default for safety; set `vmware_vsphere_destroy_folder: true` if you want the folder removed once it is empty. Additional tags (`create_vms`, `destroy_all`, etc.) gate individual task files.
-
-### Required inputs
-
-- `vmware_vsphere_datacenter`, `vmware_vsphere_folder_name`, `vmware_vsphere_vmware_guest_datastore`, `vmware_vsphere_vmware_iso_datastore`, `vmware_vsphere_network`
-- Credentials via `vmware_vsphere_username` / `vmware_vsphere_password` **or** Vault lookup vars (`vmware_vsphere_vmware_username_lookup`, `vmware_vsphere_vmware_password_lookup`)
-
-### Compatibility
-
-- Tested with Ansible `>=2.15` and targeting EL9 runners.
-- Guest customization requires VMware Tools/open-vm-tools in the template.

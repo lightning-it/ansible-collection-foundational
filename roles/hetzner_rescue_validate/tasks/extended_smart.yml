@@ -1,0 +1,177 @@
+---
+- name: Validate separately gated extended SMART policy
+  ansible.builtin.assert:
+    that:
+      - hetzner_rescue_validate_expected_disks | length > 0
+      - >-
+        hetzner_rescue_validate_expected_disks | map(attribute='serial') | unique | length
+        == hetzner_rescue_validate_expected_disks | length
+      - >-
+        hetzner_rescue_validate_extended_smart_target_serials | length == 0
+        or
+        (
+          hetzner_rescue_validate_extended_smart_target_serials | unique | length
+          == hetzner_rescue_validate_extended_smart_target_serials | length
+          and
+          hetzner_rescue_validate_extended_smart_target_serials
+          | difference(hetzner_rescue_validate_expected_disks | map(attribute='serial') | list)
+          | length == 0
+        )
+      - hetzner_rescue_validate_extended_smart_observe_interval_seconds | int > 0
+      - >-
+        hetzner_rescue_validate_extended_smart_observe_timeout_seconds | int
+        >= hetzner_rescue_validate_extended_smart_observe_interval_seconds | int
+      - hetzner_rescue_validate_extended_smart_poll_interval_seconds | int > 0
+      - hetzner_rescue_validate_extended_smart_completion_grace_seconds | int >= 60
+      - hetzner_rescue_validate_extended_smart_max_estimated_minutes | int > 0
+      - hetzner_rescue_validate_extended_smart_max_estimated_minutes | int <= 1440
+      - >-
+        hetzner_rescue_validate_only | bool
+        or
+        (
+          hetzner_rescue_validate_extended_smart_allow | bool
+          and not ansible_check_mode
+          and hetzner_rescue_validate_extended_smart_confirmation
+              == 'SMART_EXTENDED:' ~ inventory_hostname
+        )
+    fail_msg: >-
+      Extended SMART execution requires explicit allow=true, check mode off, exact target disks, bounded timing,
+      and confirmation SMART_EXTENDED:<inventory_hostname>.
+    quiet: true
+  changed_when: false
+  tags: always
+
+- name: Publish extended SMART validation-only plan
+  ansible.builtin.set_fact:
+    hetzner_rescue_validate_result:
+      changed: false
+      validated: true
+      validate_only: true
+      extended_smart: true
+      disk_count: "{{ hetzner_rescue_validate_expected_disks | length }}"
+    cacheable: false
+  when: hetzner_rescue_validate_only | bool
+  changed_when: false
+
+- name: Execute authorized extended SMART tests
+  when: not (hetzner_rescue_validate_only | bool)
+  block:
+    - name: Inspect the Rescue marker before disk self-tests
+      ansible.builtin.stat:
+        path: "{{ hetzner_rescue_validate_rescue_marker_path }}"
+        follow: false
+        get_attributes: false
+        get_checksum: false
+        get_mime: false
+      register: hetzner_rescue_validate_extended_marker
+      changed_when: false
+      no_log: true
+
+    - name: Require the target to remain in Hetzner Rescue
+      ansible.builtin.assert:
+        that:
+          - hetzner_rescue_validate_extended_marker.stat.exists | default(false)
+          - hetzner_rescue_validate_extended_marker.stat.isreg | default(false)
+          - not (hetzner_rescue_validate_extended_marker.stat.islnk | default(false))
+          - hetzner_rescue_validate_extended_marker.stat.uid | default(-1) | int == 0
+          - hetzner_rescue_validate_extended_marker.stat.executable | default(false)
+        fail_msg: "The pinned endpoint is not the expected Hetzner Rescue environment."
+        quiet: true
+      no_log: true
+
+    - name: Discover physical Rescue disks for extended SMART
+      ansible.builtin.command:
+        argv:
+          - "{{ hetzner_rescue_validate_lsblk_path }}"
+          - --json
+          - --bytes
+          - --nodeps
+          - --output
+          - PATH,KNAME,SERIAL,MODEL,SIZE,ROTA,TYPE,TRAN
+      register: hetzner_rescue_validate_extended_lsblk
+      changed_when: false
+      no_log: true
+
+    - name: Initialize exact extended SMART disk state
+      ansible.builtin.set_fact:
+        hetzner_rescue_validate_rescue_disks: >-
+          {{
+            (hetzner_rescue_validate_extended_lsblk.stdout | from_json).blockdevices
+            | selectattr('type', 'equalto', 'disk') | list
+          }}
+        hetzner_rescue_validate_tested_nvme_controllers: []
+        hetzner_rescue_validate_tested_nvme_subsystems: []
+        hetzner_rescue_validate_observe_interval_seconds: >-
+          {{ hetzner_rescue_validate_extended_smart_observe_interval_seconds }}
+        hetzner_rescue_validate_observe_timeout_seconds: >-
+          {{ hetzner_rescue_validate_extended_smart_observe_timeout_seconds }}
+        hetzner_rescue_validate_poll_interval_seconds: >-
+          {{ hetzner_rescue_validate_extended_smart_poll_interval_seconds }}
+        hetzner_rescue_validate_completion_grace_seconds: >-
+          {{ hetzner_rescue_validate_extended_smart_completion_grace_seconds }}
+        hetzner_rescue_validate_max_estimated_minutes: >-
+          {{ hetzner_rescue_validate_extended_smart_max_estimated_minutes }}
+        cacheable: false
+      changed_when: false
+      no_log: true
+
+    - name: Require exact disk serial-set equality before extended SMART
+      vars:
+        hetzner_rescue_validate_actual_serials: >-
+          {{ hetzner_rescue_validate_rescue_disks | map(attribute='serial') | list }}
+        hetzner_rescue_validate_expected_serials: >-
+          {{ hetzner_rescue_validate_expected_disks | map(attribute='serial') | list }}
+      ansible.builtin.assert:
+        that:
+          - >-
+            hetzner_rescue_validate_actual_serials | sort
+            == hetzner_rescue_validate_expected_serials | sort
+          - >-
+            hetzner_rescue_validate_actual_serials | unique | length
+            == hetzner_rescue_validate_actual_serials | length
+        fail_msg: "Rescue disks differ from the exact declaration; no self-test was initiated."
+        quiet: true
+      no_log: true
+
+    - name: Revalidate each extended SMART disk identity
+      vars:
+        hetzner_rescue_validate_disk_matches: >-
+          {{ hetzner_rescue_validate_rescue_disks | selectattr('serial', 'equalto', item.serial) | list }}
+      ansible.builtin.assert:
+        that:
+          - hetzner_rescue_validate_disk_matches | length == 1
+          - hetzner_rescue_validate_disk_matches[0].model == item.model
+          - hetzner_rescue_validate_disk_matches[0].size | int == item.size_bytes | int
+          - (hetzner_rescue_validate_disk_matches[0].rota | bool) == item.rotational
+          - hetzner_rescue_validate_disk_matches[0].tran in ['sata', 'nvme']
+        fail_msg: "Disk identity or supported transport drifted; no self-test was initiated."
+        quiet: true
+      loop: "{{ hetzner_rescue_validate_expected_disks }}"
+      loop_control:
+        label: "{{ item.serial }}"
+      no_log: true
+
+    - name: Initiate, monitor, and verify each selected disk sequentially
+      ansible.builtin.include_tasks: extended_smart_disk.yml
+      loop: >-
+        {{
+          hetzner_rescue_validate_expected_disks
+          if hetzner_rescue_validate_extended_smart_target_serials | length == 0
+          else
+          hetzner_rescue_validate_expected_disks
+          | selectattr('serial', 'in', hetzner_rescue_validate_extended_smart_target_serials)
+          | list
+        }}
+      loop_control:
+        loop_var: hetzner_rescue_validate_expected_disk
+        label: "{{ hetzner_rescue_validate_expected_disk.serial }}"
+
+    - name: Publish successful extended SMART result
+      ansible.builtin.set_fact:
+        hetzner_rescue_validate_result:
+          changed: true
+          validated: true
+          validate_only: false
+          extended_smart: true
+        cacheable: false
+      changed_when: false

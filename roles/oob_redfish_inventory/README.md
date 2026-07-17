@@ -2,7 +2,40 @@
 
 Discover Redfish resource IDs (System/Manager/Chassis) using `community.general.redfish_info`.
 
-## Typical usage
+## Requirements
+
+None.
+
+## Variables
+
+See `defaults/main.yml`.
+
+## Dependencies
+
+None.
+
+## Example Playbook
+
+```yaml
+---
+- name: Use lit.foundational.oob_redfish_inventory
+  hosts: all
+  become: true
+  roles:
+    - role: lit.foundational.oob_redfish_inventory
+```
+
+## License
+
+MIT
+
+## Author
+
+Lightning IT
+
+## Additional Notes
+
+### Typical usage
 
 Inventory hosts = BMC endpoints (iDRAC/iLO/XCC/etc.):
 

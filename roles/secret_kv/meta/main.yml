@@ -1,0 +1,7 @@
+---
+galaxy_info:
+  author: Lightning IT
+  description: Generic secret KV read/write helper.
+  license: MIT
+  min_ansible_version: "2.16"
+dependencies: []

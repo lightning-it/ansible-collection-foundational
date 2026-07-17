@@ -1,0 +1,13 @@
+---
+- name: Converge the Hetzner Cloud validation-only plan
+  hosts: all
+  gather_facts: false
+  vars_files:
+    - resources.json
+  tasks:
+    - name: Build a representative Hetzner Cloud plan without API access
+      ansible.builtin.include_role:
+        name: lit.foundational.hetzner_cloud
+
+- name: Assert the validation-only plan
+  ansible.builtin.import_playbook: assertions.yml

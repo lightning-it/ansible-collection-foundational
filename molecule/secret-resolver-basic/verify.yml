@@ -1,0 +1,324 @@
+---
+- name: Verify secret resolver behavior
+  hosts: secret-resolver-primary
+  gather_facts: false
+  vars:
+    secret_resolver_molecule_existing_generation_value: __LIT_MOLECULE_EXISTING_GENERATION_VALUE__
+    secret_resolver_molecule_pattern_final_newline: |
+      ABC
+    secret_resolver_molecule_failure_cases:
+      - name: required_missing
+        expected_fragment: category=secret_not_found
+        requests:
+          - name: required_missing
+            runtime:
+              variable: secret_resolver_molecule_undefined_required
+      - name: duplicate_requests
+        expected_fragment: normalized request names must be unique
+        requests:
+          - name: duplicate_name
+            required: false
+            runtime:
+              variable: secret_resolver_molecule_undefined_duplicate_one
+          - name: duplicate_name
+            required: false
+            runtime:
+              variable: secret_resolver_molecule_undefined_duplicate_two
+      - name: invalid_provider
+        expected_fragment: unsupported_provider
+        provider: unsupported_provider
+        requests: []
+      - name: unsupported_provider_order
+        expected_fragment: provider_order contains an unsupported or duplicate provider
+        provider_order:
+          - runtime
+          - unsupported_provider
+        requests: []
+      - name: duplicate_provider_order
+        expected_fragment: provider_order contains an unsupported or duplicate provider
+        provider_order:
+          - runtime
+          - runtime
+        requests: []
+      - name: fallback_disabled_required
+        expected_fragment: category=secret_not_found
+        provider_order:
+          - runtime
+          - environment
+        allow_fallback: false
+        requests:
+          - name: fallback_disabled_required
+            runtime:
+              variable: secret_resolver_molecule_undefined_disabled_fallback
+            environment:
+              variable: LIT_SECRET_RESOLVER_MOLECULE_VALUE
+      - name: disallowed_empty
+        expected_fragment: category=validation_failed
+        provider: environment
+        requests:
+          - name: disallowed_empty
+            environment:
+              variable: LIT_SECRET_RESOLVER_MOLECULE_EMPTY
+      - name: write_back_without_generation
+        expected_fragment: write-back is allowed only for generated values
+        requests:
+          - name: invalid_write_back
+            runtime:
+              variable: secret_resolver_molecule_existing_generation_value
+            write_back:
+              enabled: true
+              provider: hashicorp_vault
+              hashicorp_vault:
+                path: molecule/write-back
+                key: value
+      - name: write_back_invalid_read_order
+        expected_fragment: generated write-back requires hashicorp_vault
+        requests:
+          - name: invalid_write_back_target
+            runtime:
+              variable: secret_resolver_molecule_undefined_write_back
+            generation:
+              enabled: true
+              type: password
+            write_back:
+              enabled: true
+              provider: hashicorp_vault
+      - name: migration_outside_bootstrap
+        expected_fragment: migration requires bootstrap phase
+        phase: operational
+        requests:
+          - name: invalid_migration_phase
+            ansible_vault:
+              variable: secret_resolver_molecule_existing_generation_value
+            migration:
+              enabled: true
+              source_provider: ansible_vault
+              target_provider: hashicorp_vault
+              hashicorp_vault:
+                path: molecule/migration
+                key: value
+      - name: migration_missing_source
+        expected_fragment: enabled migration requires source_provider and target_provider
+        phase: bootstrap
+        requests:
+          - name: migration_missing_source
+            ansible_vault:
+              variable: secret_resolver_molecule_existing_generation_value
+            migration:
+              enabled: true
+              target_provider: hashicorp_vault
+              hashicorp_vault:
+                path: molecule/migration
+                key: value
+      - name: disabled_generation_class_minimum
+        expected_fragment: generation length or character constraints are invalid
+        requests:
+          - name: disabled_generation_class_minimum
+            runtime:
+              variable: secret_resolver_molecule_undefined_disabled_class
+            generation:
+              enabled: true
+              type: password
+              length: 16
+              lower: false
+              min_lower: 1
+      - name: empty_special_character_pool
+        expected_fragment: generation length or character constraints are invalid
+        requests:
+          - name: empty_special_character_pool
+            runtime:
+              variable: secret_resolver_molecule_undefined_special_pool
+            generation:
+              enabled: true
+              type: password
+              length: 16
+              min_special: 1
+              special_characters: ""
+      - name: pattern_final_newline
+        expected_fragment: category=validation_failed
+        requests:
+          - name: pattern_final_newline
+            runtime:
+              variable: secret_resolver_molecule_pattern_final_newline
+            validation:
+              pattern: '[A-Z]+'
+      - name: unsafe_vault_current_segment
+        expected_fragment: the Vault path, key, or mount point is invalid
+        provider: hashicorp_vault
+        requests:
+          - name: unsafe_vault_current_segment
+            hashicorp_vault:
+              path: application/./secret
+              key: selected
+  tasks:
+    - name: Check the read-only convergence marker
+      ansible.builtin.stat:
+        path: /tmp/lit-foundational-secret-resolver-basic-converged
+      register: secret_resolver_molecule_convergence_marker
+
+    - name: Assert read-only convergence completed
+      ansible.builtin.assert:
+        that:
+          - secret_resolver_molecule_convergence_marker.stat.exists
+        quiet: true
+
+    - name: Check whether the controller has the optional 1Password CLI
+      ansible.builtin.command:
+        argv:
+          - op
+          - --version
+      register: secret_resolver_molecule_onepassword_version
+      changed_when: false
+      failed_when: false
+      no_log: true
+
+    - name: Build the deterministic failure-case matrix
+      ansible.builtin.set_fact:
+        secret_resolver_molecule_effective_failure_cases: >-
+          {{
+            secret_resolver_molecule_failure_cases
+            +
+            (
+              [
+                {
+                  'name': 'onepassword_dependency_missing',
+                  'expected_fragment': 'category=dependency_missing',
+                  'provider': 'onepassword',
+                  'requests': [
+                    {
+                      'name': 'onepassword_dependency_missing',
+                      'onepassword': {
+                        'item': 'Synthetic Molecule Item',
+                        'field': 'synthetic_field'
+                      }
+                    }
+                  ]
+                }
+              ]
+              if secret_resolver_molecule_onepassword_version.rc != 0
+              else []
+            )
+          }}
+      changed_when: false
+      no_log: true
+
+    - name: Initialize failure-case results
+      ansible.builtin.set_fact:
+        secret_resolver_molecule_failure_outcomes: {}
+      changed_when: false
+
+    - name: Verify required and policy failures are deterministic
+      ansible.builtin.include_tasks: includes/expect-failure.yml
+      loop: "{{ secret_resolver_molecule_effective_failure_cases }}"
+      loop_control:
+        loop_var: secret_resolver_molecule_failure_case
+        label: expected failure policy
+      no_log: true
+
+    - name: Assert every expected failure produced an outcome
+      ansible.builtin.assert:
+        that:
+          - >-
+            secret_resolver_molecule_failure_outcomes.keys() | list | sort ==
+            secret_resolver_molecule_effective_failure_cases | map(attribute='name') | list | sort
+        quiet: true
+
+    - name: Assert every failure matched its intended safe error category
+      ansible.builtin.assert:
+        that:
+          - secret_resolver_molecule_failure_outcome.value | bool
+        quiet: true
+      loop: "{{ secret_resolver_molecule_failure_outcomes | dict2items }}"
+      loop_control:
+        loop_var: secret_resolver_molecule_failure_outcome
+        label: "{{ secret_resolver_molecule_failure_outcome.key }}"
+
+    - name: Generate ephemeral test values after idempotence testing
+      ansible.builtin.include_role:
+        name: lit.foundational.secret_resolver
+      vars:
+        secret_resolver_provider: runtime
+        secret_resolver_requests:
+          - name: generated_password
+            runtime:
+              variable: secret_resolver_molecule_undefined_password
+            generation:
+              enabled: true
+              type: password
+              length: 24
+              min_lower: 2
+              min_upper: 2
+              min_numeric: 2
+              min_special: 2
+          - name: generated_hex
+            runtime:
+              variable: secret_resolver_molecule_undefined_hex
+            generation:
+              enabled: true
+              type: hex
+              length: 32
+          - name: generated_uuid
+            runtime:
+              variable: secret_resolver_molecule_undefined_uuid
+            generation:
+              enabled: true
+              type: uuid
+          - name: existing_not_regenerated
+            runtime:
+              variable: secret_resolver_molecule_existing_generation_value
+            generation:
+              enabled: true
+              type: password
+              length: 24
+      no_log: true
+
+    - name: Assert generated formats output keys and metadata
+      ansible.builtin.assert:
+        that:
+          - >-
+            secret_resolver_result.keys() | list | sort ==
+            ['existing_not_regenerated', 'generated_hex', 'generated_password', 'generated_uuid']
+          - secret_resolver_result.generated_password | length == 24
+          - secret_resolver_result.generated_password | regex_findall('[a-z]') | length >= 2
+          - secret_resolver_result.generated_password | regex_findall('[A-Z]') | length >= 2
+          - secret_resolver_result.generated_password | regex_findall('[0-9]') | length >= 2
+          - secret_resolver_result.generated_password | regex_findall('[^A-Za-z0-9]') | length >= 2
+          - secret_resolver_result.generated_hex is match('^[0-9a-f]{32}$')
+          - >-
+            secret_resolver_result.generated_uuid
+            is match('^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$')
+          - >-
+            secret_resolver_result.existing_not_regenerated ==
+            secret_resolver_molecule_existing_generation_value
+          - secret_resolver_metadata.generated_password.generated
+          - secret_resolver_metadata.generated_hex.generated
+          - secret_resolver_metadata.generated_uuid.generated
+          - secret_resolver_metadata.generated_password.provider == 'generated'
+          - secret_resolver_metadata.generated_hex.provider == 'generated'
+          - secret_resolver_metadata.generated_uuid.provider == 'generated'
+          - >-
+            secret_resolver_metadata.generated_password.attempted_providers == ['runtime', 'generated']
+          - secret_resolver_metadata.generated_hex.attempted_providers == ['runtime', 'generated']
+          - secret_resolver_metadata.generated_uuid.attempted_providers == ['runtime', 'generated']
+          - not secret_resolver_metadata.generated_password.written_back
+          - not secret_resolver_metadata.generated_hex.written_back
+          - not secret_resolver_metadata.generated_uuid.written_back
+          - secret_resolver_metadata.generated_password.persistence_state == 'not_requested'
+          - secret_resolver_metadata.generated_hex.persistence_state == 'not_requested'
+          - secret_resolver_metadata.generated_uuid.persistence_state == 'not_requested'
+          - not secret_resolver_metadata.existing_not_regenerated.generated
+          - secret_resolver_metadata.existing_not_regenerated.provider == 'runtime'
+          - secret_resolver_metadata.existing_not_regenerated.attempted_providers == ['runtime']
+        quiet: true
+      no_log: true
+
+    - name: Assert generated values do not leak into metadata
+      ansible.builtin.assert:
+        that:
+          - >-
+            secret_resolver_result.values() | list
+            | select('in', secret_resolver_metadata | to_json)
+            | list
+            | length == 0
+        quiet: true
+      no_log: true

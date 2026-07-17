@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2086,SC2154
 set -eo pipefail
 
 # Run all non-*heavy Molecule scenarios for the current collection
@@ -18,18 +19,7 @@ COLLECTION_NAMESPACE="${COLLECTION_NAMESPACE:-lit}"
 
 # Prefer authoritative name from galaxy.yml
 if [ -z "${COLLECTION_NAME:-}" ] && [ -f galaxy.yml ]; then
-  COLLECTION_NAME="$(python3 - <<'PY'
-import yaml
-try:
-    with open("galaxy.yml", "r", encoding="utf-8") as f:
-        data = yaml.safe_load(f) or {}
-    name = data.get("name", "")
-    if name:
-        print(name)
-except Exception:
-    pass
-PY
-  )"
+  COLLECTION_NAME="$(scripts/devtools-galaxy.sh value name galaxy.yml || true)"
 fi
 
 # Fallback: derive COLLECTION_NAME from repo name (ansible-collection-<name>)
@@ -63,12 +53,23 @@ WUNDER_DEVTOOLS_RUN_AS_HOST_UID=0 \
 COLLECTION_NAMESPACE="${COLLECTION_NAMESPACE}" \
 COLLECTION_NAME="${COLLECTION_NAME}" \
 SCENARIO_FILTER="${SCENARIO_FILTER}" \
-bash scripts/wunder-devtools-ee.sh bash -lc '
+CONTAINER_HOME=/tmp/wunder \
+bash scripts/wunder-devtools-ee.sh env \
+  MOLECULE_RUN_PROTECTED="${MOLECULE_RUN_PROTECTED:-false}" \
+  bash -c '
   set -euo pipefail
 
   ns="${COLLECTION_NAMESPACE}"
   name="${COLLECTION_NAME}"
   scenario_filter="${SCENARIO_FILTER:-}"
+  molecule_run_protected="${MOLECULE_RUN_PROTECTED:-false}"
+
+  protected_enabled=false
+  case "${molecule_run_protected}" in
+    true|TRUE|1|yes|YES)
+      protected_enabled=true
+      ;;
+  esac
 
   echo "Preparing collection ${ns}.${name} for Molecule tests..."
   if [ -n "${scenario_filter}" ]; then
@@ -77,14 +78,19 @@ bash scripts/wunder-devtools-ee.sh bash -lc '
 
   echo "DEBUG: docker info inside ee-wunder-devtools-ubi9..."
   if ! docker info >/dev/null 2>&1; then
-    echo "ERROR: docker info failed inside devtools container."
-    exit 1
+    echo "WARN: docker info failed inside devtools container." >&2
+    if [ "${CI:-false}" = "true" ] || [ "${GITHUB_ACTIONS:-false}" = "true" ]; then
+      echo "ERROR: Docker is required for Molecule tests in CI." >&2
+      exit 1
+    fi
+    echo "Skipping Molecule tests because Docker is unavailable in the local devtools container." >&2
+    exit 0
   fi
 
   # -------------------------------------------------------------
   # 1) Build + install this collection into a per-run collections dir
   # -------------------------------------------------------------
-  COLLECTIONS_DIR="$(/workspace/scripts/devtools-collection-prepare.sh | tail -n 1)"
+  COLLECTIONS_DIR="$(bash /workspace/scripts/devtools-collection-prepare.sh | tail -n 1)"
 
   if [ -z "${COLLECTIONS_DIR:-}" ] || [ ! -d "${COLLECTIONS_DIR}" ]; then
     echo "ERROR: COLLECTIONS_DIR not found/invalid: ${COLLECTIONS_DIR:-<empty>}" >&2
@@ -94,36 +100,7 @@ bash scripts/wunder-devtools-ee.sh bash -lc '
   export ANSIBLE_COLLECTIONS_PATH="${COLLECTIONS_DIR}:/usr/share/ansible/collections"
 
   # -------------------------------------------------------------
-  # 2) Install declared dependencies into the SAME per-run dir
-  # -------------------------------------------------------------
-  dep_fqcns=()
-  if [ -f /workspace/galaxy.yml ]; then
-    while IFS= read -r fqcn; do
-      dep_fqcns+=("$fqcn")
-    done < <(
-      python3 - <<'"PY"'
-import yaml, sys
-try:
-    with open("/workspace/galaxy.yml", "r", encoding="utf-8") as f:
-        data = yaml.safe_load(f) or {}
-    deps = data.get("dependencies") or {}
-    for fqcn in deps.keys():
-        print(fqcn)
-except Exception as exc:  # noqa: BLE001
-    sys.stderr.write(f"WARN: failed to parse galaxy.yml dependencies: {exc}\n")
-PY
-    )
-  fi
-
-  for dep_fqcn in "${dep_fqcns[@]}"; do
-    if [ -n "$dep_fqcn" ]; then
-      echo "Installing dependency ${dep_fqcn} into ${COLLECTIONS_DIR}..."
-      ansible-galaxy collection install "$dep_fqcn" -p "${COLLECTIONS_DIR}" --force
-    fi
-  done
-
-  # -------------------------------------------------------------
-  # 3) Configure Ansible env for Molecule
+  # 2) Configure Ansible env for Molecule
   # -------------------------------------------------------------
   if [ -f /workspace/ansible.cfg ]; then
     export ANSIBLE_CONFIG=/workspace/ansible.cfg
@@ -133,13 +110,49 @@ PY
   export DOCKER_HOST="${DOCKER_HOST:-unix:///var/run/docker.sock}"
 
   # -------------------------------------------------------------
-  # 4) Discover scenarios
+  # 3) Discover scenarios
   # -------------------------------------------------------------
   scenarios=()
 
+  add_scenario() {
+    local scen="$1"
+    local explicit="${2:-false}"
+    local mode_file="molecule/${scen}/.molecule-mode"
+    local mode=""
+
+    if [ -f "${mode_file}" ]; then
+      mode="$(tr -d "[:space:]" < "${mode_file}")"
+    fi
+
+    if [ ! -f "molecule/${scen}/molecule.yml" ]; then
+      echo "Skipping Molecule helper directory '${scen}' (no molecule.yml)."
+      return
+    fi
+
+    case "${mode}" in
+      protected-incus)
+        if [ "${protected_enabled}" != "true" ]; then
+          if [ "${explicit}" = "true" ]; then
+            echo "ERROR: Scenario '\''${scen}'\'' is protected; set MOLECULE_RUN_PROTECTED=true to run it." >&2
+            exit 1
+          fi
+          echo "Skipping protected Incus scenario '\''${scen}'\'' (set MOLECULE_RUN_PROTECTED=true to run)."
+          return
+        fi
+
+        if ! command -v incus >/dev/null 2>&1; then
+          echo "ERROR: Scenario '\''${scen}'\'' requires the incus CLI inside the devtools container." >&2
+          exit 1
+        fi
+        ;;
+    esac
+
+    scenarios+=("${scen}")
+  }
+
   if [ -n "$scenario_filter" ]; then
     if [ -d "molecule/$scenario_filter" ] && [ -f "molecule/$scenario_filter/molecule.yml" ]; then
-      scenarios+=("$scenario_filter")
+      add_scenario "$scenario_filter" true
     else
       echo "ERROR: Requested scenario '${scenario_filter}' not found under molecule/." >&2
       exit 1
@@ -153,7 +166,7 @@ PY
             echo "Skipping heavy scenario '\''${scen}'\'' in devtools-molecule.sh (run manually via dedicated script)."
             ;;
           *)
-            scenarios+=("$scen")
+            add_scenario "$scen"
             ;;
         esac
       done < <(find molecule -maxdepth 1 -mindepth 1 -type d)

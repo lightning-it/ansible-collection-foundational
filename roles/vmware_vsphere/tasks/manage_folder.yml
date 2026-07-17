@@ -34,6 +34,30 @@
     datacenter: "{{ vmware_vsphere_datacenter }}"
     absolute_path: "{{ vmware_vsphere_folder_full_path }}"
     state: absent
+  register: vmware_vsphere_folder_absent_result
+  failed_when: false
   when:
     - vmware_vsphere_destroy | bool
     - vmware_vsphere_destroy_folder | default(false) | bool
+
+- name: Folder not deleted because other VMs still exist
+  ansible.builtin.debug:
+    msg: >-
+      Directory {{ vmware_vsphere_folder_full_path }} has not been deleted
+      because other VMs still exist.
+  when:
+    - vmware_vsphere_destroy | bool
+    - vmware_vsphere_destroy_folder | default(false) | bool
+    - vmware_vsphere_folder_absent_result is defined
+    - vmware_vsphere_folder_absent_result.failed | default(false)
+    - "'contains a vm' in (vmware_vsphere_folder_absent_result.msg | default('') | lower)"
+
+- name: Fail when folder deletion failed for another reason
+  ansible.builtin.fail:
+    msg: "{{ vmware_vsphere_folder_absent_result.msg | default('Folder deletion failed') }}"
+  when:
+    - vmware_vsphere_destroy | bool
+    - vmware_vsphere_destroy_folder | default(false) | bool
+    - vmware_vsphere_folder_absent_result is defined
+    - vmware_vsphere_folder_absent_result.failed | default(false)
+    - "'contains a vm' not in (vmware_vsphere_folder_absent_result.msg | default('') | lower)"

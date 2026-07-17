@@ -1,0 +1,222 @@
+# yamllint disable rule:truthy
+---
+name: Publish collection release
+
+on:
+  pull_request:
+    types: [closed]
+    branches: ["main"]
+    paths:
+      - galaxy.yml
+      - CHANGELOG.rst
+      - changelogs/changelog.yaml
+  workflow_dispatch:
+    inputs:
+      create_github_release:
+        description: Create the GitHub Release.
+        required: false
+        default: "true"
+        type: choice
+        options: ["true", "false"]
+      publish_galaxy:
+        description: Publish to Ansible Galaxy.
+        required: false
+        default: "false"
+        type: choice
+        options: ["true", "false"]
+
+permissions:
+  actions: write
+  contents: write
+
+jobs:
+  dispatch:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.base.ref == 'main' &&
+      startsWith(github.event.pull_request.head.ref, 'release/v')
+    name: Dispatch collection publish from main
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Derive release publishing settings
+        id: settings
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -euo pipefail
+
+          create_github_release=false
+          publish_galaxy=false
+          github_release_marker="GitHub release creation: \`true\`"
+          galaxy_publish_marker="Galaxy publishing: \`true\`"
+
+          if [[ "$PR_BODY" == *"$github_release_marker"* ]]; then
+            create_github_release=true
+          fi
+          if [[ "$PR_BODY" == *"$galaxy_publish_marker"* ]]; then
+            publish_galaxy=true
+          fi
+
+          echo "create_github_release=$create_github_release" >> "$GITHUB_OUTPUT"
+          echo "publish_galaxy=$publish_galaxy" >> "$GITHUB_OUTPUT"
+
+      - name: Dispatch publish workflow on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CREATE_GITHUB_RELEASE: ${{ steps.settings.outputs.create_github_release }}
+          PUBLISH_GALAXY: ${{ steps.settings.outputs.publish_galaxy }}
+        run: |
+          set -euo pipefail
+
+          gh workflow run collection-publish.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f create_github_release="$CREATE_GITHUB_RELEASE" \
+            -f publish_galaxy="$PUBLISH_GALAXY"
+
+  publish:
+    if: github.event_name == 'workflow_dispatch'
+    name: Publish collection release
+    runs-on: ubuntu-latest
+    environment: ansible-collections
+    env:
+      RELEASE_BOT_APP_ID: ${{ secrets.RELEASE_BOT_APP_ID }}
+      RELEASE_BOT_PRIVATE_KEY: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+      GALAXY_API_TOKEN: ${{ secrets.ANSIBLE_GALAXY_API_KEY }}
+
+    steps:
+      - name: Create GitHub App token
+        id: app-token
+        if: ${{ env.RELEASE_BOT_APP_ID != '' && env.RELEASE_BOT_PRIVATE_KEY != '' }}
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ env.RELEASE_BOT_APP_ID }}
+          private-key: ${{ env.RELEASE_BOT_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+
+      - name: Resolve release token
+        id: token
+        env:
+          APP_TOKEN: ${{ steps.app-token.outputs.token }}
+          TOKEN: ${{ secrets.LITRELEASEBOT_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -n "${APP_TOKEN:-}" ]; then
+            echo "value=$APP_TOKEN" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ -n "${TOKEN:-}" ]; then
+            echo "value=$TOKEN" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "value=${{ github.token }}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout main
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          token: ${{ steps.token.outputs.value }}
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+
+      - name: Install build tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ansible-core pyyaml
+
+      - name: Build and publish
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.value }}
+          CREATE_GITHUB_RELEASE: ${{ inputs.create_github_release }}
+          PUBLISH_GALAXY: ${{ inputs.publish_galaxy }}
+        run: |
+          set -euo pipefail
+
+          version="$(python - <<'PY'
+          import yaml
+          print(yaml.safe_load(open("galaxy.yml"))["version"])
+          PY
+          )"
+          tag="v${version}"
+
+          ansible-galaxy collection build --force
+          tarball="$(ls ./*.tar.gz)"
+
+          notes="$(mktemp)"
+          if [ ! -f CHANGELOG.rst ]; then
+            echo "::error::CHANGELOG.rst is required for collection GitHub Release notes."
+            exit 1
+          fi
+          awk '/^v'"$version"'$/{flag=1; print; next} /^v[0-9]/{if(flag) exit} flag {print}' CHANGELOG.rst > "$notes"
+
+          if [ "$CREATE_GITHUB_RELEASE" = "true" ]; then
+            if [ ! -s "$notes" ]; then
+              echo "::error::No CHANGELOG.rst section found for $tag."
+              exit 1
+            fi
+            if gh release view "$tag" >/dev/null 2>&1; then
+              echo "GitHub release $tag already exists; leaving it unchanged."
+            else
+              gh release create "$tag" "$tarball" --target main --title "$tag" --notes-file "$notes"
+            fi
+            gh workflow run release-back-sync.yml --ref main -f tag="$tag"
+          else
+            echo "GitHub release creation disabled for this release."
+          fi
+
+          if [ "$PUBLISH_GALAXY" = "true" ]; then
+            if [ -z "${GALAXY_API_TOKEN:-}" ]; then
+              echo "::error::GALAXY_API_TOKEN is required when publish_galaxy is true."
+              exit 1
+            fi
+            ansible-galaxy collection publish "$tarball" --api-key "$GALAXY_API_TOKEN"
+          fi
+
+          TESTED_MATRIX="ansible-core,molecule,collection-build" \
+          PASSED_JOBS="Publish collection release" \
+          BUILT_ARTIFACTS="$tarball" \
+          PUBLISHED_ARTIFACTS="$(
+            if [ "$CREATE_GITHUB_RELEASE" = "true" ]; then
+              printf 'github-release:%s' "$tag"
+            fi
+            if [ "$PUBLISH_GALAXY" = "true" ]; then
+              printf ',ansible-galaxy:lit.%s:%s' "$(python - <<'PY'
+          import yaml
+          print(yaml.safe_load(open("galaxy.yml"))["name"])
+          PY
+          )" "$version"
+            fi
+          )" \
+          ANSIBLE_GALAXY_ARTIFACT="lit.$(python - <<'PY'
+          import yaml
+          print(yaml.safe_load(open("galaxy.yml"))["name"])
+          PY
+          ):${version}" \
+          RELEASE_TAG="$tag" \
+          RELEASE_VERSION="$version" \
+          CHANGELOG_URL="https://github.com/${{ github.repository }}/blob/main/CHANGELOG.rst" \
+          python scripts/generate-release-evidence.py
+
+          if [ "$CREATE_GITHUB_RELEASE" = "true" ]; then
+            gh release upload "$tag" \
+              dist/release-evidence.json \
+              dist/release-evidence.md \
+              --clobber
+          fi
+
+      - name: Upload release evidence artifact
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: release-evidence
+          path: |
+            dist/release-evidence.json
+            dist/release-evidence.md
+          if-no-files-found: ignore

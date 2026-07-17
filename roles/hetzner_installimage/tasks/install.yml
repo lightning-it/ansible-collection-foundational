@@ -1,0 +1,305 @@
+---
+- name: Validate destructive installation approval gates
+  ansible.builtin.assert:
+    that:
+      - hetzner_installimage_allow_destructive | bool
+      - hetzner_installimage_expected_image_sha256 | length == 64
+      - >-
+        hetzner_installimage_expected_image_sha256 | lower
+        == hetzner_installimage_image_stat.stat.checksum | lower
+      - hetzner_installimage_approved_plan_sha256 == hetzner_installimage_plan.sha256
+      - hetzner_installimage_confirmation == hetzner_installimage_plan.required_confirmation
+    fail_msg: >-
+      Installation refused. Enable the destructive flag and provide the exact current
+      image checksum, plan SHA-256, and ERASE confirmation emitted by a prior plan run.
+    quiet: true
+  changed_when: false
+
+- name: Validate encrypted installation password input
+  ansible.builtin.assert:
+    that:
+      - >-
+        not (hetzner_installimage_encryption_requested | bool)
+        or hetzner_installimage_crypt_password | length >= 20
+      - hetzner_installimage_crypt_password is not search('[\r\n]')
+    fail_msg: >-
+      Encrypted installation requires a stable recovery password of at least 20 characters,
+      resolved from the declared secret backend and containing no line breaks.
+    quiet: true
+  changed_when: false
+  no_log: "{{ hetzner_installimage_no_log | bool }}"
+
+- name: Report approved installation in check mode
+  ansible.builtin.debug:
+    msg: >-
+      Installation is fully approved and would execute plan {{ hetzner_installimage_plan.sha256 }};
+      check mode never invokes installimage.
+  changed_when: true
+  when: ansible_check_mode
+
+- name: Record approved check-mode result
+  ansible.builtin.set_fact:
+    hetzner_installimage_result:
+      action: install
+      plan_sha256: "{{ hetzner_installimage_plan.sha256 }}"
+      install_complete: false
+      would_install: true
+      reboot_performed: false
+  changed_when: false
+  when: ansible_check_mode
+
+- name: Run approved Hetzner installimage installation
+  when: not ansible_check_mode
+  block:
+    - name: Record pre-existing installimage autosetup artifacts
+      ansible.builtin.find:
+        paths: /
+        patterns:
+          - autosetup
+          - autosetup.bak-*
+        recurse: false
+        file_type: any
+        hidden: true
+      register: hetzner_installimage_autosetup_before
+      changed_when: false
+
+    - name: Refuse an ambiguous pre-existing active autosetup file
+      ansible.builtin.assert:
+        that:
+          - "'/autosetup' not in (hetzner_installimage_autosetup_before.files | map(attribute='path') | list)"
+        fail_msg: >-
+          Installation refused because /autosetup already exists. Preserve or remove it
+          explicitly before retrying; existing backup files are left untouched.
+        quiet: true
+      changed_when: false
+
+    - name: Inspect reserved installimage hook paths
+      ansible.builtin.stat:
+        path: "{{ item }}"
+        follow: false
+      register: hetzner_installimage_reserved_hook_paths
+      changed_when: false
+      loop:
+        - /post-install
+        - "{{ hetzner_installimage_post_mount_sanitizer_path }}"
+        - "{{ hetzner_installimage_post_mount_success_marker_path }}"
+
+    - name: Refuse to overwrite reserved installimage hook paths
+      ansible.builtin.assert:
+        that:
+          - >-
+            item.item != '/post-install'
+            or hetzner_installimage_post_install_script_path | length == 0
+            or not (item.stat.exists | bool)
+          - >-
+            item.item != hetzner_installimage_post_mount_sanitizer_path
+            or not (hetzner_installimage_encryption_requested | bool)
+            or not (item.stat.exists | bool)
+          - >-
+            item.item != hetzner_installimage_post_mount_success_marker_path
+            or not (hetzner_installimage_encryption_requested | bool)
+            or not (item.stat.exists | bool)
+        fail_msg: >-
+          Installation refused because reserved installimage hook path {{ item.item }} exists.
+        quiet: true
+      loop: "{{ hetzner_installimage_reserved_hook_paths.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+      changed_when: false
+
+    - name: Stage post-mount recovery-password sanitizer
+      ansible.builtin.template:
+        src: post-mount-sanitize.sh.j2
+        dest: "{{ hetzner_installimage_post_mount_sanitizer_path }}"
+        owner: root
+        group: root
+        mode: "0700"
+      when: hetzner_installimage_encryption_requested | bool
+
+    - name: Inspect staged post-mount recovery-password sanitizer
+      ansible.builtin.stat:
+        path: "{{ hetzner_installimage_post_mount_sanitizer_path }}"
+        follow: false
+        get_checksum: true
+        checksum_algorithm: sha256
+      register: hetzner_installimage_staged_post_mount_sanitizer
+      changed_when: false
+      when: hetzner_installimage_encryption_requested | bool
+
+    - name: Validate staged post-mount recovery-password sanitizer
+      ansible.builtin.assert:
+        that:
+          - hetzner_installimage_staged_post_mount_sanitizer.stat.isreg
+          - hetzner_installimage_staged_post_mount_sanitizer.stat.uid | int == 0
+          - hetzner_installimage_staged_post_mount_sanitizer.stat.mode == '0700'
+          - >-
+            hetzner_installimage_staged_post_mount_sanitizer.stat.checksum
+            == hetzner_installimage_plan.post_mount_sanitizer_sha256
+        fail_msg: "The staged /post-mount sanitizer differs from the approved plan."
+        quiet: true
+      changed_when: false
+      when: hetzner_installimage_encryption_requested | bool
+
+    - name: Create private temporary installimage directory
+      ansible.builtin.tempfile:
+        state: directory
+        prefix: lit-installimage-
+      register: hetzner_installimage_temporary_directory
+
+    - name: Render private installimage configuration
+      vars:
+        hetzner_installimage_template_crypt_password: "{{ hetzner_installimage_crypt_password }}"
+      ansible.builtin.template:
+        src: installimage.conf.j2
+        dest: "{{ hetzner_installimage_temporary_directory.path }}/installimage.conf"
+        owner: root
+        group: root
+        mode: "0600"
+      diff: false
+      no_log: "{{ hetzner_installimage_no_log | bool }}"
+
+    - name: Build installimage command arguments
+      ansible.builtin.set_fact:
+        hetzner_installimage_command_argv: >-
+          {{
+            [
+              hetzner_installimage_binary,
+              '-a',
+              '-c',
+              hetzner_installimage_temporary_directory.path ~ '/installimage.conf'
+            ]
+            +
+            (
+              ['-x', hetzner_installimage_post_install_script_path]
+              if hetzner_installimage_post_install_script_path | length > 0
+              else []
+            )
+          }}
+      changed_when: false
+
+    - name: Execute installimage with the approved configuration
+      ansible.builtin.command:
+        argv: "{{ hetzner_installimage_command_argv }}"
+      register: hetzner_installimage_execution
+      changed_when: true
+      no_log: "{{ hetzner_installimage_no_log | bool }}"
+
+    - name: Validate completed installimage execution
+      ansible.builtin.import_tasks: validate.yml
+
+  always:
+    - name: Discover installimage autosetup artifacts after execution
+      ansible.builtin.find:
+        paths: /
+        patterns:
+          - autosetup
+          - autosetup.bak-*
+        recurse: false
+        file_type: any
+        hidden: true
+      register: hetzner_installimage_autosetup_after
+      changed_when: false
+      when: hetzner_installimage_autosetup_before.files is defined
+
+    - name: Remove newly created installimage autosetup artifacts
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop: >-
+        {{
+          (hetzner_installimage_autosetup_after.files | map(attribute='path') | list)
+          | difference(hetzner_installimage_autosetup_before.files | map(attribute='path') | list)
+        }}
+      loop_control:
+        label: "{{ item }}"
+      no_log: "{{ hetzner_installimage_no_log | bool }}"
+      when:
+        - hetzner_installimage_autosetup_before.files is defined
+        - hetzner_installimage_autosetup_after.files is defined
+
+    - name: Inspect installimage hook paths after execution
+      ansible.builtin.stat:
+        path: "{{ item }}"
+        follow: false
+      register: hetzner_installimage_hook_paths_after
+      changed_when: false
+      loop:
+        - /post-install
+        - "{{ hetzner_installimage_post_mount_sanitizer_path }}"
+        - "{{ hetzner_installimage_post_mount_success_marker_path }}"
+
+    - name: Remove installimage-created post-install symlink
+      ansible.builtin.file:
+        path: /post-install
+        state: absent
+      vars:
+        hetzner_installimage_post_install_after: >-
+          {{
+            hetzner_installimage_hook_paths_after.results
+            | selectattr('item', 'equalto', '/post-install')
+            | first
+          }}
+        hetzner_installimage_post_install_before: >-
+          {{
+            hetzner_installimage_reserved_hook_paths.results
+            | selectattr('item', 'equalto', '/post-install')
+            | first
+          }}
+      when:
+        - hetzner_installimage_post_install_script_path | length > 0
+        - not (hetzner_installimage_post_install_before.stat.exists | default(false))
+        - hetzner_installimage_post_install_after.stat.islnk | default(false)
+        - >-
+          hetzner_installimage_post_install_after.stat.lnk_source | default('')
+          == hetzner_installimage_post_install_script_path
+
+    - name: Remove staged post-mount recovery-password sanitizer
+      ansible.builtin.file:
+        path: "{{ hetzner_installimage_post_mount_sanitizer_path }}"
+        state: absent
+      vars:
+        hetzner_installimage_post_mount_after: >-
+          {{
+            hetzner_installimage_hook_paths_after.results
+            | selectattr('item', 'equalto', hetzner_installimage_post_mount_sanitizer_path)
+            | first
+          }}
+        hetzner_installimage_post_mount_before: >-
+          {{
+            hetzner_installimage_reserved_hook_paths.results
+            | selectattr('item', 'equalto', hetzner_installimage_post_mount_sanitizer_path)
+            | first
+          }}
+      when:
+        - hetzner_installimage_encryption_requested | bool
+        - not (hetzner_installimage_post_mount_before.stat.exists | default(false))
+        - hetzner_installimage_post_mount_after.stat.exists | default(false)
+
+    - name: Remove post-mount sanitizer success marker
+      ansible.builtin.file:
+        path: "{{ hetzner_installimage_post_mount_success_marker_path }}"
+        state: absent
+      vars:
+        hetzner_installimage_post_mount_marker_after: >-
+          {{
+            hetzner_installimage_hook_paths_after.results
+            | selectattr('item', 'equalto', hetzner_installimage_post_mount_success_marker_path)
+            | first
+          }}
+        hetzner_installimage_post_mount_marker_before: >-
+          {{
+            hetzner_installimage_reserved_hook_paths.results
+            | selectattr('item', 'equalto', hetzner_installimage_post_mount_success_marker_path)
+            | first
+          }}
+      when:
+        - hetzner_installimage_encryption_requested | bool
+        - not (hetzner_installimage_post_mount_marker_before.stat.exists | default(false))
+        - hetzner_installimage_post_mount_marker_after.stat.exists | default(false)
+
+    - name: Remove private installimage configuration and directory
+      ansible.builtin.file:
+        path: "{{ hetzner_installimage_temporary_directory.path }}"
+        state: absent
+      when: hetzner_installimage_temporary_directory.path is defined
+      no_log: "{{ hetzner_installimage_no_log | bool }}"

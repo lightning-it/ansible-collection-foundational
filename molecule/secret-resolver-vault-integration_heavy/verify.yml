@@ -1,0 +1,188 @@
+---
+- name: Verify rejected Vault persistence writes
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    secret_resolver_vault_test_addr: >-
+      {{
+        lookup('ansible.builtin.env', 'SECRET_RESOLVER_VAULT_TEST_ADDR')
+        | default(
+            (
+              'http://host.docker.internal:18202'
+              if
+              (lookup('ansible.builtin.env', 'WUNDER_DEVTOOLS_HOST_WORKSPACE') | length > 0)
+              else 'http://127.0.0.1:18202'
+            ),
+            true
+          )
+      }}
+    secret_resolver_vault_test_token: molecule-root-token
+    secret_resolver_provider: hashicorp_vault
+    secret_resolver_vault_addr: "{{ secret_resolver_vault_test_addr }}"
+    secret_resolver_vault_token: "{{ secret_resolver_vault_test_token }}"
+    secret_resolver_vault_validate_certs: false
+    secret_resolver_vault_timeout: 2
+    secret_resolver_vault_retries: 0
+  tasks:
+    - name: Exercise a provider-rejected persistence write
+      block:
+        - name: Attempt persistence with a read-only Vault token
+          ansible.builtin.include_role:
+            name: lit.foundational.secret_resolver
+          vars:
+            secret_resolver_vault_token: molecule-readonly-token
+            secret_resolver_vault_token_validate: false
+            secret_resolver_requests:
+              - name: rejected_write_back
+                hashicorp_vault:
+                  path: integration/write-denied
+                  key: generated
+                generation:
+                  enabled: true
+                  type: password
+                  length: 24
+                  persistence_required: true
+                write_back:
+                  enabled: true
+                  provider: hashicorp_vault
+                  overwrite: false
+
+        - name: Fail if a rejected persistence write unexpectedly succeeded
+          ansible.builtin.fail:
+            msg: Expected the read-only Vault token to reject persistence.
+      rescue:
+        - name: Verify rejected persistence fails closed and sanitized
+          ansible.builtin.assert:
+            that:
+              - '''category=write_back_failed'' in ansible_failed_result.msg'
+              - '''molecule-readonly-token'' not in ansible_failed_result.msg'
+              - secret_resolver_result == {}
+              - secret_resolver_metadata == {}
+            quiet: true
+          no_log: true
+
+- name: Verify secret resolver check-mode behavior
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    secret_resolver_vault_test_addr: >-
+      {{
+        lookup('ansible.builtin.env', 'SECRET_RESOLVER_VAULT_TEST_ADDR')
+        | default(
+            (
+              'http://host.docker.internal:18202'
+              if
+              (lookup('ansible.builtin.env', 'WUNDER_DEVTOOLS_HOST_WORKSPACE') | length > 0)
+              else 'http://127.0.0.1:18202'
+            ),
+            true
+          )
+      }}
+    secret_resolver_provider: hashicorp_vault
+    secret_resolver_vault_addr: "{{ secret_resolver_vault_test_addr }}"
+    secret_resolver_vault_token: molecule-root-token
+    secret_resolver_vault_validate_certs: false
+    secret_resolver_vault_timeout: 2
+    secret_resolver_vault_retries: 0
+  tasks:
+    - name: Execute ordinary generated write prediction in real check mode
+      ansible.builtin.command:
+        argv:
+          - ansible-playbook
+          - --check
+          - -i
+          - localhost,
+          - /workspace/molecule/secret-resolver-vault-integration_heavy/check_mode.yml
+      register: secret_resolver_check_mode_prediction
+      changed_when: false
+      failed_when: secret_resolver_check_mode_prediction.rc != 0
+      no_log: true
+
+    - name: Execute persistence-required check-mode failure contract
+      ansible.builtin.command:
+        argv:
+          - ansible-playbook
+          - --check
+          - -i
+          - localhost,
+          - /workspace/molecule/secret-resolver-vault-integration_heavy/check_mode_required.yml
+      register: secret_resolver_check_mode_required
+      changed_when: false
+      failed_when: secret_resolver_check_mode_required.rc != 0
+      no_log: true
+
+- name: Verify persisted Vault integration state
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    secret_resolver_vault_test_addr: >-
+      {{
+        lookup('ansible.builtin.env', 'SECRET_RESOLVER_VAULT_TEST_ADDR')
+        | default(
+            (
+              'http://host.docker.internal:18202'
+              if
+              (lookup('ansible.builtin.env', 'WUNDER_DEVTOOLS_HOST_WORKSPACE') | length > 0)
+              else 'http://127.0.0.1:18202'
+            ),
+            true
+          )
+      }}
+    secret_resolver_vault_test_token: molecule-root-token
+  tasks:
+    - name: Read the generated KV version 2 document
+      ansible.builtin.uri:
+        url: "{{ secret_resolver_vault_test_addr }}/v1/secret/data/integration/generated"
+        method: GET
+        headers:
+          X-Vault-Token: "{{ secret_resolver_vault_test_token }}"
+        return_content: true
+        status_code:
+          - 200
+      register: secret_resolver_generated_document
+      no_log: true
+
+    - name: Read the migrated KV version 2 document
+      ansible.builtin.uri:
+        url: "{{ secret_resolver_vault_test_addr }}/v1/secret/data/integration/migrated"
+        method: GET
+        headers:
+          X-Vault-Token: "{{ secret_resolver_vault_test_token }}"
+        return_content: true
+        status_code:
+          - 200
+      register: secret_resolver_migrated_document
+      no_log: true
+
+    - name: Read the check-mode KV version 2 document
+      ansible.builtin.uri:
+        url: "{{ secret_resolver_vault_test_addr }}/v1/secret/data/integration/check-mode"
+        method: GET
+        headers:
+          X-Vault-Token: "{{ secret_resolver_vault_test_token }}"
+        return_content: true
+        status_code:
+          - 200
+      register: secret_resolver_check_mode_document
+      no_log: true
+
+    - name: Assert persistence content constraints and exact versions
+      ansible.builtin.assert:
+        that:
+          - secret_resolver_generated_document.json.data.data.generated | length == 32
+          - secret_resolver_generated_document.json.data.data.generated | regex_findall('[a-z]') | length >= 1
+          - secret_resolver_generated_document.json.data.data.generated | regex_findall('[A-Z]') | length >= 1
+          - secret_resolver_generated_document.json.data.data.generated | regex_findall('[0-9]') | length >= 1
+          - secret_resolver_generated_document.json.data.data.generated | regex_findall('[^A-Za-z0-9]') | length >= 1
+          - secret_resolver_generated_document.json.data.data.retained == 'retained-generated-field'
+          - secret_resolver_generated_document.json.data.metadata.version == 2
+          - secret_resolver_migrated_document.json.data.data.migrated == 'migration-source-input'
+          - secret_resolver_migrated_document.json.data.metadata.version == 1
+          - '''generated'' not in secret_resolver_check_mode_document.json.data.data'
+          - secret_resolver_check_mode_document.json.data.data.retained == 'retained-check-mode-field'
+          - secret_resolver_check_mode_document.json.data.metadata.version == 1
+        quiet: true
+      no_log: true

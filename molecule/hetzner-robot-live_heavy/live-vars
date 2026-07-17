@@ -1,0 +1,6 @@
+---
+hetzner_robot_live_enabled: "{{ lookup('ansible.builtin.env', 'HROBOT_LIVE_ENABLED') }}"
+hetzner_robot_live_user: "{{ lookup('ansible.builtin.env', 'HROBOT_LIVE_USER') }}"
+hetzner_robot_live_password: "{{ lookup('ansible.builtin.env', 'HROBOT_LIVE_PASSWORD') }}"
+hetzner_robot_live_server_ip: "{{ lookup('ansible.builtin.env', 'HROBOT_LIVE_SERVER_IP') }}"
+hetzner_robot_live_server_name: "{{ lookup('ansible.builtin.env', 'HROBOT_LIVE_SERVER_NAME') }}"

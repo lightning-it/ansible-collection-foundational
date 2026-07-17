@@ -1,0 +1,12 @@
+[Unit]
+Description=Ensure bridge VLAN membership for {{ bridge_vlan_membership_bridge }}
+After=NetworkManager.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart={{ _bridge_vlan_membership_script_path }}
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
