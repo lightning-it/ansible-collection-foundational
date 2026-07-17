@@ -5,6 +5,8 @@ vmware_vsphere_delegate_to: localhost
 # Behaviour defaults
 vmware_vsphere_power_on: true
 vmware_vsphere_wait_for_ip: true
+vmware_vsphere_wait_for_ip_timeout: 900
+vmware_vsphere_validate_configured_ips: true
 vmware_vsphere_guest_ip_family: ipv4
 vmware_vsphere_nic_type: vmxnet3
 vmware_vsphere_disk_thin_provisioned: true
@@ -39,9 +41,13 @@ vmware_vsphere_folder_full_path: >-
   }}
 vmware_vsphere_folder_type: vm
 vmware_vsphere_destroy: false
+vmware_vsphere_destroy_folder: false
+vmware_vsphere_is_template: false
+vmware_vsphere_template_shutdown_timeout: 300
 vmware_vsphere_guest_force: false
 vmware_vsphere_hardware_version: 15
 vmware_vsphere_guest_id: ""
+vmware_vsphere_validate_template: true
 # Safe default; allow cluster_id to be undefined without breaking module_defaults
 vmware_vsphere_iso_path: "ISOs/agent-{{ cluster_id | default('') }}.x86_64.iso"
 vmware_vsphere_username: ""

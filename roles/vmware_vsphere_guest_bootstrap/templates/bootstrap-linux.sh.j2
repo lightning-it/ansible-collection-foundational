@@ -1,0 +1,160 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+admin_group="wheel"
+ssh_service="sshd"
+if [ -r /etc/os-release ]; then
+  . /etc/os-release
+  case "${ID:-}" in
+    ubuntu|debian)
+      admin_group="sudo"
+      ssh_service="ssh"
+      ;;
+  esac
+fi
+
+if ! getent group "${admin_group}" >/dev/null 2>&1; then
+  groupadd "${admin_group}"
+fi
+install -d -m 0755 /etc/sudoers.d
+
+{% if vmware_vsphere_guest_bootstrap_manage_sshd_dropin | bool %}
+install -d -m 0755 /etc/ssh/sshd_config.d
+cat > {{ vmware_vsphere_guest_bootstrap_sshd_dropin_path | quote }} <<'EOF_SSHD'
+PubkeyAuthentication yes
+PasswordAuthentication {{ vmware_vsphere_guest_bootstrap_disable_password_auth | ternary('no', 'yes') }}
+KbdInteractiveAuthentication no
+ChallengeResponseAuthentication no
+PermitRootLogin {{ vmware_vsphere_guest_bootstrap_disable_root_login | ternary('no', 'prohibit-password') }}
+UsePAM yes
+EOF_SSHD
+chmod 0600 {{ vmware_vsphere_guest_bootstrap_sshd_dropin_path | quote }}
+{% endif %}
+
+{% for user in vmware_vsphere_guest_bootstrap_users_accounts %}
+{% if user is mapping and (user.state | default('present')) == 'present' %}
+if ! id {{ user.name | quote }} >/dev/null 2>&1; then
+  useradd --create-home --shell {{ user.shell | default('/bin/bash') | quote }} {{ user.name | quote }}
+fi
+usermod --shell {{ user.shell | default('/bin/bash') | quote }} {{ user.name | quote }}
+{% if user.password is defined and (user.password | string | length) > 0 %}
+usermod --password {{ user.password | quote }} {{ user.name | quote }}
+{% endif %}
+{% if user.groups is defined and (user.groups | length) > 0 %}
+{% for group_name in user.groups %}
+if [ {{ group_name | quote }} = "wheel" ] && [ "${admin_group}" = "sudo" ]; then
+  groupadd -f sudo
+  usermod -aG sudo {{ user.name | quote }}
+else
+  groupadd -f {{ group_name | quote }}
+  usermod -aG {{ group_name | quote }} {{ user.name | quote }}
+fi
+{% endfor %}
+{% endif %}
+home_dir="$(getent passwd {{ user.name | quote }} | cut -d: -f6)"
+home_group="$(id -gn {{ user.name | quote }})"
+install -d -m 0700 -o {{ user.name | quote }} -g "${home_group}" "${home_dir}/.ssh"
+{% if user.ssh_keys is defined and (user.ssh_keys | length) > 0 %}
+cat > "${home_dir}/.ssh/authorized_keys" <<'EOF_KEYS_{{ loop.index }}
+{% for ssh_key in user.ssh_keys %}
+{{ ssh_key }}
+{% endfor %}
+EOF_KEYS_{{ loop.index }}
+chown {{ user.name | quote }}:"${home_group}" "${home_dir}/.ssh/authorized_keys"
+chmod 0600 "${home_dir}/.ssh/authorized_keys"
+{% endif %}
+{% if user.passwordless_sudo | default(false) | bool %}
+cat > "/etc/sudoers.d/{{ user.sudoers_name | default(user.name) }}" <<'EOF_SUDOERS_{{ loop.index }}
+{{ user.name }} ALL=(ALL) NOPASSWD:ALL
+EOF_SUDOERS_{{ loop.index }}
+chmod 0440 "/etc/sudoers.d/{{ user.sudoers_name | default(user.name) }}"
+if command -v visudo >/dev/null 2>&1; then
+  visudo -cf "/etc/sudoers.d/{{ user.sudoers_name | default(user.name) }}"
+fi
+{% endif %}
+{% endif %}
+{% endfor %}
+
+if command -v sshd >/dev/null 2>&1; then
+  install -d -m 0755 /run/sshd
+  if command -v ssh-keygen >/dev/null 2>&1; then
+    ssh-keygen -A
+  fi
+{% if vmware_vsphere_guest_bootstrap_manage_sshd_dropin | bool %}
+  sshd -t
+{% endif %}
+fi
+if command -v systemctl >/dev/null 2>&1; then
+  systemctl enable "${ssh_service}" || true
+  systemctl restart "${ssh_service}" || systemctl restart sshd || true
+fi
+
+{% if vmware_vsphere_guest_bootstrap_clean_cloud_init | bool %}
+rm -f /etc/cloud/cloud.cfg.d/99-disable-network-config.cfg
+rm -rf /var/run/vmware-imc
+if command -v cloud-init >/dev/null 2>&1; then
+  cloud-init clean --logs --seed --machine-id || cloud-init clean --logs || true
+fi
+if [ -e /etc/cloud/cloud.cfg.d/99-disable-network-config.cfg ]; then
+  echo "cloud-init network disable file still exists after cleanup" >&2
+  exit 1
+fi
+{% endif %}
+{% if vmware_vsphere_guest_bootstrap_clean_network_connections | bool %}
+if command -v nmcli >/dev/null 2>&1; then
+  nmcli -t -f NAME connection show | while IFS= read -r connection_name; do
+    [ -n "${connection_name}" ] || continue
+    nmcli connection delete "${connection_name}" || true
+  done
+fi
+rm -f /etc/NetworkManager/system-connections/*.nmconnection
+rm -f /etc/sysconfig/network-scripts/ifcfg-*
+rm -f /var/lib/NetworkManager/*.lease
+rm -f /var/lib/NetworkManager/NetworkManager.state
+{% endif %}
+{% if vmware_vsphere_guest_bootstrap_clean_machine_id | bool %}
+: > /etc/machine-id
+install -d -m 0755 /var/lib/dbus
+rm -f /var/lib/dbus/machine-id
+ln -sf /etc/machine-id /var/lib/dbus/machine-id
+{% endif %}
+{% if vmware_vsphere_guest_bootstrap_clean_ssh_host_keys | bool %}
+cat > /usr/local/sbin/lit-regenerate-ssh-host-keys <<'EOF_REGEN_SSH_KEYS'
+#!/usr/bin/env bash
+set -euo pipefail
+
+ssh-keygen -A
+if command -v systemctl >/dev/null 2>&1; then
+  systemctl disable lit-regenerate-ssh-host-keys.service >/dev/null 2>&1 || true
+fi
+rm -f /etc/systemd/system/multi-user.target.wants/lit-regenerate-ssh-host-keys.service
+rm -f /etc/systemd/system/lit-regenerate-ssh-host-keys.service
+rm -f /usr/local/sbin/lit-regenerate-ssh-host-keys
+if command -v systemctl >/dev/null 2>&1; then
+  systemctl daemon-reload || true
+fi
+EOF_REGEN_SSH_KEYS
+chmod 0755 /usr/local/sbin/lit-regenerate-ssh-host-keys
+
+cat > /etc/systemd/system/lit-regenerate-ssh-host-keys.service <<'EOF_REGEN_SSH_UNIT'
+[Unit]
+Description=Regenerate SSH host keys on first boot
+DefaultDependencies=no
+After=local-fs.target
+Before=ssh.service sshd.service
+ConditionPathExists=/usr/bin/ssh-keygen
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/lit-regenerate-ssh-host-keys
+
+[Install]
+WantedBy=multi-user.target
+EOF_REGEN_SSH_UNIT
+if command -v systemctl >/dev/null 2>&1; then
+  systemctl daemon-reload || true
+  systemctl enable lit-regenerate-ssh-host-keys.service || true
+fi
+rm -f /etc/ssh/ssh_host_*
+{% endif %}
+sync

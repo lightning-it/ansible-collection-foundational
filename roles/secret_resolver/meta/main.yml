@@ -1,0 +1,15 @@
+---
+galaxy_info:
+  role_name: secret_resolver
+  namespace: lit
+  author: Lightning IT
+  company: Lightning IT
+  description: Resolve normalized secrets from explicit controller-side providers.
+  license: MIT
+  min_ansible_version: "2.16"
+  galaxy_tags:
+    - secrets
+    - vault
+    - security
+    - automation
+dependencies: []

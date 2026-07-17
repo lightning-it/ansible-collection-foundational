@@ -1,0 +1,16 @@
+---
+- name: Verify oob redfish control syntax coverage
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Check lit.foundational.oob_redfish_control coverage marker
+      ansible.builtin.stat:
+        path: /tmp/lit-foundational-oob-redfish-control-molecule-coverage
+      register: oob_redfish_control_molecule_coverage_marker
+
+    - name: Assert lit.foundational.oob_redfish_control coverage stub ran
+      ansible.builtin.assert:
+        that:
+          - oob_redfish_control_molecule_coverage_marker.stat.exists
+        quiet: true

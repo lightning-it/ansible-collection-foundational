@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+bridge="{{ bridge_vlan_membership_bridge }}"
+ports=(
+{% for port in bridge_vlan_membership_ports %}
+  "{{ port }}"
+{% endfor %}
+)
+vids=(
+{% for vid in _bridge_vlan_membership_ids_normalized %}
+  "{{ vid }}"
+{% endfor %}
+)
+
+run_allow_exists() {
+  local output=""
+  if output="$("$@" 2>&1)"; then
+    return 0
+  fi
+
+  case "$output" in
+    *"File exists"*|*"exists"*|*"EEXIST"*)
+      return 0
+      ;;
+    *)
+      printf '%s\n' "$output" >&2
+      return 1
+      ;;
+  esac
+}
+
+ip link set dev "$bridge" type bridge vlan_filtering 1
+
+for vid in "${vids[@]}"; do
+  run_allow_exists bridge vlan add dev "$bridge" vid "$vid" self
+done
+
+for port in "${ports[@]}"; do
+  for vid in "${vids[@]}"; do
+    run_allow_exists bridge vlan add dev "$port" vid "$vid" master
+  done
+done

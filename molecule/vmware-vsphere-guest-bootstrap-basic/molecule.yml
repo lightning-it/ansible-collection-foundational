@@ -1,0 +1,15 @@
+---
+dependency:
+  name: galaxy
+driver:
+  name: default
+platforms:
+  - name: vmware_vsphere_guest_bootstrap
+    image: localhost
+provisioner:
+  name: ansible
+  config_options:
+    defaults:
+      callbacks_enabled: profile_tasks
+verifier:
+  name: ansible

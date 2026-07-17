@@ -1,0 +1,215 @@
+---
+- name: Validate Hetzner installimage scalar and mapping inputs
+  ansible.builtin.assert:
+    that:
+      - hetzner_installimage_action in hetzner_installimage_allowed_actions
+      - hetzner_installimage_allowed_actions is sequence
+      - hetzner_installimage_allowed_actions is not string
+      - hetzner_installimage_binary is string
+      - hetzner_installimage_binary.startswith('/')
+      - hetzner_installimage_functions_path is string
+      - hetzner_installimage_functions_path.startswith('/')
+      - hetzner_installimage_image is string
+      - hetzner_installimage_image.startswith('/')
+      - hetzner_installimage_post_install_script_path is string
+      - >-
+        hetzner_installimage_post_install_script_path | length == 0
+        or hetzner_installimage_post_install_script_path.startswith('/')
+      - hetzner_installimage_take_over_rescue_ssh_public_keys is boolean
+      - >-
+        not (hetzner_installimage_take_over_rescue_ssh_public_keys | bool)
+        or hetzner_installimage_rescue_ssh_public_keys_path == '/root/.ssh/robot_user_keys'
+      - hetzner_installimage_post_mount_sanitizer_path == '/post-mount'
+      - hetzner_installimage_post_mount_sanitizer_version | int >= 1
+      - hetzner_installimage_post_mount_success_marker_path == '/run/lit-installimage-post-mount-sanitized'
+      - hetzner_installimage_installed_config_validation_path.startswith('/')
+      - hetzner_installimage_hostname is string
+      - hetzner_installimage_hostname | length > 0
+      - hetzner_installimage_hostname | length <= 253
+      - hetzner_installimage_hostname is match('^[A-Za-z0-9][A-Za-z0-9.-]*[A-Za-z0-9]$')
+      - hetzner_installimage_expected_identity is mapping
+      - hetzner_installimage_expected_identity.public_ipv4 | default('', true) | length > 0
+      - hetzner_installimage_expected_identity.gateway_ipv4 | default('', true) | length > 0
+      - hetzner_installimage_expected_identity.prefix_length | default(0) | int >= 1
+      - hetzner_installimage_expected_identity.prefix_length | default(0) | int <= 32
+      - >-
+        hetzner_installimage_expected_identity.primary_mac
+        | default('', true)
+        is match('^(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$')
+      - hetzner_installimage_expected_identity.boot_mode | default('') in ['bios', 'uefi']
+      - hetzner_installimage_expected_disks is sequence
+      - hetzner_installimage_expected_disks is not string
+      - hetzner_installimage_expected_disks | length > 0
+      - hetzner_installimage_layout is mapping
+      - hetzner_installimage_layout.force_gpt is boolean
+      - hetzner_installimage_layout.bootloader | default('', true) | length > 0
+      - hetzner_installimage_layout.bootloader is match('^[A-Za-z0-9._+-]+$')
+      - hetzner_installimage_layout.ipv4_only is boolean
+      - hetzner_installimage_layout.software_raid is mapping
+      - hetzner_installimage_layout.software_raid.enabled is boolean
+      - hetzner_installimage_layout.software_raid.level | int in [0, 1, 5, 6, 10]
+      - hetzner_installimage_layout.partitions is sequence
+      - hetzner_installimage_layout.partitions is not string
+      - hetzner_installimage_layout.partitions | length > 0
+      - hetzner_installimage_layout.logical_volumes is sequence
+      - hetzner_installimage_layout.logical_volumes is not string
+      - hetzner_installimage_allow_destructive is boolean
+      - hetzner_installimage_no_log is boolean
+      - hetzner_installimage_show_plan is boolean
+      - hetzner_installimage_required_crypt_markers is sequence
+      - hetzner_installimage_required_crypt_markers is not string
+      - hetzner_installimage_lsblk_path.startswith('/')
+      - hetzner_installimage_ip_path.startswith('/')
+      - hetzner_installimage_firmware_efi_path.startswith('/')
+      - hetzner_installimage_system_uuid_path.startswith('/')
+      - >-
+        hetzner_installimage_expected_image_sha256 | length == 0
+        or hetzner_installimage_expected_image_sha256 is match('^[0-9a-fA-F]{64}$')
+    fail_msg: "Invalid lit.foundational.hetzner_installimage role input."
+    quiet: true
+  changed_when: false
+  tags: always
+
+- name: Validate expected physical disk definitions
+  ansible.builtin.assert:
+    that:
+      - item.serial | default('', true) | trim | length > 0
+      - item.serial is not search('[\r\n]')
+      - item.model | default('') is string
+      - item.model | default('') is not search('[\r\n]')
+      - item.size_bytes | default(0) | int > 0
+      - item.rotational is boolean
+      - item.purpose in ['system', 'preserve']
+    fail_msg: "Each expected disk requires a unique serial, size, rotational flag, and purpose."
+    quiet: true
+  loop: "{{ hetzner_installimage_expected_disks }}"
+  loop_control:
+    label: "{{ item.serial | default('<missing>') }}"
+  changed_when: false
+  tags: always
+
+- name: Validate expected disk uniqueness and selection
+  ansible.builtin.assert:
+    that:
+      - >-
+        hetzner_installimage_expected_disks
+        | map(attribute='serial')
+        | unique
+        | list
+        | length == hetzner_installimage_expected_disks | length
+      - >-
+        hetzner_installimage_expected_disks
+        | selectattr('purpose', 'equalto', 'system')
+        | list
+        | length > 0
+      - >-
+        (hetzner_installimage_layout.software_raid.enabled | bool)
+        or
+        (
+          hetzner_installimage_expected_disks
+          | selectattr('purpose', 'equalto', 'system')
+          | list
+          | length == 1
+        )
+      - >-
+        not (hetzner_installimage_layout.software_raid.enabled | bool)
+        or
+        (
+          hetzner_installimage_expected_disks
+          | selectattr('purpose', 'equalto', 'system')
+          | list
+          | length >= 2
+        )
+    fail_msg: >-
+      Disk serials must be unique. Non-RAID layouts require exactly one system disk;
+      RAID layouts require at least two system disks.
+    quiet: true
+  changed_when: false
+  tags: always
+
+- name: Validate installimage partition definitions
+  ansible.builtin.assert:
+    that:
+      - item.mountpoint | default('', true) | length > 0
+      - item.mountpoint is not search('[\r\n\s]')
+      - item.filesystem | default('', true) | length > 0
+      - item.filesystem is match('^[A-Za-z0-9._+-]+$')
+      - item.size | default('', true) is match('^(?:[1-9][0-9]*[KMGTPE]|all)$')
+      - item.crypt | default(false) is boolean
+      - item.mountpoint != '/boot' or not (item.crypt | default(false) | bool)
+      - item.mountpoint != '/boot/efi' or not (item.crypt | default(false) | bool)
+    fail_msg: "Invalid installimage partition definition."
+    quiet: true
+  loop: "{{ hetzner_installimage_layout.partitions }}"
+  loop_control:
+    label: "{{ item.mountpoint | default('<missing>') }}"
+  changed_when: false
+  tags: always
+
+- name: Validate installimage logical volume definitions
+  ansible.builtin.assert:
+    that:
+      - item.volume_group | default('', true) is match('^[A-Za-z0-9._+-]+$')
+      - item.name | default('', true) is match('^[A-Za-z0-9._+-]+$')
+      - item.mountpoint | default('', true) | length > 0
+      - item.mountpoint is not search('[\r\n\s]')
+      - item.filesystem | default('', true) is match('^[A-Za-z0-9._+-]+$')
+      - item.size | default('', true) is match('^[1-9][0-9]*[KMGTPE]$')
+      - >-
+        hetzner_installimage_layout.partitions
+        | selectattr('mountpoint', 'equalto', 'lvm')
+        | selectattr('filesystem', 'equalto', item.volume_group)
+        | list
+        | length == 1
+    fail_msg: "Invalid logical volume or missing matching PART lvm volume group."
+    quiet: true
+  loop: "{{ hetzner_installimage_layout.logical_volumes }}"
+  loop_control:
+    label: "{{ item.volume_group | default('?') }}/{{ item.name | default('?') }}"
+  changed_when: false
+  tags: always
+
+- name: Validate required boot and root targets
+  ansible.builtin.assert:
+    that:
+      - >-
+        hetzner_installimage_layout.partitions
+        | selectattr('mountpoint', 'equalto', '/boot')
+        | list
+        | length == 1
+      - >-
+        (
+          hetzner_installimage_layout.partitions
+          | selectattr('mountpoint', 'equalto', '/')
+          | list
+          | length
+        )
+        +
+        (
+          hetzner_installimage_layout.logical_volumes
+          | selectattr('mountpoint', 'equalto', '/')
+          | list
+          | length
+        ) == 1
+      - >-
+        hetzner_installimage_expected_identity.boot_mode != 'bios'
+        or
+        (
+          hetzner_installimage_layout.partitions
+          | selectattr('mountpoint', 'equalto', '/boot/efi')
+          | list
+          | length == 0
+        )
+      - >-
+        hetzner_installimage_expected_identity.boot_mode != 'uefi'
+        or
+        (
+          hetzner_installimage_layout.partitions
+          | selectattr('mountpoint', 'equalto', '/boot/efi')
+          | list
+          | length == 1
+        )
+    fail_msg: "The layout requires one unencrypted /boot and exactly one root target."
+    quiet: true
+  changed_when: false
+  tags: always

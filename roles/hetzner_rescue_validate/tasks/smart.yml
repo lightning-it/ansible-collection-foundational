@@ -1,0 +1,554 @@
+---
+- name: Read SMART device identity as JSON
+  ansible.builtin.command:
+    argv:
+      - "{{ hetzner_rescue_validate_smartctl_path }}"
+      - -i
+      - -j
+      - >-
+        {{
+          (
+            hetzner_rescue_validate_disks
+            | selectattr('serial', 'equalto', item.serial)
+            | map(attribute='path')
+            | first
+          )
+        }}
+  loop: "{{ hetzner_rescue_validate_expected_disks }}"
+  loop_control:
+    label: "{{ item.serial }}"
+  register: hetzner_rescue_validate_identities
+  changed_when: false
+
+- name: Require exact SMART serial and supported protocol identity
+  vars:
+    _smart_identity: "{{ item.stdout | from_json }}"
+  ansible.builtin.assert:
+    that:
+      - _smart_identity is mapping
+      - _smart_identity.serial_number is string
+      - _smart_identity.serial_number | trim == item.item.serial
+      - _smart_identity.device is mapping
+      - _smart_identity.device.protocol is string
+      - _smart_identity.device.protocol in ['ATA', 'NVMe']
+    fail_msg: >-
+      SMART identity or protocol does not match inventory for
+      {{ item.item.serial }}.
+  loop: "{{ hetzner_rescue_validate_identities.results }}"
+  loop_control:
+    label: "{{ item.item.serial }}"
+
+- name: Initialize serial-bound SMART protocol map
+  ansible.builtin.set_fact:
+    hetzner_rescue_validate_protocol_by_serial: {}
+  changed_when: false
+
+- name: Record each serial-bound SMART protocol
+  vars:
+    _smart_identity: "{{ item.stdout | from_json }}"
+  ansible.builtin.set_fact:
+    hetzner_rescue_validate_protocol_by_serial: >-
+      {{
+        hetzner_rescue_validate_protocol_by_serial
+        | combine({item.item.serial: _smart_identity.device.protocol})
+      }}
+  loop: "{{ hetzner_rescue_validate_identities.results }}"
+  loop_control:
+    label: "{{ item.item.serial }}"
+  changed_when: false
+
+- name: Resolve each NVMe namespace through sysfs
+  ansible.builtin.command:
+    argv:
+      - readlink
+      - -f
+      - >-
+        /sys/class/block/{{
+          (
+            hetzner_rescue_validate_disks
+            | selectattr('serial', 'equalto', item.serial)
+            | map(attribute='path')
+            | first
+            | basename
+          )
+        }}/device
+  loop: "{{ hetzner_rescue_validate_expected_disks }}"
+  loop_control:
+    label: "{{ item.serial }}"
+  register: hetzner_rescue_validate_nvme_sysfs_namespaces
+  changed_when: false
+  when: hetzner_rescue_validate_protocol_by_serial[item.serial] == 'NVMe'
+
+- name: Require exact NVMe namespace-to-controller sysfs paths
+  ansible.builtin.assert:
+    that:
+      - item.stdout_lines | length == 1
+      - >-
+        item.stdout
+        is match(
+          '^/sys/devices/.*/nvme/nvme[0-9]+$'
+        )
+      - item.stdout.split('/')[-1] is match('^nvme[0-9]+$')
+      - >-
+        (
+          hetzner_rescue_validate_disks
+          | selectattr('serial', 'equalto', item.item.serial)
+          | map(attribute='path')
+          | first
+          | basename
+        )
+        is match('^' ~ item.stdout.split('/')[-1] ~ 'n[0-9]+$')
+  loop: "{{ hetzner_rescue_validate_nvme_sysfs_namespaces.results }}"
+  loop_control:
+    label: "{{ item.item.serial }}"
+  when: not (item.skipped | default(false))
+
+- name: Initialize serial-bound NVMe controller map
+  ansible.builtin.set_fact:
+    hetzner_rescue_validate_nvme_controller_by_serial: {}
+  changed_when: false
+
+- name: Record each serial-bound NVMe controller
+  ansible.builtin.set_fact:
+    hetzner_rescue_validate_nvme_controller_by_serial: >-
+      {{
+        hetzner_rescue_validate_nvme_controller_by_serial
+        | combine({item.item.serial: '/dev/' ~ item.stdout.split('/')[-1]})
+      }}
+  loop: "{{ hetzner_rescue_validate_nvme_sysfs_namespaces.results }}"
+  loop_control:
+    label: "{{ item.item.serial }}"
+  changed_when: false
+  when: not (item.skipped | default(false))
+
+- name: Require one unique NVMe controller per inventory disk
+  vars:
+    hetzner_rescue_validate_nvme_controllers: >-
+      {{ hetzner_rescue_validate_nvme_controller_by_serial.values() | list }}
+  ansible.builtin.assert:
+    that:
+      - >-
+        hetzner_rescue_validate_nvme_controllers | unique | length
+        == hetzner_rescue_validate_nvme_controllers | length
+    fail_msg: >-
+      Multiple inventory disks resolve to one NVMe controller; refusing an
+      ambiguous physical-device SMART contract.
+
+- name: Read SMART health as JSON
+  ansible.builtin.command:
+    argv:
+      - "{{ hetzner_rescue_validate_smartctl_path }}"
+      - -H
+      - -j
+      - >-
+        {{
+          (
+            hetzner_rescue_validate_disks
+            | selectattr('serial', 'equalto', item.serial)
+            | map(attribute='path')
+            | first
+          )
+        }}
+  loop: "{{ hetzner_rescue_validate_expected_disks }}"
+  loop_control:
+    label: "{{ item.serial }}"
+  register: hetzner_rescue_validate_health
+  changed_when: false
+
+- name: Require passed SMART health
+  ansible.builtin.assert:
+    that:
+      - (item.stdout | from_json).smart_status.passed | bool
+    fail_msg: "SMART health failed for {{ item.item.serial }}."
+  loop: "{{ hetzner_rescue_validate_health.results }}"
+  loop_control:
+    label: "{{ item.item.serial }}"
+  when: hetzner_rescue_validate_smart_policy.require_passed_health | bool
+
+- name: Read ATA SMART self-test history as JSON
+  ansible.builtin.command:
+    argv:
+      - "{{ hetzner_rescue_validate_smartctl_path }}"
+      - -l
+      - selftest
+      - -j
+      - >-
+        {{
+          (
+            hetzner_rescue_validate_disks
+            | selectattr('serial', 'equalto', item.serial)
+            | map(attribute='path')
+            | first
+          )
+        }}
+  loop: "{{ hetzner_rescue_validate_expected_disks }}"
+  loop_control:
+    label: "{{ item.serial }}"
+  register: hetzner_rescue_validate_selftests
+  changed_when: false
+  when:
+    - >-
+      hetzner_rescue_validate_smart_policy.require_completed_extended_test
+      | bool
+    - hetzner_rescue_validate_protocol_by_serial[item.serial] == 'ATA'
+
+- name: Require a completed latest extended ATA SMART test
+  vars:
+    _smart_selftest_json: "{{ item.stdout | from_json }}"
+    _smart_selftest_log: >-
+      {{
+        _smart_selftest_json.ata_smart_self_test_log
+        | default({}, true)
+      }}
+    _smart_selftest_standard_log: >-
+      {{ _smart_selftest_log.standard | default({}, true) }}
+    _smart_selftest_table: >-
+      {{ _smart_selftest_standard_log.table | default([], true) }}
+    _smart_latest_selftest: >-
+      {{ _smart_selftest_table | first | default({}) }}
+    _smart_latest_selftest_type: >-
+      {{
+        _smart_latest_selftest.get('type', {}).get('string', '')
+        if (
+          _smart_latest_selftest is mapping
+          and _smart_latest_selftest.get('type', {}) is mapping
+        )
+        else ''
+      }}
+    _smart_latest_selftest_status: >-
+      {{
+        _smart_latest_selftest.get('status', {}).get('string', '')
+        if (
+          _smart_latest_selftest is mapping
+          and _smart_latest_selftest.get('status', {}) is mapping
+        )
+        else ''
+      }}
+  ansible.builtin.assert:
+    that:
+      - _smart_selftest_table | length > 0
+      - _smart_latest_selftest is mapping
+      - _smart_latest_selftest.get('type', {}) is mapping
+      - _smart_latest_selftest_type is string
+      - >-
+        _smart_latest_selftest_type | trim
+        is match('(?i)^(extended|long)( offline)?$')
+      - _smart_latest_selftest.get('status', {}) is mapping
+      - _smart_latest_selftest_status is string
+      - >-
+        _smart_latest_selftest_status == 'Completed without error'
+    fail_msg: >-
+      The latest SMART self-test is not a completed, error-free Extended
+      or Long test for {{ item.item.serial }}.
+  loop: "{{ hetzner_rescue_validate_selftests.results }}"
+  loop_control:
+    label: "{{ item.item.serial }}"
+  when: >-
+    hetzner_rescue_validate_smart_policy.require_completed_extended_test | bool
+    and not (item.skipped | default(false))
+
+- name: Read NVMe controller identity as JSON
+  ansible.builtin.command:
+    argv:
+      - "{{ hetzner_rescue_validate_nvme_path }}"
+      - id-ctrl
+      - --output-format=json
+      - "{{ hetzner_rescue_validate_nvme_controller_by_serial[item.serial] }}"
+  loop: "{{ hetzner_rescue_validate_expected_disks }}"
+  loop_control:
+    label: "{{ item.serial }}"
+  register: hetzner_rescue_validate_nvme_identities
+  changed_when: false
+  when: hetzner_rescue_validate_protocol_by_serial[item.serial] == 'NVMe'
+
+- name: Require exact serial-bound NVMe self-test capability
+  vars:
+    _nvme_identity: "{{ item.stdout | from_json }}"
+  ansible.builtin.assert:
+    that:
+      - _nvme_identity is mapping
+      - _nvme_identity.sn is string
+      - _nvme_identity.sn | trim == item.item.serial
+      - _nvme_identity.oacs | type_debug == 'int'
+      - _nvme_identity.oacs | int >= 16
+      - ((_nvme_identity.oacs | int) // 16) % 2 == 1
+    fail_msg: >-
+      NVMe controller identity or Device Self-test capability failed for
+      {{ item.item.serial }}.
+  loop: "{{ hetzner_rescue_validate_nvme_identities.results }}"
+  loop_control:
+    label: "{{ item.item.serial }}"
+  when: not (item.skipped | default(false))
+
+- name: Read NVMe device self-test history as JSON
+  ansible.builtin.command:
+    argv:
+      - "{{ hetzner_rescue_validate_nvme_path }}"
+      - self-test-log
+      - --output-format=json
+      - "{{ hetzner_rescue_validate_nvme_controller_by_serial[item.serial] }}"
+  loop: "{{ hetzner_rescue_validate_expected_disks }}"
+  loop_control:
+    label: "{{ item.serial }}"
+  register: hetzner_rescue_validate_nvme_selftests
+  changed_when: false
+  when:
+    - >-
+      hetzner_rescue_validate_smart_policy.require_completed_extended_test
+      | bool
+    - hetzner_rescue_validate_protocol_by_serial[item.serial] == 'NVMe'
+
+- name: Require a completed latest extended NVMe device self-test
+  vars:
+    _nvme_selftest: "{{ item.stdout | from_json }}"
+    _nvme_selftest_reports: >-
+      {{ _nvme_selftest.get('List of Valid Reports', []) }}
+    _nvme_latest_selftest: >-
+      {{ _nvme_selftest_reports | first | default({}) }}
+  ansible.builtin.assert:
+    that:
+      - _nvme_selftest is mapping
+      - >-
+        _nvme_selftest.keys() | list | sort
+        ==
+        [
+          'Current Device Self-Test Operation',
+          'Current Device Self-Test Completion',
+          'List of Valid Reports'
+        ] | sort
+      - _nvme_selftest['Current Device Self-Test Operation'] | type_debug == 'int'
+      - _nvme_selftest['Current Device Self-Test Operation'] | int == 0
+      - >-
+        _nvme_selftest['Current Device Self-Test Completion']
+        | type_debug == 'int'
+      - _nvme_selftest_reports | type_debug == 'list'
+      - _nvme_selftest_reports | length > 0
+      - _nvme_latest_selftest is mapping
+      - _nvme_latest_selftest.get('Self test code', none) | type_debug == 'int'
+      - _nvme_latest_selftest.get('Self test code', -1) | int == 2
+      - >-
+        _nvme_latest_selftest.get('Self test result', none)
+        | type_debug == 'int'
+      - _nvme_latest_selftest.get('Self test result', -1) | int == 0
+    fail_msg: >-
+      The latest NVMe Device Self-test is not an idle, completed,
+      error-free extended test for {{ item.item.serial }}.
+  loop: "{{ hetzner_rescue_validate_nvme_selftests.results }}"
+  loop_control:
+    label: "{{ item.item.serial }}"
+  when: >-
+    hetzner_rescue_validate_smart_policy.require_completed_extended_test | bool
+    and not (item.skipped | default(false))
+
+- name: Read SMART attributes as JSON
+  ansible.builtin.command:
+    argv:
+      - "{{ hetzner_rescue_validate_smartctl_path }}"
+      - -A
+      - -j
+      - >-
+        {{
+          (
+            hetzner_rescue_validate_disks
+            | selectattr('serial', 'equalto', item.serial)
+            | map(attribute='path')
+            | first
+          )
+        }}
+  loop: "{{ hetzner_rescue_validate_expected_disks }}"
+  loop_control:
+    label: "{{ item.serial }}"
+  register: hetzner_rescue_validate_attributes
+  changed_when: false
+
+- name: Require ATA SMART sector counters within inventory policy
+  vars:
+    _smart_attribute_json: "{{ item.stdout | from_json }}"
+    _smart_attribute_table: >-
+      {{
+        _smart_attribute_json.ata_smart_attributes.table
+        | default([], true)
+      }}
+    _smart_policy_effective: >-
+      {{
+        hetzner_rescue_validate_smart_policy
+        | combine(
+            (hetzner_rescue_validate_smart_overrides | default({}))[
+              item.item.serial
+            ]
+            | default({})
+          )
+      }}
+    _smart_reallocated_attributes: >-
+      {{ _smart_attribute_table | selectattr('id', 'equalto', 5) | list }}
+    _smart_pending_attributes: >-
+      {{ _smart_attribute_table | selectattr('id', 'equalto', 197) | list }}
+    _smart_uncorrectable_attributes: >-
+      {{ _smart_attribute_table | selectattr('id', 'equalto', 198) | list }}
+    _smart_reallocated: >-
+      {{
+        _smart_attribute_table
+        | selectattr('id', 'equalto', 5)
+        | map(attribute='raw.value')
+        | first
+        | default(0, true)
+        | int
+      }}
+    _smart_pending: >-
+      {{
+        _smart_attribute_table
+        | selectattr('id', 'equalto', 197)
+        | map(attribute='raw.value')
+        | first
+        | default(0, true)
+        | int
+      }}
+    _smart_uncorrectable: >-
+      {{
+        _smart_attribute_table
+        | selectattr('id', 'equalto', 198)
+        | map(attribute='raw.value')
+        | first
+        | default(0, true)
+        | int
+      }}
+  ansible.builtin.assert:
+    that:
+      - _smart_attribute_json is mapping
+      - _smart_attribute_json.ata_smart_attributes is mapping
+      - _smart_attribute_table | type_debug == 'list'
+      - _smart_reallocated_attributes | length == 1
+      - _smart_reallocated_attributes[0].raw is mapping
+      - _smart_reallocated_attributes[0].raw.value is number
+      - _smart_pending_attributes | length == 1
+      - _smart_pending_attributes[0].raw is mapping
+      - _smart_pending_attributes[0].raw.value is number
+      - _smart_uncorrectable_attributes | length == 1
+      - _smart_uncorrectable_attributes[0].raw is mapping
+      - _smart_uncorrectable_attributes[0].raw.value is number
+      - >-
+        _smart_reallocated | int
+        <= _smart_policy_effective.reallocated_sectors_max | int
+      - >-
+        _smart_pending | int
+        <= _smart_policy_effective.current_pending_sectors_max | int
+      - >-
+        _smart_uncorrectable | int
+        <= _smart_policy_effective.offline_uncorrectable_sectors_max | int
+    fail_msg: "SMART sector policy failed for {{ item.item.serial }}."
+  loop: "{{ hetzner_rescue_validate_attributes.results }}"
+  loop_control:
+    label: "{{ item.item.serial }}"
+  when: hetzner_rescue_validate_protocol_by_serial[item.item.serial] == 'ATA'
+
+- name: Require NVMe health and endurance within explicit inventory policy
+  vars:
+    _smart_attribute_json: "{{ item.stdout | from_json }}"
+    _nvme_health: >-
+      {{
+        _smart_attribute_json.nvme_smart_health_information_log
+        | default({}, true)
+      }}
+    _smart_policy_effective: >-
+      {{
+        hetzner_rescue_validate_smart_policy
+        | combine(
+            (hetzner_rescue_validate_smart_overrides | default({}))[
+              item.item.serial
+            ]
+            | default({})
+          )
+      }}
+    _nvme_required_policy_fields:
+      - nvme_critical_warning_allowed_mask
+      - nvme_media_errors_max
+      - nvme_error_log_entries_max
+      - nvme_percentage_used_max
+      - nvme_available_spare_min
+  ansible.builtin.assert:
+    that:
+      - _smart_attribute_json is mapping
+      - _nvme_health is mapping
+      - >-
+        _nvme_required_policy_fields
+        | difference(_smart_policy_effective.keys() | list)
+        | length == 0
+      - >-
+        _smart_policy_effective.get(
+          'nvme_critical_warning_allowed_mask', none
+        )
+        | type_debug == 'int'
+      - >-
+        _smart_policy_effective.get(
+          'nvme_critical_warning_allowed_mask', -1
+        ) | int
+        == 0
+      - >-
+        _smart_policy_effective.get('nvme_media_errors_max', none)
+        | type_debug == 'int'
+      - _smart_policy_effective.get('nvme_media_errors_max', -1) | int >= 0
+      - >-
+        _smart_policy_effective.get('nvme_error_log_entries_max', none)
+        | type_debug == 'int'
+      - >-
+        _smart_policy_effective.get('nvme_error_log_entries_max', -1)
+        | int >= 0
+      - >-
+        _smart_policy_effective.get('nvme_percentage_used_max', none)
+        | type_debug == 'int'
+      - >-
+        _smart_policy_effective.get('nvme_percentage_used_max', -1) | int
+        >= 0
+      - >-
+        _smart_policy_effective.get('nvme_percentage_used_max', 101) | int
+        <= 100
+      - >-
+        _smart_policy_effective.get('nvme_available_spare_min', none)
+        | type_debug == 'int'
+      - >-
+        _smart_policy_effective.get('nvme_available_spare_min', -1) | int
+        >= 0
+      - >-
+        _smart_policy_effective.get('nvme_available_spare_min', 101) | int
+        <= 100
+      - _nvme_health.critical_warning | type_debug == 'int'
+      - >-
+        _nvme_health.critical_warning | int
+        ==
+        _smart_policy_effective.get(
+          'nvme_critical_warning_allowed_mask', -1
+        ) | int
+      - _nvme_health.media_errors | type_debug == 'int'
+      - >-
+        _nvme_health.media_errors | int
+        <= _smart_policy_effective.get('nvme_media_errors_max', -1) | int
+      - _nvme_health.percentage_used | type_debug == 'int'
+      - _nvme_health.num_err_log_entries | type_debug == 'int'
+      - >-
+        _nvme_health.num_err_log_entries | int
+        <=
+        _smart_policy_effective.get('nvme_error_log_entries_max', -1)
+        | int
+      - >-
+        _nvme_health.percentage_used | int
+        <=
+        _smart_policy_effective.get('nvme_percentage_used_max', -1) | int
+      - _nvme_health.available_spare | type_debug == 'int'
+      - _nvme_health.available_spare_threshold | type_debug == 'int'
+      - >-
+        _nvme_health.available_spare | int
+        >=
+        [
+          _nvme_health.available_spare_threshold | int,
+          _smart_policy_effective.get('nvme_available_spare_min', 101)
+          | int
+        ] | max
+    fail_msg: >-
+      NVMe critical warning, media-error, error-log, endurance, or spare
+      policy failed for {{ item.item.serial }}. NVMe thresholds must be
+      explicit in inventory and critical-warning exceptions are not
+      accepted.
+  loop: "{{ hetzner_rescue_validate_attributes.results }}"
+  loop_control:
+    label: "{{ item.item.serial }}"
+  when: hetzner_rescue_validate_protocol_by_serial[item.item.serial] == 'NVMe'

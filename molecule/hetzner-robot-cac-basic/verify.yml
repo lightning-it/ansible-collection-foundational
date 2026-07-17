@@ -1,0 +1,64 @@
+---
+- name: Verify Hetzner Robot destructive safety
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Initialize destructive-gate observation
+      ansible.builtin.set_fact:
+        hetzner_robot_cac_gate_rejected: false
+      changed_when: false
+
+    - name: Exercise an unapproved destructive declaration
+      block:
+        - name: Invoke Robot role without destructive approval
+          ansible.builtin.include_role:
+            name: lit.foundational.hetzner_robot_cac
+          vars:
+            hetzner_robot_cac_validate_only: true
+            hetzner_robot_cac_allow_destructive: false
+            hetzner_robot_cac_reverse_dns:
+              - ip: 192.0.2.30
+                state: absent
+
+      rescue:
+        - name: Record expected destructive-gate rejection
+          ansible.builtin.set_fact:
+            hetzner_robot_cac_gate_rejected: true
+          changed_when: false
+
+    - name: Assert destructive state was rejected before API access
+      ansible.builtin.assert:
+        that:
+          - hetzner_robot_cac_gate_rejected | bool
+        fail_msg: The Robot role accepted an absent resource without explicit approval.
+        quiet: true
+
+    - name: Initialize vSwitch drift observation
+      ansible.builtin.set_fact:
+        hetzner_robot_cac_vswitch_drift_rejected: false
+        hetzner_robot_cac_audit_vswitch_probe:
+          results:
+            - changed: true
+              item:
+                name: drifted-vswitch
+              v_switch:
+                server: []
+      changed_when: false
+
+    - name: Exercise the production vSwitch drift assertion
+      block:
+        - name: Assert a mocked drifted check-mode result
+          ansible.builtin.include_tasks: ../../roles/hetzner_robot_cac/tasks/audit_vswitch_assert.yml
+
+      rescue:
+        - name: Record expected vSwitch drift rejection
+          ansible.builtin.set_fact:
+            hetzner_robot_cac_vswitch_drift_rejected: true
+          changed_when: false
+
+    - name: Assert vSwitch drift was rejected
+      ansible.builtin.assert:
+        that:
+          - hetzner_robot_cac_vswitch_drift_rejected | bool
+        fail_msg: The Robot audit accepted a vSwitch check-mode drift prediction.
+        quiet: true

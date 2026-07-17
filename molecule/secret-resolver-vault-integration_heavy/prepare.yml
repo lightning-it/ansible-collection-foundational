@@ -1,0 +1,255 @@
+---
+- name: Prepare disposable HashiCorp Vault integration service
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+    secret_resolver_vault_test_addr: >-
+      {{
+        lookup('ansible.builtin.env', 'SECRET_RESOLVER_VAULT_TEST_ADDR')
+        | default(
+            (
+              'http://host.docker.internal:18202'
+              if
+              (lookup('ansible.builtin.env', 'WUNDER_DEVTOOLS_HOST_WORKSPACE') | length > 0)
+              else 'http://127.0.0.1:18202'
+            ),
+            true
+          )
+      }}
+    secret_resolver_vault_test_token: molecule-root-token
+    secret_resolver_vault_venv: >-
+      {{ lookup('ansible.builtin.env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/controller-venv
+  tasks:
+    - name: Create an isolated controller Python environment
+      ansible.builtin.command:
+        argv:
+          - "{{ ansible_playbook_python }}"
+          - -m
+          - venv
+          - "{{ secret_resolver_vault_venv }}"
+        creates: "{{ secret_resolver_vault_venv }}/bin/python"
+
+    - name: Install the pinned controller Vault Python dependency in isolation
+      ansible.builtin.pip:
+        name: hvac==2.4.0
+        executable: "{{ secret_resolver_vault_venv }}/bin/pip"
+        state: present
+
+    - name: Resolve the selected HashiCorp Vault module location
+      ansible.builtin.command:
+        argv:
+          - ansible-doc
+          - --json
+          - --type
+          - module
+          - community.hashi_vault.vault_kv2_get
+      register: secret_resolver_hashi_vault_doc
+      changed_when: false
+
+    - name: Read the selected HashiCorp Vault collection manifest
+      ansible.builtin.slurp:
+        src: >-
+          {{
+            (
+              secret_resolver_hashi_vault_doc.stdout
+              | from_json
+            )['community.hashi_vault.vault_kv2_get'].doc.filename
+            | dirname
+            | dirname
+            | dirname
+          }}/MANIFEST.json
+      register: secret_resolver_hashi_vault_manifest
+
+    - name: Inspect the isolated hvac dependency version
+      ansible.builtin.command:
+        argv:
+          - "{{ secret_resolver_vault_venv }}/bin/python"
+          - -c
+          - >-
+            import importlib.metadata;
+            print(importlib.metadata.version('hvac'))
+      register: secret_resolver_hvac_version
+      changed_when: false
+
+    - name: Assert the exact provider compatibility floor is selected
+      ansible.builtin.assert:
+        that:
+          - >-
+            (
+              secret_resolver_hashi_vault_manifest.content
+              | b64decode
+              | from_json
+            ).collection_info.version == '7.1.0'
+          - secret_resolver_hvac_version.stdout == '2.4.0'
+        quiet: true
+
+    - name: Start a pinned disposable Vault development container
+      community.docker.docker_container:
+        name: lit-foundational-secret-resolver-vault
+        image: hashicorp/vault:1.21.4
+        command:
+          - server
+          - -dev
+          - "-dev-root-token-id={{ secret_resolver_vault_test_token }}"
+          - -dev-listen-address=0.0.0.0:8200
+        published_ports:
+          - 18202:8200
+        detach: true
+        restart_policy: "no"
+        state: started
+      no_log: true
+
+    - name: Wait for the disposable Vault API
+      ansible.builtin.uri:
+        url: "{{ secret_resolver_vault_test_addr }}/v1/sys/health"
+        method: GET
+        status_code:
+          - 200
+        return_content: false
+      register: secret_resolver_vault_health
+      until: secret_resolver_vault_health.status == 200
+      retries: 30
+      delay: 1
+
+    - name: Create a deny-only integration policy
+      ansible.builtin.uri:
+        url: "{{ secret_resolver_vault_test_addr }}/v1/sys/policies/acl/secret-resolver-deny"
+        method: PUT
+        headers:
+          X-Vault-Token: "{{ secret_resolver_vault_test_token }}"
+        body_format: json
+        body:
+          policy: |-
+            path "secret/data/integration/*" {
+              capabilities = ["deny"]
+            }
+        status_code:
+          - 200
+          - 204
+      no_log: true
+
+    - name: Create a deterministic authorization-test token
+      ansible.builtin.uri:
+        url: "{{ secret_resolver_vault_test_addr }}/v1/auth/token/create"
+        method: POST
+        headers:
+          X-Vault-Token: "{{ secret_resolver_vault_test_token }}"
+        body_format: json
+        body:
+          id: molecule-denied-token
+          policies:
+            - secret-resolver-deny
+          no_default_policy: true
+          renewable: false
+          ttl: 1h
+        status_code:
+          - 200
+      no_log: true
+
+    - name: Create a read-only persistence-test policy
+      ansible.builtin.uri:
+        url: "{{ secret_resolver_vault_test_addr }}/v1/sys/policies/acl/secret-resolver-read-only"
+        method: PUT
+        headers:
+          X-Vault-Token: "{{ secret_resolver_vault_test_token }}"
+        body_format: json
+        body:
+          policy: |-
+            path "secret/data/integration/write-denied" {
+              capabilities = ["read"]
+            }
+        status_code:
+          - 200
+          - 204
+      no_log: true
+
+    - name: Create a deterministic read-only persistence-test token
+      ansible.builtin.uri:
+        url: "{{ secret_resolver_vault_test_addr }}/v1/auth/token/create"
+        method: POST
+        headers:
+          X-Vault-Token: "{{ secret_resolver_vault_test_token }}"
+        body_format: json
+        body:
+          id: molecule-readonly-token
+          policies:
+            - secret-resolver-read-only
+          no_default_policy: true
+          renewable: false
+          ttl: 1h
+        status_code:
+          - 200
+      no_log: true
+
+    - name: Seed a readable KV version 2 document
+      ansible.builtin.uri:
+        url: "{{ secret_resolver_vault_test_addr }}/v1/secret/data/integration/existing"
+        method: POST
+        headers:
+          X-Vault-Token: "{{ secret_resolver_vault_test_token }}"
+        body_format: json
+        body:
+          data:
+            selected: vault-existing-input
+            retained: retained-existing-field
+        status_code:
+          - 200
+      no_log: true
+
+    - name: Seed a sibling-only document for generation merge coverage
+      ansible.builtin.uri:
+        url: "{{ secret_resolver_vault_test_addr }}/v1/secret/data/integration/generated"
+        method: POST
+        headers:
+          X-Vault-Token: "{{ secret_resolver_vault_test_token }}"
+        body_format: json
+        body:
+          data:
+            retained: retained-generated-field
+        status_code:
+          - 200
+      no_log: true
+
+    - name: Seed a conflicting migration target
+      ansible.builtin.uri:
+        url: "{{ secret_resolver_vault_test_addr }}/v1/secret/data/integration/conflict"
+        method: POST
+        headers:
+          X-Vault-Token: "{{ secret_resolver_vault_test_token }}"
+        body_format: json
+        body:
+          data:
+            migrated: existing-conflict-input
+        status_code:
+          - 200
+      no_log: true
+
+    - name: Seed a read-only write-back target
+      ansible.builtin.uri:
+        url: "{{ secret_resolver_vault_test_addr }}/v1/secret/data/integration/write-denied"
+        method: POST
+        headers:
+          X-Vault-Token: "{{ secret_resolver_vault_test_token }}"
+        body_format: json
+        body:
+          data:
+            retained: retained-read-only-field
+        status_code:
+          - 200
+      no_log: true
+
+    - name: Seed a check-mode write-back target
+      ansible.builtin.uri:
+        url: "{{ secret_resolver_vault_test_addr }}/v1/secret/data/integration/check-mode"
+        method: POST
+        headers:
+          X-Vault-Token: "{{ secret_resolver_vault_test_token }}"
+        body_format: json
+        body:
+          data:
+            retained: retained-check-mode-field
+        status_code:
+          - 200
+      no_log: true

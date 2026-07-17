@@ -1,0 +1,198 @@
+---
+argument_specs:
+  main:
+    short_description: Plan or execute a guarded Hetzner installimage installation.
+    options:
+      hetzner_installimage_action:
+        description: Select planning or explicitly approved installation.
+        type: str
+        choices:
+          - plan
+          - install
+        default: plan
+      hetzner_installimage_allowed_actions:
+        description: List of accepted workflow actions.
+        type: list
+        elements: str
+      hetzner_installimage_binary:
+        description: Absolute path to the Rescue installimage executable.
+        type: path
+      hetzner_installimage_functions_path:
+        description: Absolute path to the Rescue installimage functions file.
+        type: path
+      hetzner_installimage_image:
+        description: Absolute path to the operating-system image archive.
+        type: path
+      hetzner_installimage_expected_image_sha256:
+        description: Optional expected SHA-256 of the image archive.
+        type: str
+      hetzner_installimage_post_install_script_path:
+        description: Optional checksummed post-install script path.
+        type: path
+      hetzner_installimage_take_over_rescue_ssh_public_keys:
+        description: Carry validated Rescue SSH public keys into the installation.
+        type: bool
+        default: true
+      hetzner_installimage_rescue_ssh_public_keys_path:
+        description: Absolute path to the validated Rescue SSH public-key file.
+        type: path
+      hetzner_installimage_post_mount_sanitizer_path:
+        description: Installimage hook path used to sanitize password artifacts.
+        type: path
+      hetzner_installimage_post_mount_sanitizer_version:
+        description: Version of the generated password-sanitizer hook.
+        type: int
+      hetzner_installimage_post_mount_success_marker_path:
+        description: Absolute path to the sanitizer success marker.
+        type: path
+      hetzner_installimage_installed_config_validation_path:
+        description: Installed configuration path checked for password redaction.
+        type: path
+      hetzner_installimage_hostname:
+        description: Fully qualified hostname assigned to the installed system.
+        type: str
+      hetzner_installimage_expected_identity:
+        description: Expected Rescue network, firmware, and hardware identity.
+        type: dict
+        options:
+          public_ipv4:
+            description: Expected primary public IPv4 address.
+            type: str
+          gateway_ipv4:
+            description: Expected primary IPv4 gateway.
+            type: str
+          prefix_length:
+            description: Expected public IPv4 prefix length.
+            type: int
+          primary_mac:
+            description: Expected MAC address of the primary interface.
+            type: str
+          boot_mode:
+            description: Expected firmware boot mode.
+            type: str
+            choices:
+              - bios
+              - uefi
+          system_uuid:
+            description: Optional expected DMI system UUID.
+            type: str
+      hetzner_installimage_expected_disks:
+        description: Complete serial-bound physical disk inventory.
+        type: list
+        elements: dict
+        options:
+          serial:
+            description: Stable physical disk serial number.
+            type: str
+          model:
+            description: Expected physical disk model.
+            type: str
+          size_bytes:
+            description: Expected physical disk size in bytes.
+            type: int
+          rotational:
+            description: Whether the physical disk is rotational.
+            type: bool
+          purpose:
+            description: Whether the disk is installed or preserved.
+            type: str
+            choices:
+              - system
+              - preserve
+      hetzner_installimage_layout:
+        description: Installimage boot, RAID, partition, and LVM layout.
+        type: dict
+        options:
+          force_gpt:
+            description: Force a GPT partition table.
+            type: bool
+          bootloader:
+            description: Bootloader name passed to installimage.
+            type: str
+          ipv4_only:
+            description: Configure the installed system for IPv4 only.
+            type: bool
+          software_raid:
+            description: Software RAID configuration for system disks.
+            type: dict
+            options:
+              enabled:
+                description: Enable software RAID.
+                type: bool
+              level:
+                description: Software RAID level.
+                type: int
+          partitions:
+            description: Physical partition definitions.
+            type: list
+            elements: dict
+            options:
+              mountpoint:
+                description: Partition mountpoint or LVM marker.
+                type: str
+              filesystem:
+                description: Filesystem or volume-group name.
+                type: str
+              size:
+                description: Installimage partition size expression.
+                type: str
+              crypt:
+                description: Encrypt this partition through installimage.
+                type: bool
+          logical_volumes:
+            description: Logical volume definitions for the encrypted volume group.
+            type: list
+            elements: dict
+            options:
+              volume_group:
+                description: Parent LVM volume-group name.
+                type: str
+              name:
+                description: Logical volume name.
+                type: str
+              mountpoint:
+                description: Logical volume mountpoint or swap marker.
+                type: str
+              filesystem:
+                description: Logical volume filesystem.
+                type: str
+              size:
+                description: Logical volume size expression.
+                type: str
+      hetzner_installimage_crypt_password:
+        description: Recovery passphrase supplied securely by the caller.
+        type: str
+      hetzner_installimage_allow_destructive:
+        description: Independent Boolean gate for destructive installation.
+        type: bool
+        default: false
+      hetzner_installimage_approved_plan_sha256:
+        description: SHA-256 of the previously reviewed immutable plan.
+        type: str
+      hetzner_installimage_confirmation:
+        description: Exact host-bound destructive confirmation phrase.
+        type: str
+      hetzner_installimage_no_log:
+        description: Suppress logs for tasks that handle the recovery passphrase.
+        type: bool
+        default: true
+      hetzner_installimage_show_plan:
+        description: Display the secret-free installation plan.
+        type: bool
+        default: true
+      hetzner_installimage_lsblk_path:
+        description: Absolute lsblk path used for Rescue disk discovery.
+        type: path
+      hetzner_installimage_ip_path:
+        description: Absolute ip path used for Rescue network discovery.
+        type: path
+      hetzner_installimage_firmware_efi_path:
+        description: Filesystem path used to detect UEFI boot.
+        type: path
+      hetzner_installimage_system_uuid_path:
+        description: Filesystem path containing the DMI system UUID.
+        type: path
+      hetzner_installimage_required_crypt_markers:
+        description: Installimage capability markers required for encryption.
+        type: list
+        elements: str

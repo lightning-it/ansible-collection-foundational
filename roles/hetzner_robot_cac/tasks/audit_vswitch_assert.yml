@@ -1,0 +1,17 @@
+---
+- name: Require exact ready Robot vSwitch membership
+  ansible.builtin.assert:
+    that:
+      - not (item.changed | bool)
+      - >-
+        item.v_switch.server
+        | default([])
+        | rejectattr('status', 'equalto', 'ready')
+        | list
+        | length == 0
+    fail_msg: A declared Robot vSwitch is missing, drifted, or has a member that is not ready.
+    quiet: true
+  loop: "{{ hetzner_robot_cac_audit_vswitch_probe.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item.name | default('vSwitch') }}"
+  no_log: true

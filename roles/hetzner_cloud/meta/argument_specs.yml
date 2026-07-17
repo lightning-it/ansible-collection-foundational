@@ -1,0 +1,508 @@
+---
+argument_specs:
+  main:
+    short_description: Declaratively reconcile IPv4-only Hetzner Cloud infrastructure.
+    description:
+      - Uses only modules from the official hetzner.hcloud collection.
+      - Runs API operations once on the Ansible controller.
+      - Supports dependency-ordered creation and guarded reverse-order deletion.
+    options:
+      hetzner_cloud_api_token:
+        description: Optional Hetzner Cloud API token; HCLOUD_TOKEN is used when empty.
+        type: str
+        default: ""
+        no_log: true
+      hetzner_cloud_api_endpoint:
+        description: Hetzner Cloud API endpoint.
+        type: str
+        default: https://api.hetzner.cloud/v1
+      hetzner_cloud_validate_only:
+        description: Validate inputs and publish a secret-free plan without API calls.
+        type: bool
+        default: false
+      hetzner_cloud_state:
+        description: Default state for resource items that omit their own state.
+        type: str
+        choices:
+          - present
+          - absent
+        default: present
+      hetzner_cloud_allow_destructive:
+        description: Explicit gate required when any effective resource state is absent.
+        type: bool
+        default: false
+      hetzner_cloud_ipv4_only:
+        description: Required IPv4-only policy gate.
+        type: bool
+        default: true
+      hetzner_cloud_allow_server_root_password:
+        description: Permit server creation without SSH keys; disabled for safe secret handling.
+        type: bool
+        default: false
+      hetzner_cloud_default_firewall:
+        description: Optional secure IPv4 ingress profile.
+        type: dict
+        options:
+          enabled:
+            description: Add the generated firewall to the declared firewall resources.
+            type: bool
+            default: false
+          name:
+            description: Generated firewall name.
+            type: str
+            default: default-ipv4
+          labels:
+            description: Generated firewall labels.
+            type: dict
+            default: {}
+          ssh_source_ips:
+            description: Trusted IPv4 CIDRs allowed to TCP port 22; empty disables the SSH rule.
+            type: list
+            elements: str
+            default: []
+          wireguard_source_ips:
+            description: IPv4 CIDRs allowed to UDP port 51820; empty disables the WireGuard rule.
+            type: list
+            elements: str
+            default:
+              - 0.0.0.0/0
+          allow_icmp:
+            description: Allow inbound IPv4 ICMP.
+            type: bool
+            default: true
+      hetzner_cloud_ssh_keys:
+        description: SSH key resources.
+        type: list
+        elements: dict
+        default: []
+        options:
+          id:
+            description: Existing SSH key ID.
+            type: int
+          name:
+            description: SSH key name.
+            type: str
+          fingerprint:
+            description: Existing SSH key fingerprint.
+            type: str
+          public_key:
+            description: Public key material required for creation.
+            type: str
+          labels:
+            description: Resource labels.
+            type: dict
+          force:
+            description: Recreate when public key material differs.
+            type: bool
+            default: false
+          state:
+            description: Resource state override.
+            type: str
+            choices: [present, absent]
+      hetzner_cloud_firewalls:
+        description: Firewall resources and complete rule sets.
+        type: list
+        elements: dict
+        default: []
+        options:
+          id:
+            description: Existing firewall ID.
+            type: int
+          name:
+            description: Firewall name.
+            type: str
+          labels:
+            description: Resource labels.
+            type: dict
+          rules:
+            description: Authoritative firewall rules when supplied.
+            type: list
+            elements: dict
+            options:
+              description:
+                description: Rule purpose.
+                type: str
+              direction:
+                description: Traffic direction.
+                type: str
+                choices: [in, out]
+              protocol:
+                description: Allowed protocol.
+                type: str
+                choices: [icmp, tcp, udp, esp, gre]
+              port:
+                description: TCP or UDP port or range.
+                type: str
+              source_ips:
+                description: Inbound IPv4 CIDRs.
+                type: list
+                elements: str
+                default: []
+              destination_ips:
+                description: Outbound IPv4 CIDRs.
+                type: list
+                elements: str
+                default: []
+          force:
+            description: Force deletion while attached.
+            type: bool
+            default: false
+          state:
+            description: Resource state override.
+            type: str
+            choices: [present, absent]
+      hetzner_cloud_networks:
+        description: Private Network resources.
+        type: list
+        elements: dict
+        default: []
+        options:
+          id:
+            description: Existing Network ID.
+            type: int
+          name:
+            description: Network name.
+            type: str
+          ip_range:
+            description: IPv4 Network range required for creation.
+            type: str
+          expose_routes_to_vswitch:
+            description: Expose routes to an active vSwitch connection.
+            type: bool
+          labels:
+            description: Resource labels.
+            type: dict
+          delete_protection:
+            description: Protect the Network from deletion.
+            type: bool
+          state:
+            description: Resource state override.
+            type: str
+            choices: [present, absent]
+      hetzner_cloud_subnetworks:
+        description: Private Network subnet resources.
+        type: list
+        elements: dict
+        default: []
+        options:
+          network:
+            description: Parent Network name or ID.
+            type: str
+          ip_range:
+            description: Subnet IPv4 range.
+            type: str
+          type:
+            description: Hetzner subnet type.
+            type: str
+            choices: [server, cloud, vswitch]
+          network_zone:
+            description: Hetzner network zone, such as eu-central.
+            type: str
+          vswitch_id:
+            description: vSwitch ID for vswitch subnet types.
+            type: int
+          state:
+            description: Resource state override.
+            type: str
+            choices: [present, absent]
+      hetzner_cloud_primary_ips:
+        description: Primary IPv4 resources.
+        type: list
+        elements: dict
+        default: []
+        options:
+          id:
+            description: Existing Primary IP ID.
+            type: int
+          name:
+            description: Primary IP name.
+            type: str
+          location:
+            description: Hetzner location required for unassigned creation.
+            type: str
+          server:
+            description: Server name or ID for assignment.
+            type: str
+          type:
+            description: IP address family; this role accepts only ipv4.
+            type: str
+            choices: [ipv4]
+          auto_delete:
+            description: Delete the IP with its assigned server.
+            type: bool
+            default: false
+          delete_protection:
+            description: Protect the Primary IP from deletion.
+            type: bool
+          labels:
+            description: Resource labels.
+            type: dict
+          prevent_create:
+            description: Require the named or identified address to exist before reconciliation.
+            type: bool
+            default: false
+          expected_ip:
+            description: Exact adopted IPv4 address required as a postcondition.
+            type: str
+          state:
+            description: Resource state override.
+            type: str
+            choices: [present, absent]
+      hetzner_cloud_floating_ips:
+        description: Floating IPv4 resources and assignments.
+        type: list
+        elements: dict
+        default: []
+        options:
+          id:
+            description: Existing Floating IP ID.
+            type: int
+          name:
+            description: Floating IP name.
+            type: str
+          description:
+            description: Resource description.
+            type: str
+          home_location:
+            description: Home location for unassigned creation.
+            type: str
+          server:
+            description: Desired server name; omit only when deliberately unassigned.
+            type: str
+          type:
+            description: IP address family; this role accepts only ipv4.
+            type: str
+            choices: [ipv4]
+          force:
+            description: Force reassignment; deletion is forced after the destructive gate.
+            type: bool
+            default: false
+          delete_protection:
+            description: Protect the Floating IP from deletion.
+            type: bool
+          labels:
+            description: Resource labels.
+            type: dict
+          prevent_create:
+            description: Require the named or identified address to exist before reconciliation.
+            type: bool
+            default: false
+          expected_ip:
+            description: Exact adopted IPv4 address required as a postcondition.
+            type: str
+          state:
+            description: Resource state override.
+            type: str
+            choices: [present, absent]
+      hetzner_cloud_placement_groups:
+        description: Spread placement group resources.
+        type: list
+        elements: dict
+        default: []
+        options:
+          id:
+            description: Existing placement group ID.
+            type: int
+          name:
+            description: Placement group name.
+            type: str
+          type:
+            description: Placement strategy; only spread is supported by Hetzner Cloud.
+            type: str
+            choices: [spread]
+          labels:
+            description: Resource labels.
+            type: dict
+          state:
+            description: Resource state override.
+            type: str
+            choices: [present, absent]
+      hetzner_cloud_servers:
+        description: Server resources.
+        type: list
+        elements: dict
+        default: []
+        options:
+          id:
+            description: Existing server ID.
+            type: int
+          name:
+            description: Server name.
+            type: str
+          server_type:
+            description: Server type name or ID required for creation.
+            type: str
+          ssh_keys:
+            description: SSH key names or IDs used only during creation.
+            type: list
+            elements: str
+          volumes:
+            description: Volume names or IDs used only during creation.
+            type: list
+            elements: str
+          firewalls:
+            description: Authoritative firewall names or IDs when supplied.
+            type: list
+            elements: str
+          image:
+            description: Image name or ID required for creation.
+            type: str
+          image_allow_deprecated:
+            description: Permit a deprecated image.
+            type: bool
+            default: false
+          location:
+            description: Hetzner location required for creation.
+            type: str
+          backups:
+            description: Enable or disable backups.
+            type: bool
+          upgrade_disk:
+            description: Upgrade disk while resizing the server type.
+            type: bool
+            default: false
+          enable_ipv4:
+            description: Enable the public IPv4 interface at creation.
+            type: bool
+            default: true
+          enable_ipv6:
+            description: Must remain false for this IPv4-only role.
+            type: bool
+            default: false
+          ipv4:
+            description: Existing Primary IPv4 name or ID used at creation.
+            type: str
+          private_networks:
+            description: Authoritative Network names or IDs; cannot select an exact private IP.
+            type: list
+            elements: str
+          force:
+            description: Permit disruptive updates that can power off the server.
+            type: bool
+            default: false
+          user_data:
+            description: Sensitive cloud-init or Ignition data used at creation.
+            type: str
+            no_log: true
+          rescue_mode:
+            description: Rescue system type.
+            type: str
+          labels:
+            description: Resource labels.
+            type: dict
+          delete_protection:
+            description: Protect the server from deletion.
+            type: bool
+          rebuild_protection:
+            description: Protect the server from rebuild; supply with delete_protection.
+            type: bool
+          placement_group:
+            description: Placement group name or ID.
+            type: str
+          state:
+            description: Server lifecycle state override.
+            type: str
+            choices: [absent, present, created, started, stopped]
+      hetzner_cloud_server_networks:
+        description: Exact server-to-Network attachments.
+        type: list
+        elements: dict
+        default: []
+        options:
+          server:
+            description: Server name or ID.
+            type: str
+          network:
+            description: Network name or ID.
+            type: str
+          ip:
+            description: Exact IPv4 required when initially attaching.
+            type: str
+          alias_ips:
+            description: Authoritative alias IPv4 addresses when supplied.
+            type: list
+            elements: str
+          expected_ip:
+            description: Optional explicit postcondition; defaults to ip.
+            type: str
+          state:
+            description: Relationship state override.
+            type: str
+            choices: [present, absent]
+      hetzner_cloud_firewall_resources:
+        description: Incremental firewall resource relationships.
+        type: list
+        elements: dict
+        default: []
+        options:
+          firewall:
+            description: Firewall name or ID.
+            type: str
+          servers:
+            description: Server names or IDs.
+            type: list
+            elements: str
+          label_selectors:
+            description: Hetzner label selectors.
+            type: list
+            elements: str
+          state:
+            description: Relationship state override.
+            type: str
+            choices: [present, absent]
+      hetzner_cloud_reverse_dns:
+        description: Reverse DNS records for server, Primary IP, or Floating IP resources.
+        type: list
+        elements: dict
+        default: []
+        options:
+          server:
+            description: Server name or ID.
+            type: str
+          primary_ip:
+            description: Primary IP name or ID.
+            type: str
+          floating_ip:
+            description: Floating IP name or ID.
+            type: str
+          ip_address:
+            description: IPv4 address owned by the selected resource.
+            type: str
+          dns_ptr:
+            description: FQDN for present state; absent resets the provider default.
+            type: str
+          state:
+            description: Reverse DNS state override.
+            type: str
+            choices: [present, absent]
+
+  guest_floating_ip:
+    short_description: Detect whether guest Floating IPv4 configuration is persistent.
+    description:
+      - Performs read-only runtime and persistent-configuration inspection on a guest.
+      - Never adds an address with a transient command and never changes guest networking.
+    options:
+      hetzner_cloud_guest_floating_ips:
+        description: Floating IPv4 addresses expected in the guest.
+        type: list
+        elements: dict
+        default: []
+        options:
+          name:
+            description: Stable address name used in status output.
+            type: str
+          address:
+            description: Floating IPv4 address without a prefix length.
+            type: str
+      hetzner_cloud_guest_require_persistent:
+        description: Mark manual configuration required unless a persistent config contains the address.
+        type: bool
+        default: true
+      hetzner_cloud_guest_persistent_config_paths:
+        description: Guest directories searched for persistent network configuration.
+        type: list
+        elements: path
+      hetzner_cloud_guest_persistent_config_patterns:
+        description: Filename patterns searched recursively in persistent configuration paths.
+        type: list
+        elements: str

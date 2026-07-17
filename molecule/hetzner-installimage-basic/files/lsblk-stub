@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+for argument in "$@"; do
+  if [ "$argument" = "--json" ]; then
+    exec /bin/cat /tmp/lit-hetzner-installimage-test/lsblk.json
+  fi
+done
+
+# Mount discovery for the synthetic system disk deliberately returns no paths.
+if [ "$*" = "--noheadings --output MOUNTPOINTS /dev/lit-system" ]; then
+  exit 0
+fi
+
+printf 'Unexpected lsblk-stub arguments: %s\n' "$*" >&2
+exit 2

@@ -1,0 +1,139 @@
+---
+- name: Resolve the effective managed-host user ID
+  ansible.builtin.command:
+    argv:
+      - "{{ luks_header_escrow_id_path }}"
+      - -u
+  register: _luks_header_escrow_remote_uid_command
+  changed_when: false
+  no_log: true
+
+- name: Canonicalize the managed-host temporary root
+  ansible.builtin.command:
+    argv:
+      - "{{ luks_header_escrow_readlink_path }}"
+      - --canonicalize-existing
+      - "{{ luks_header_escrow_remote_temporary_root }}"
+  register: _luks_header_escrow_remote_root_command
+  changed_when: false
+  no_log: true
+
+- name: Inspect the managed-host temporary root
+  ansible.builtin.stat:
+    path: "{{ luks_header_escrow_remote_temporary_root }}"
+    follow: false
+    get_checksum: false
+    get_mime: false
+  register: _luks_header_escrow_remote_root_stat
+  changed_when: false
+  no_log: true
+
+- name: Require a canonical managed-host temporary root contract
+  ansible.builtin.assert:
+    that:
+      - _luks_header_escrow_remote_uid_command.stdout_lines | length == 1
+      - >-
+        _luks_header_escrow_remote_uid_command.stdout | trim
+        is match('^[0-9]+$')
+      - _luks_header_escrow_remote_root_command.stdout_lines | length == 1
+      - >-
+        _luks_header_escrow_remote_root_command.stdout | trim
+        == luks_header_escrow_remote_temporary_root
+    fail_msg: >-
+      The managed-host temporary root and effective user ID must resolve to
+      single canonical values before path ancestry can be validated.
+    quiet: true
+  no_log: true
+
+- name: Initialize managed-host temporary-root ancestry
+  ansible.builtin.set_fact:
+    _luks_header_escrow_remote_ancestry:
+      - /
+  changed_when: false
+  no_log: true
+
+- name: Build managed-host temporary-root ancestry
+  ansible.builtin.set_fact:
+    _luks_header_escrow_remote_ancestry: >-
+      {{
+        _luks_header_escrow_remote_ancestry
+        + [
+            (
+              (_luks_header_escrow_remote_ancestry | last)
+              ~ '/' ~ item
+            ) | normpath
+          ]
+      }}
+  loop: >-
+    {{
+      (_luks_header_escrow_remote_root_command.stdout | trim).split('/')
+      | reject('equalto', '')
+      | list
+    }}
+  changed_when: false
+  no_log: true
+
+- name: Inspect managed-host temporary-root parent ancestry
+  ansible.builtin.stat:
+    path: "{{ item }}"
+    follow: false
+    get_checksum: false
+    get_mime: false
+  loop: "{{ _luks_header_escrow_remote_ancestry[:-1] }}"
+  register: _luks_header_escrow_remote_ancestry_stat
+  changed_when: false
+  no_log: true
+
+- name: Require protected managed-host temporary-root ancestry
+  ansible.builtin.assert:
+    that:
+      - item.stat.exists | default(false)
+      - item.stat.isdir | default(false)
+      - not (item.stat.islnk | default(false))
+      - >-
+        item.stat.uid | default(-1) | int
+        in [0, _luks_header_escrow_remote_uid_command.stdout | trim | int]
+      - >-
+        (
+          item.stat.mode | default('')
+          is match('^[0-7][0-7][0145][0145]$')
+        ) or (
+          item.stat.mode | default('')
+          is match('^[1357][0-7][0-7][0-7]$')
+        )
+    fail_msg: >-
+      Every managed-host temporary-root ancestor must be a non-symlinked
+      directory owned by root or the effective user. Writable ancestors must
+      carry the sticky bit so an unprivileged user cannot replace a validated
+      child path.
+    quiet: true
+  loop: "{{ _luks_header_escrow_remote_ancestry_stat.results }}"
+  no_log: true
+
+- name: Require a protected managed-host temporary root
+  ansible.builtin.assert:
+    that:
+      - _luks_header_escrow_remote_root_stat.stat.exists | default(false)
+      - _luks_header_escrow_remote_root_stat.stat.isdir | default(false)
+      - not (_luks_header_escrow_remote_root_stat.stat.islnk | default(false))
+      - >-
+        _luks_header_escrow_remote_root_stat.stat.uid | default(-1) | int
+        == _luks_header_escrow_remote_uid_command.stdout | trim | int
+      - >-
+        _luks_header_escrow_remote_root_stat.stat.mode | default('')
+        is match('^07[0145][0145]$')
+    fail_msg: >-
+      The managed-host temporary root must be a canonical, non-symlinked
+      directory owned by the effective user, with owner rwx access and no
+      group or other write permission.
+    quiet: true
+  no_log: true
+
+- name: Record validated managed-host temporary state
+  ansible.builtin.set_fact:
+    _luks_header_escrow_remote_uid: >-
+      {{ _luks_header_escrow_remote_uid_command.stdout | trim | int }}
+    _luks_header_escrow_remote_root_canonical: >-
+      {{ _luks_header_escrow_remote_root_command.stdout | trim }}
+  changed_when: false
+  no_log: true

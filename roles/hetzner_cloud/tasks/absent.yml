@@ -1,0 +1,178 @@
+---
+- name: Reset absent reverse DNS records
+  hetzner.hcloud.rdns:
+    api_token: "{{ hetzner_cloud_api_token if hetzner_cloud_api_token | length > 0 else omit }}"
+    api_endpoint: "{{ hetzner_cloud_api_endpoint }}"
+    server: "{{ hetzner_cloud_reverse_dns_item.server | default(omit) }}"
+    primary_ip: "{{ hetzner_cloud_reverse_dns_item.primary_ip | default(omit) }}"
+    floating_ip: "{{ hetzner_cloud_reverse_dns_item.floating_ip | default(omit) }}"
+    ip_address: "{{ hetzner_cloud_reverse_dns_item.ip_address }}"
+    state: absent
+  loop: "{{ hetzner_cloud_reverse_dns }}"
+  loop_control:
+    loop_var: hetzner_cloud_reverse_dns_item
+    label: "{{ hetzner_cloud_reverse_dns_item.ip_address }}"
+  when: (hetzner_cloud_reverse_dns_item.state | default(hetzner_cloud_state)) == 'absent'
+  register: hetzner_cloud_reverse_dns_absent_operations
+  no_log: true
+
+- name: Delete absent Floating IPv4 resources
+  hetzner.hcloud.floating_ip:
+    api_token: "{{ hetzner_cloud_api_token if hetzner_cloud_api_token | length > 0 else omit }}"
+    api_endpoint: "{{ hetzner_cloud_api_endpoint }}"
+    id: "{{ hetzner_cloud_floating_ip_item.id | default(omit) }}"
+    name: "{{ hetzner_cloud_floating_ip_item.name | default(omit) }}"
+    force: true
+    state: absent
+  loop: "{{ hetzner_cloud_floating_ips }}"
+  loop_control:
+    loop_var: hetzner_cloud_floating_ip_item
+    label: "{{ hetzner_cloud_floating_ip_item.name | default(hetzner_cloud_floating_ip_item.id | default('unnamed')) }}"
+  when: (hetzner_cloud_floating_ip_item.state | default(hetzner_cloud_state)) == 'absent'
+  register: hetzner_cloud_floating_ip_absent_operations
+  no_log: true
+
+- name: Remove absent firewall resource relationships
+  hetzner.hcloud.firewall_resource:
+    api_token: "{{ hetzner_cloud_api_token if hetzner_cloud_api_token | length > 0 else omit }}"
+    api_endpoint: "{{ hetzner_cloud_api_endpoint }}"
+    firewall: "{{ hetzner_cloud_firewall_resource_item.firewall }}"
+    servers: "{{ hetzner_cloud_firewall_resource_item.servers | default(omit) }}"
+    label_selectors: "{{ hetzner_cloud_firewall_resource_item.label_selectors | default(omit) }}"
+    state: absent
+  loop: "{{ hetzner_cloud_firewall_resources }}"
+  loop_control:
+    loop_var: hetzner_cloud_firewall_resource_item
+    label: "{{ hetzner_cloud_firewall_resource_item.firewall }}"
+  when: (hetzner_cloud_firewall_resource_item.state | default(hetzner_cloud_state)) == 'absent'
+  register: hetzner_cloud_firewall_resource_absent_operations
+  no_log: true
+
+- name: Remove absent server Network relationships
+  hetzner.hcloud.server_network:
+    api_token: "{{ hetzner_cloud_api_token if hetzner_cloud_api_token | length > 0 else omit }}"
+    api_endpoint: "{{ hetzner_cloud_api_endpoint }}"
+    server: "{{ hetzner_cloud_server_network_item.server }}"
+    network: "{{ hetzner_cloud_server_network_item.network }}"
+    state: absent
+  loop: "{{ hetzner_cloud_server_networks }}"
+  loop_control:
+    loop_var: hetzner_cloud_server_network_item
+    label: "{{ hetzner_cloud_server_network_item.server }} -> {{ hetzner_cloud_server_network_item.network }}"
+  when: (hetzner_cloud_server_network_item.state | default(hetzner_cloud_state)) == 'absent'
+  register: hetzner_cloud_server_network_absent_operations
+  no_log: true
+
+- name: Delete absent servers
+  hetzner.hcloud.server:
+    api_token: "{{ hetzner_cloud_api_token if hetzner_cloud_api_token | length > 0 else omit }}"
+    api_endpoint: "{{ hetzner_cloud_api_endpoint }}"
+    id: "{{ hetzner_cloud_server_item.id | default(omit) }}"
+    name: "{{ hetzner_cloud_server_item.name | default(omit) }}"
+    state: absent
+  loop: "{{ hetzner_cloud_servers }}"
+  loop_control:
+    loop_var: hetzner_cloud_server_item
+    label: "{{ hetzner_cloud_server_item.name | default(hetzner_cloud_server_item.id | default('unnamed')) }}"
+  when: (hetzner_cloud_server_item.state | default(hetzner_cloud_state)) == 'absent'
+  register: hetzner_cloud_server_absent_operations
+  no_log: true
+
+- name: Delete absent Primary IPv4 resources
+  hetzner.hcloud.primary_ip:
+    api_token: "{{ hetzner_cloud_api_token if hetzner_cloud_api_token | length > 0 else omit }}"
+    api_endpoint: "{{ hetzner_cloud_api_endpoint }}"
+    id: "{{ hetzner_cloud_primary_ip_item.id | default(omit) }}"
+    name: "{{ hetzner_cloud_primary_ip_item.name | default(omit) }}"
+    state: absent
+  loop: "{{ hetzner_cloud_primary_ips }}"
+  loop_control:
+    loop_var: hetzner_cloud_primary_ip_item
+    label: "{{ hetzner_cloud_primary_ip_item.name | default(hetzner_cloud_primary_ip_item.id | default('unnamed')) }}"
+  when: (hetzner_cloud_primary_ip_item.state | default(hetzner_cloud_state)) == 'absent'
+  register: hetzner_cloud_primary_ip_absent_operations
+  no_log: true
+
+- name: Delete absent firewalls
+  hetzner.hcloud.firewall:
+    api_token: "{{ hetzner_cloud_api_token if hetzner_cloud_api_token | length > 0 else omit }}"
+    api_endpoint: "{{ hetzner_cloud_api_endpoint }}"
+    id: "{{ hetzner_cloud_firewall_item.id | default(omit) }}"
+    name: "{{ hetzner_cloud_firewall_item.name | default(omit) }}"
+    force: "{{ hetzner_cloud_firewall_item.force | default(false) | bool }}"
+    state: absent
+  loop: "{{ hetzner_cloud_firewalls_effective }}"
+  loop_control:
+    loop_var: hetzner_cloud_firewall_item
+    label: "{{ hetzner_cloud_firewall_item.name | default(hetzner_cloud_firewall_item.id | default('unnamed')) }}"
+  when: (hetzner_cloud_firewall_item.state | default(hetzner_cloud_state)) == 'absent'
+  register: hetzner_cloud_firewall_absent_operations
+  no_log: true
+
+- name: Delete absent subnetworks
+  hetzner.hcloud.subnetwork:
+    api_token: "{{ hetzner_cloud_api_token if hetzner_cloud_api_token | length > 0 else omit }}"
+    api_endpoint: "{{ hetzner_cloud_api_endpoint }}"
+    network: "{{ hetzner_cloud_subnetwork_item.network }}"
+    ip_range: "{{ hetzner_cloud_subnetwork_item.ip_range }}"
+    type: "{{ hetzner_cloud_subnetwork_item.type }}"
+    network_zone: "{{ hetzner_cloud_subnetwork_item.network_zone }}"
+    vswitch_id: "{{ hetzner_cloud_subnetwork_item.vswitch_id | default(omit) }}"
+    state: absent
+  loop: "{{ hetzner_cloud_subnetworks }}"
+  loop_control:
+    loop_var: hetzner_cloud_subnetwork_item
+    label: "{{ hetzner_cloud_subnetwork_item.network }}:{{ hetzner_cloud_subnetwork_item.ip_range }}"
+  when: (hetzner_cloud_subnetwork_item.state | default(hetzner_cloud_state)) == 'absent'
+  register: hetzner_cloud_subnetwork_absent_operations
+  no_log: true
+
+- name: Delete absent Networks
+  hetzner.hcloud.network:
+    api_token: "{{ hetzner_cloud_api_token if hetzner_cloud_api_token | length > 0 else omit }}"
+    api_endpoint: "{{ hetzner_cloud_api_endpoint }}"
+    id: "{{ hetzner_cloud_network_item.id | default(omit) }}"
+    name: "{{ hetzner_cloud_network_item.name | default(omit) }}"
+    state: absent
+  loop: "{{ hetzner_cloud_networks }}"
+  loop_control:
+    loop_var: hetzner_cloud_network_item
+    label: "{{ hetzner_cloud_network_item.name | default(hetzner_cloud_network_item.id | default('unnamed')) }}"
+  when: (hetzner_cloud_network_item.state | default(hetzner_cloud_state)) == 'absent'
+  register: hetzner_cloud_network_absent_operations
+  no_log: true
+
+- name: Delete absent placement groups
+  hetzner.hcloud.placement_group:
+    api_token: "{{ hetzner_cloud_api_token if hetzner_cloud_api_token | length > 0 else omit }}"
+    api_endpoint: "{{ hetzner_cloud_api_endpoint }}"
+    id: "{{ hetzner_cloud_placement_group_item.id | default(omit) }}"
+    name: "{{ hetzner_cloud_placement_group_item.name | default(omit) }}"
+    state: absent
+  loop: "{{ hetzner_cloud_placement_groups }}"
+  loop_control:
+    loop_var: hetzner_cloud_placement_group_item
+    label: >-
+      {{
+        hetzner_cloud_placement_group_item.name
+        | default(hetzner_cloud_placement_group_item.id | default('unnamed'))
+      }}
+  when: (hetzner_cloud_placement_group_item.state | default(hetzner_cloud_state)) == 'absent'
+  register: hetzner_cloud_placement_group_absent_operations
+  no_log: true
+
+- name: Delete absent SSH keys
+  hetzner.hcloud.ssh_key:
+    api_token: "{{ hetzner_cloud_api_token if hetzner_cloud_api_token | length > 0 else omit }}"
+    api_endpoint: "{{ hetzner_cloud_api_endpoint }}"
+    id: "{{ hetzner_cloud_ssh_key_item.id | default(omit) }}"
+    name: "{{ hetzner_cloud_ssh_key_item.name | default(omit) }}"
+    fingerprint: "{{ hetzner_cloud_ssh_key_item.fingerprint | default(omit) }}"
+    state: absent
+  loop: "{{ hetzner_cloud_ssh_keys }}"
+  loop_control:
+    loop_var: hetzner_cloud_ssh_key_item
+    label: "{{ hetzner_cloud_ssh_key_item.name | default(hetzner_cloud_ssh_key_item.id | default('unnamed')) }}"
+  when: (hetzner_cloud_ssh_key_item.state | default(hetzner_cloud_state)) == 'absent'
+  register: hetzner_cloud_ssh_key_absent_operations
+  no_log: true

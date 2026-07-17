@@ -1,0 +1,334 @@
+---
+- name: Validate inventory fleet identity key and service-host contracts
+  ansible.builtin.assert:
+    that:
+      - hetzner_rescue_validate_inventory_contract.selected_hosts | length > 0
+      - >-
+        hetzner_rescue_validate_inventory_contract.selected_hosts | unique | length
+        == hetzner_rescue_validate_inventory_contract.selected_hosts | length
+      - hetzner_rescue_validate_inventory_contract.expected_fleet | length > 0
+      - >-
+        hetzner_rescue_validate_inventory_contract.expected_fleet | unique | length
+        == hetzner_rescue_validate_inventory_contract.expected_fleet | length
+      - >-
+        hetzner_rescue_validate_inventory_contract.selected_hosts | sort
+        == hetzner_rescue_validate_inventory_contract.expected_fleet | sort
+      - >-
+        hetzner_rescue_validate_inventory_contract.install_order | unique | length
+        == hetzner_rescue_validate_inventory_contract.install_order | length
+      - >-
+        hetzner_rescue_validate_inventory_contract.install_order | sort
+        == hetzner_rescue_validate_inventory_contract.expected_fleet | sort
+      - hetzner_rescue_validate_inventory_contract.prerequisite_hosts | length > 0
+      - >-
+        hetzner_rescue_validate_inventory_contract.prerequisite_hosts | unique | length
+        == hetzner_rescue_validate_inventory_contract.prerequisite_hosts | length
+      - >-
+        hetzner_rescue_validate_inventory_contract.prerequisite_hosts
+        | difference(hetzner_rescue_validate_inventory_contract.expected_fleet)
+        | length == 0
+      - >-
+        hetzner_rescue_validate_inventory_contract.install_order[
+          0:hetzner_rescue_validate_inventory_contract.prerequisite_hosts | length
+        ]
+        == hetzner_rescue_validate_inventory_contract.prerequisite_hosts
+      - >-
+        hetzner_rescue_validate_inventory_contract.host.inventory_hostname
+        == inventory_hostname
+      - >-
+        hetzner_rescue_validate_inventory_contract.host.inventory_hostname
+        in hetzner_rescue_validate_inventory_contract.expected_fleet
+      - >-
+        hetzner_rescue_validate_inventory_contract.host.inventory_hostname
+        == hetzner_rescue_validate_inventory_contract.installimage.hostname
+      - >-
+        hetzner_rescue_validate_inventory_contract.host.public_ipv4
+        == hetzner_rescue_validate_inventory_contract.installimage.public_ipv4
+      - >-
+        hetzner_rescue_validate_inventory_contract.host.public_ipv4
+        is match('^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$')
+      - >-
+        hetzner_rescue_validate_inventory_contract.host.public_ipv4.split('.')
+        | map('int')
+        | select('gt', 255)
+        | list
+        | length == 0
+      - hetzner_rescue_validate_inventory_contract.installimage.action == 'plan'
+      - hetzner_rescue_validate_inventory_contract.ssh_public_keys.deploy | length > 0
+      - >-
+        hetzner_rescue_validate_inventory_contract.ssh_public_keys.deploy | unique | length
+        == hetzner_rescue_validate_inventory_contract.ssh_public_keys.deploy | length
+      - hetzner_rescue_validate_inventory_contract.ssh_public_keys.breakglass | length > 0
+      - >-
+        hetzner_rescue_validate_inventory_contract.ssh_public_keys.breakglass | unique | length
+        == hetzner_rescue_validate_inventory_contract.ssh_public_keys.breakglass | length
+      - >-
+        hetzner_rescue_validate_inventory_contract.service_hosts.tang
+        in hetzner_rescue_validate_inventory_contract.prerequisite_hosts
+      - >-
+        hetzner_rescue_validate_inventory_contract.service_hosts.vault
+        in hetzner_rescue_validate_inventory_contract.prerequisite_hosts
+    fail_msg: >-
+      Inventory contract requires the exact unique fleet selection and install order, matching host and installimage
+      identity in plan mode, separate nonempty unique key lists, and in-fleet Tang and Vault prerequisite hosts at the
+      beginning of the install order.
+    quiet: true
+  changed_when: false
+  no_log: true
+  tags: always
+
+- name: Validate Robot firewall policy and bounded rule declarations
+  ansible.builtin.assert:
+    that:
+      - hetzner_rescue_validate_inventory_contract.robot_firewall.enabled | bool
+      - hetzner_rescue_validate_inventory_contract.robot_firewall.input_rules | length > 0
+      - hetzner_rescue_validate_inventory_contract.robot_firewall.input_rules | length <= 10
+      - hetzner_rescue_validate_inventory_contract.robot_firewall.output_rules | length > 0
+      - hetzner_rescue_validate_inventory_contract.robot_firewall.dropbear_port | int >= 1
+      - hetzner_rescue_validate_inventory_contract.robot_firewall.dropbear_port | int <= 65535
+      - >-
+        [
+          22,
+          1905,
+          hetzner_rescue_validate_inventory_contract.robot_firewall.dropbear_port | int
+        ]
+        | unique
+        | length == 3
+    fail_msg: >-
+      Robot firewall must be enabled with at most ten input rules, a nonempty authoritative output list, and a unique
+      valid Dropbear port distinct from ports 22 and 1905.
+    quiet: true
+  changed_when: false
+  tags: always
+
+- name: Require one unrestricted IPv4 TCP rule per mandatory port
+  vars:
+    hetzner_rescue_validate_inventory_tcp_port_candidates: >-
+      {{
+        hetzner_rescue_validate_inventory_contract.robot_firewall.input_rules
+        | selectattr('ip_version', 'equalto', 'ipv4')
+        | selectattr('protocol', 'equalto', 'tcp')
+        | selectattr('action', 'equalto', 'accept')
+        | selectattr('dst_port', 'defined')
+        | selectattr('dst_port', 'equalto', hetzner_rescue_validate_inventory_required_tcp_port | string)
+        | list
+      }}
+    hetzner_rescue_validate_inventory_unrestricted_tcp_port_rules: >-
+      {{
+        (
+          hetzner_rescue_validate_inventory_tcp_port_candidates
+          | selectattr('src_ip', 'undefined')
+          | list
+        )
+        +
+        (
+          hetzner_rescue_validate_inventory_tcp_port_candidates
+          | selectattr('src_ip', 'defined')
+          | selectattr('src_ip', 'none')
+          | list
+        )
+      }}
+  ansible.builtin.assert:
+    that:
+      - hetzner_rescue_validate_inventory_unrestricted_tcp_port_rules | length == 1
+    fail_msg: "Each mandatory port must have exactly one unrestricted IPv4 TCP accept rule."
+    quiet: true
+  loop: >-
+    {{
+      [
+        22,
+        1905,
+        hetzner_rescue_validate_inventory_contract.robot_firewall.dropbear_port
+      ]
+    }}
+  loop_control:
+    loop_var: hetzner_rescue_validate_inventory_required_tcp_port
+    label: "TCP/{{ hetzner_rescue_validate_inventory_required_tcp_port }}"
+  changed_when: false
+  tags: always
+
+- name: Require exactly one wildcard IPv4 ICMP accept rule
+  vars:
+    hetzner_rescue_validate_inventory_icmp_rules: >-
+      {{
+        hetzner_rescue_validate_inventory_contract.robot_firewall.input_rules
+        | selectattr('ip_version', 'equalto', 'ipv4')
+        | selectattr('protocol', 'equalto', 'icmp')
+        | selectattr('action', 'equalto', 'accept')
+        | list
+      }}
+    hetzner_rescue_validate_inventory_unrestricted_icmp_rules: >-
+      {{
+        (
+          hetzner_rescue_validate_inventory_icmp_rules
+          | selectattr('src_ip', 'undefined')
+          | list
+        )
+        +
+        (
+          hetzner_rescue_validate_inventory_icmp_rules
+          | selectattr('src_ip', 'defined')
+          | selectattr('src_ip', 'none')
+          | list
+        )
+      }}
+    hetzner_rescue_validate_inventory_wildcard_icmp_rules: >-
+      {{
+        (
+          hetzner_rescue_validate_inventory_unrestricted_icmp_rules
+          | selectattr('dst_ip', 'undefined')
+          | list
+        )
+        +
+        (
+          hetzner_rescue_validate_inventory_unrestricted_icmp_rules
+          | selectattr('dst_ip', 'defined')
+          | selectattr('dst_ip', 'none')
+          | list
+        )
+      }}
+  ansible.builtin.assert:
+    that:
+      - hetzner_rescue_validate_inventory_wildcard_icmp_rules | length == 1
+    fail_msg: "Robot firewall needs exactly one wildcard IPv4 ICMP accept rule."
+    quiet: true
+  changed_when: false
+  tags: always
+
+- name: Validate MGMT transport network subnet and netplan alignment
+  ansible.builtin.assert:
+    that:
+      - hetzner_rescue_validate_inventory_contract.mgmt.transport.provider == 'hetzner_robot_vswitch'
+      - hetzner_rescue_validate_inventory_contract.mgmt.transport.state == 'active'
+      - hetzner_rescue_validate_inventory_contract.mgmt.transport.name | trim | length > 0
+      - hetzner_rescue_validate_inventory_contract.mgmt.transport.vlan_id | int >= 1
+      - hetzner_rescue_validate_inventory_contract.mgmt.transport.vlan_id | int <= 4094
+      - hetzner_rescue_validate_inventory_contract.mgmt.transport.mtu | int >= 1280
+      - hetzner_rescue_validate_inventory_contract.mgmt.transport.mtu | int <= 9216
+      - hetzner_rescue_validate_inventory_contract.mgmt.network.state == 'active'
+      - hetzner_rescue_validate_inventory_contract.mgmt.network.parent_interface is match('^[A-Za-z0-9_.-]{1,15}$')
+      - hetzner_rescue_validate_inventory_contract.mgmt.network.vlan_interface is match('^[A-Za-z0-9_.-]{1,15}$')
+      - >-
+        hetzner_rescue_validate_inventory_contract.mgmt.network.parent_interface
+        != hetzner_rescue_validate_inventory_contract.mgmt.network.vlan_interface
+      - >-
+        hetzner_rescue_validate_inventory_contract.mgmt.network.ipv4
+        is match('^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$')
+      - >-
+        hetzner_rescue_validate_inventory_contract.mgmt.network.ipv4.split('.')
+        | map('int')
+        | select('gt', 255)
+        | list
+        | length == 0
+      - hetzner_rescue_validate_inventory_contract.mgmt.subnet.prefix_length | int >= 1
+      - hetzner_rescue_validate_inventory_contract.mgmt.subnet.prefix_length | int <= 32
+      - >-
+        hetzner_rescue_validate_inventory_contract.mgmt.subnet.gateway | default('', true) | length == 0
+        or
+        (
+          hetzner_rescue_validate_inventory_contract.mgmt.subnet.gateway
+          is match('^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$')
+          and
+          (
+            hetzner_rescue_validate_inventory_contract.mgmt.subnet.gateway.split('.')
+            | map('int')
+            | select('gt', 255)
+            | list
+            | length == 0
+          )
+        )
+      - >-
+        hetzner_rescue_validate_inventory_contract.mgmt.netplan_vlan.name
+        == hetzner_rescue_validate_inventory_contract.mgmt.network.vlan_interface
+      - >-
+        hetzner_rescue_validate_inventory_contract.mgmt.netplan_vlan.id | int
+        == hetzner_rescue_validate_inventory_contract.mgmt.transport.vlan_id | int
+      - >-
+        hetzner_rescue_validate_inventory_contract.mgmt.netplan_vlan.link
+        == hetzner_rescue_validate_inventory_contract.mgmt.network.parent_interface
+      - >-
+        hetzner_rescue_validate_inventory_contract.mgmt.netplan_vlan.mtu | int
+        == hetzner_rescue_validate_inventory_contract.mgmt.transport.mtu | int
+      - >-
+        (
+          hetzner_rescue_validate_inventory_contract.mgmt.network.ipv4
+          ~ '/'
+          ~ (hetzner_rescue_validate_inventory_contract.mgmt.subnet.prefix_length | string)
+        )
+        in hetzner_rescue_validate_inventory_contract.mgmt.netplan_vlan.addresses
+    fail_msg: >-
+      MGMT requires an active Hetzner Robot vSwitch and active host allocation whose VLAN, MTU, interfaces, IPv4
+      subnet, and netplan declaration align exactly.
+    quiet: true
+  changed_when: false
+  tags: always
+
+- name: Validate Robot input-rule schemas
+  ansible.builtin.assert:
+    that:
+      - >-
+        hetzner_rescue_validate_inventory_rule.keys() | list
+        | difference(
+            [
+              'action',
+              'dst_ip',
+              'dst_port',
+              'ip_version',
+              'name',
+              'protocol',
+              'src_ip',
+              'src_port',
+              'tcp_flags'
+            ]
+          )
+        | length == 0
+      - hetzner_rescue_validate_inventory_rule.ip_version in ['ipv4', 'ipv6']
+      - hetzner_rescue_validate_inventory_rule.protocol in ['tcp', 'udp', 'gre', 'icmp', 'ipip', 'ah', 'esp']
+      - hetzner_rescue_validate_inventory_rule.action in ['accept', 'discard']
+      - hetzner_rescue_validate_inventory_rule.name | trim | length > 0
+      - >-
+        hetzner_rescue_validate_inventory_rule.src_ip is not defined
+        or hetzner_rescue_validate_inventory_rule.src_ip is none
+        or
+        (
+          hetzner_rescue_validate_inventory_rule.src_ip is string
+          and hetzner_rescue_validate_inventory_rule.src_ip | trim | length > 0
+        )
+      - >-
+        hetzner_rescue_validate_inventory_rule.dst_ip is not defined
+        or hetzner_rescue_validate_inventory_rule.dst_ip is none
+        or
+        (
+          hetzner_rescue_validate_inventory_rule.dst_ip is string
+          and hetzner_rescue_validate_inventory_rule.dst_ip | trim | length > 0
+        )
+      - >-
+        hetzner_rescue_validate_inventory_rule.protocol not in ['tcp', 'udp']
+        or
+        (
+          hetzner_rescue_validate_inventory_rule.dst_port is defined
+          and hetzner_rescue_validate_inventory_rule.dst_port is not none
+          and hetzner_rescue_validate_inventory_rule.dst_port | string | trim | length > 0
+        )
+      - >-
+        hetzner_rescue_validate_inventory_rule.protocol != 'icmp'
+        or
+        (
+          (
+            hetzner_rescue_validate_inventory_rule.src_port is not defined
+            or hetzner_rescue_validate_inventory_rule.src_port is none
+          )
+          and
+          (
+            hetzner_rescue_validate_inventory_rule.dst_port is not defined
+            or hetzner_rescue_validate_inventory_rule.dst_port is none
+          )
+        )
+    fail_msg: "Robot input rules must use the bounded native schema and valid protocol-specific fields."
+    quiet: true
+  loop: "{{ hetzner_rescue_validate_inventory_contract.robot_firewall.input_rules }}"
+  loop_control:
+    loop_var: hetzner_rescue_validate_inventory_rule
+    label: "{{ hetzner_rescue_validate_inventory_rule.name | default('invalid rule') }}"
+  changed_when: false
+  tags: always

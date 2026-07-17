@@ -1,0 +1,75 @@
+{
+  "hetzner_cloud_validate_only": true,
+  "hetzner_cloud_ipv4_only": true,
+  "hetzner_cloud_default_firewall": {
+    "enabled": true,
+    "name": "molecule-secure-ipv4",
+    "ssh_source_ips": ["192.0.2.0/24"]
+  },
+  "hetzner_cloud_ssh_keys": [
+    {"name": "molecule-admin"}
+  ],
+  "hetzner_cloud_networks": [
+    {"name": "molecule-management", "ip_range": "10.0.0.0/16"}
+  ],
+  "hetzner_cloud_subnetworks": [
+    {
+      "network": "molecule-management",
+      "ip_range": "10.0.10.0/24",
+      "type": "server",
+      "network_zone": "eu-central"
+    }
+  ],
+  "hetzner_cloud_primary_ips": [
+    {
+      "name": "molecule-primary-ipv4",
+      "type": "ipv4",
+      "location": "fsn1",
+      "prevent_create": true,
+      "expected_ip": "192.0.2.10"
+    }
+  ],
+  "hetzner_cloud_floating_ips": [
+    {
+      "name": "molecule-floating-ipv4",
+      "type": "ipv4",
+      "server": "molecule-server",
+      "prevent_create": true,
+      "expected_ip": "192.0.2.20"
+    }
+  ],
+  "hetzner_cloud_placement_groups": [
+    {"name": "molecule-spread", "type": "spread"}
+  ],
+  "hetzner_cloud_servers": [
+    {
+      "name": "molecule-server",
+      "server_type": "cpx22",
+      "image": "ubuntu-24.04",
+      "location": "fsn1",
+      "enable_ipv4": true,
+      "enable_ipv6": false,
+      "ipv4": "molecule-primary-ipv4",
+      "ssh_keys": ["molecule-admin"],
+      "placement_group": "molecule-spread"
+    }
+  ],
+  "hetzner_cloud_server_networks": [
+    {
+      "server": "molecule-server",
+      "network": "molecule-management",
+      "ip": "10.0.10.4",
+      "expected_ip": "10.0.10.4"
+    }
+  ],
+  "hetzner_cloud_firewall_resources": [
+    {"firewall": "molecule-secure-ipv4", "servers": ["molecule-server"]}
+  ],
+  "hetzner_cloud_reverse_dns": [
+    {
+      "primary_ip": "molecule-primary-ipv4",
+      "ip_address": "192.0.2.10",
+      "dns_ptr": "molecule-server.example.com"
+    }
+  ]
+}

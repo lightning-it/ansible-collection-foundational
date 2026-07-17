@@ -1,0 +1,36 @@
+---
+secret_backend_enabled: true
+secret_backend_name: hashicorp_vault
+secret_backend_allowed_backends:
+  - hashicorp_vault
+  - ansible_vault
+
+secret_backend_vault_addr: "{{ vault_addr | default(hc_vault_addr | default('', true), true) }}"
+secret_backend_vault_validate_certs: >-
+  {{
+    vault_validate_certs
+    | default(hc_vault_validate_certs | default(true, true), true)
+  }}
+secret_backend_vault_token: >-
+  {{
+    vault_token
+    | default(
+        hc_vault_token
+        | default(lookup('ansible.builtin.env', 'VAULT_TOKEN') | default('', true), true),
+        true
+      )
+  }}
+secret_backend_vault_role_id: "{{ vault_role_id | default(hc_vault_role_id | default('', true), true) }}"
+secret_backend_vault_secret_id: "{{ vault_secret_id | default(hc_vault_secret_id | default('', true), true) }}"
+secret_backend_vault_auth_method: >-
+  {{
+    'token'
+    if (secret_backend_vault_token | default('', true) | string | trim | length > 0)
+    else 'approle'
+  }}
+secret_backend_vault_kv_mount_point: >-
+  {{
+    vault_engine_mount_point
+    | default(hc_vault_engine_mount_point | default('', true), true)
+  }}
+secret_backend_result_fact: secret_backend_context

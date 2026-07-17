@@ -1,0 +1,36 @@
+---
+- name: Remove only the scenario-owned Incus guest fixture
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    hetzner_cloud_incus_instance: "{{ molecule_yml.platforms[0] }}"
+  tasks:
+    - name: Read the Incus instance owner before guest cleanup
+      ansible.builtin.command:
+        argv:
+          - incus
+          - config
+          - get
+          - "{{ hetzner_cloud_incus_instance.name }}"
+          - user.molecule-owner
+      register: hetzner_cloud_incus_cleanup_owner
+      changed_when: false
+      failed_when:
+        - hetzner_cloud_incus_cleanup_owner.rc != 0
+        - '''Instance not found'' not in hetzner_cloud_incus_cleanup_owner.stderr'
+
+    - name: Remove the observation fixture only from the scenario-owned guest
+      ansible.builtin.command:
+        argv:
+          - incus
+          - exec
+          - "{{ hetzner_cloud_incus_instance.name }}"
+          - --
+          - rm
+          - -f
+          - /etc/netplan/99-molecule-floating-ip-observation.yaml
+      when:
+        - hetzner_cloud_incus_cleanup_owner.rc == 0
+        - hetzner_cloud_incus_cleanup_owner.stdout == hetzner_cloud_incus_instance.owner
+      changed_when: false

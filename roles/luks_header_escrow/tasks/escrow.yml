@@ -1,0 +1,271 @@
+---
+- name: Create, encrypt, and verify the independent LUKS-header escrow
+  block:
+    - name: Allocate a protected remote header directory
+      ansible.builtin.tempfile:
+        state: directory
+        path: "{{ luks_header_escrow_remote_temporary_root }}"
+        prefix: "{{ _luks_header_escrow_remote_temporary_prefix }}"
+      register: _luks_header_escrow_temp
+      changed_when: false
+      no_log: true
+
+    - name: Canonicalize the allocated remote header directory
+      ansible.builtin.command:
+        argv:
+          - "{{ luks_header_escrow_readlink_path }}"
+          - --canonicalize-existing
+          - "{{ _luks_header_escrow_temp.path }}"
+      register: _luks_header_escrow_temp_canonical
+      changed_when: false
+      no_log: true
+
+    - name: Inspect the allocated remote header directory
+      ansible.builtin.stat:
+        path: "{{ _luks_header_escrow_temp.path }}"
+        follow: false
+        get_checksum: false
+        get_mime: false
+      register: _luks_header_escrow_temp_stat
+      changed_when: false
+      no_log: true
+
+    - name: Require a private canonical remote header directory
+      ansible.builtin.assert:
+        that:
+          - _luks_header_escrow_temp_canonical.stdout_lines | length == 1
+          - >-
+            _luks_header_escrow_temp_canonical.stdout | trim
+            == _luks_header_escrow_temp.path
+          - >-
+            _luks_header_escrow_temp.path | dirname
+            == _luks_header_escrow_remote_root_canonical
+          - _luks_header_escrow_temp_stat.stat.exists | default(false)
+          - _luks_header_escrow_temp_stat.stat.isdir | default(false)
+          - not (_luks_header_escrow_temp_stat.stat.islnk | default(false))
+          - _luks_header_escrow_temp_stat.stat.mode | default('') == '0700'
+          - >-
+            _luks_header_escrow_temp_stat.stat.uid | default(-1) | int
+            == _luks_header_escrow_remote_uid | int
+        fail_msg: >-
+          The allocated remote LUKS-header directory is not a private,
+          canonical 0700 directory owned by the effective managed-host user.
+        quiet: true
+      no_log: true
+
+    - name: Resolve the initially absent raw header path
+      ansible.builtin.set_fact:
+        _luks_header_escrow_raw_path: >-
+          {{ _luks_header_escrow_temp_canonical.stdout | trim }}/header.luks
+      changed_when: false
+      no_log: true
+
+    - name: Back up the raw LUKS2 header on the managed host
+      ansible.builtin.command:
+        argv:
+          - "{{ luks_header_escrow_bash_path }}"
+          - -c
+          - >-
+            umask 077;
+            exec "$1" luksHeaderBackup "$2" --header-backup-file "$3"
+          - lit-luks-header-backup
+          - "{{ luks_header_escrow_cryptsetup_path }}"
+          - "{{ _luks_header_escrow_device }}"
+          - "{{ _luks_header_escrow_raw_path }}"
+      changed_when: false
+      no_log: true
+
+    - name: Read the backup LUKS UUID
+      ansible.builtin.command:
+        argv:
+          - "{{ luks_header_escrow_cryptsetup_path }}"
+          - luksUUID
+          - "{{ _luks_header_escrow_raw_path }}"
+      register: _luks_header_escrow_backup_uuid
+      changed_when: false
+      no_log: true
+
+    - name: Require backup LUKS2 JSON metadata
+      ansible.builtin.command:
+        argv:
+          - "{{ luks_header_escrow_cryptsetup_path }}"
+          - luksDump
+          - --dump-json-metadata
+          - "{{ _luks_header_escrow_raw_path }}"
+      changed_when: false
+      no_log: true
+
+    - name: Require the backup to match the installed LUKS2 UUID
+      ansible.builtin.assert:
+        that:
+          - >-
+            _luks_header_escrow_backup_uuid.stdout | trim
+            == _luks_header_escrow_uuid.stdout | trim
+        fail_msg: "The remote LUKS-header backup UUID does not match."
+        quiet: true
+      no_log: true
+
+    - name: Calculate raw header size and SHA-256 on the managed host
+      ansible.builtin.stat:
+        path: "{{ _luks_header_escrow_raw_path }}"
+        get_checksum: true
+        checksum_algorithm: sha256
+      register: _luks_header_escrow_raw_stat
+      changed_when: false
+      no_log: true
+
+    - name: Require a protected header below the safe encrypted envelope
+      ansible.builtin.assert:
+        that:
+          - _luks_header_escrow_raw_stat.stat.exists | default(false)
+          - _luks_header_escrow_raw_stat.stat.isreg | default(false)
+          - not (_luks_header_escrow_raw_stat.stat.islnk | default(false))
+          - _luks_header_escrow_raw_stat.stat.mode | default('') == '0400'
+          - >-
+            _luks_header_escrow_raw_stat.stat.uid | default(-1) | int
+            == _luks_header_escrow_remote_uid | int
+          - _luks_header_escrow_raw_stat.stat.nlink | default(0) | int == 1
+          - _luks_header_escrow_raw_stat.stat.size | default(0) | int > 0
+          - >-
+            _luks_header_escrow_raw_stat.stat.size | int
+            <= luks_header_escrow_max_raw_bytes
+          - >-
+            _luks_header_escrow_raw_stat.stat.checksum | default('')
+            is match('^[0-9a-f]{64}$')
+        fail_msg: >-
+          The remote LUKS-header backup is absent, invalid, insufficiently
+          protected, or too large for the approved encrypted envelope.
+        quiet: true
+      no_log: true
+
+    - name: Read the raw header as base64 into protected Ansible memory
+      ansible.builtin.slurp:
+        src: "{{ _luks_header_escrow_raw_path }}"
+      register: _luks_header_escrow_slurp
+      no_log: true
+
+    - name: Bind the protected payload to its inspected size and SHA-256
+      ansible.builtin.assert:
+        that:
+          - _luks_header_escrow_slurp.content is string
+          - >-
+            _luks_header_escrow_slurp.content | length
+            == (((_luks_header_escrow_raw_stat.stat.size | int) + 2) // 3) * 4
+          - >-
+            _luks_header_escrow_slurp.content | b64decode | hash('sha256')
+            == _luks_header_escrow_raw_stat.stat.checksum
+        fail_msg: >-
+          The protected raw header payload changed between managed-host
+          inspection and its single transfer into Ansible memory.
+        quiet: true
+      no_log: true
+
+    - name: Immediately remove the remote raw LUKS-header directory
+      ansible.builtin.file:
+        path: "{{ _luks_header_escrow_temp.path }}"
+        state: absent
+      changed_when: false
+      no_log: true
+
+    - name: Build the exact immutable escrow document
+      ansible.builtin.set_fact:
+        _luks_header_escrow_document: >-
+          {{
+            {
+              'schema_version': luks_header_escrow_schema_version,
+              'subject': luks_header_escrow_subject,
+              'luks_format': 'luks2',
+              'luks_uuid': _luks_header_escrow_uuid.stdout | trim,
+              'luks_header_b64': _luks_header_escrow_slurp.content,
+              'luks_header_raw_size_bytes':
+                _luks_header_escrow_raw_stat.stat.size | int,
+              'luks_header_sha256_raw':
+                _luks_header_escrow_raw_stat.stat.checksum
+            }
+          }}
+      changed_when: false
+      no_log: true
+
+    - name: Persist the immutable encrypted controller escrow
+      lit.foundational.ansible_vault_document:
+        path: "{{ _luks_header_escrow_path_normalized }}"
+        document: "{{ _luks_header_escrow_document }}"
+        vault_id: "{{ luks_header_escrow_vault_id }}"
+      register: _luks_header_escrow_write
+      no_log: true
+
+    - name: Read back and require the exact encrypted document
+      lit.foundational.ansible_vault_document:
+        path: "{{ _luks_header_escrow_path_normalized }}"
+        document: "{{ _luks_header_escrow_document }}"
+        vault_id: "{{ luks_header_escrow_vault_id }}"
+      register: _luks_header_escrow_verified
+      no_log: true
+
+    - name: Require immutable ciphertext readback without disclosure
+      ansible.builtin.assert:
+        that:
+          - _luks_header_escrow_write.exists | default(false)
+          - _luks_header_escrow_verified.exists | default(false)
+          - not (_luks_header_escrow_verified.created | default(false) | bool)
+          - not (_luks_header_escrow_verified.changed | default(false) | bool)
+          - >-
+            _luks_header_escrow_write.ciphertext_sha256
+            == _luks_header_escrow_verified.ciphertext_sha256
+          - >-
+            _luks_header_escrow_verified.path
+            == _luks_header_escrow_path_normalized
+          - >-
+            _luks_header_escrow_verified.ciphertext_sha256 | default('')
+            is match('^[0-9a-f]{64}$')
+        fail_msg: >-
+          The encrypted controller LUKS-header escrow did not pass exact
+          immutable readback verification.
+        quiet: true
+      no_log: true
+
+    - name: Publish secret-free LUKS-header escrow results
+      ansible.builtin.set_fact:
+        luks_header_escrow_result: >-
+          {{
+            {
+              'created':
+                _luks_header_escrow_write.created | default(false) | bool,
+              'exists': true,
+              'path': _luks_header_escrow_verified.path,
+              'ciphertext_sha256':
+                _luks_header_escrow_verified.ciphertext_sha256,
+              'luks_uuid': _luks_header_escrow_uuid.stdout | trim
+            }
+          }}
+        cacheable: false
+      changed_when: false
+      no_log: true
+
+  always:
+    - name: Remove the raw remote LUKS-header directory
+      ansible.builtin.file:
+        path: "{{ _luks_header_escrow_temp.path }}"
+        state: absent
+      when:
+        - _luks_header_escrow_temp is defined
+        - _luks_header_escrow_temp.path is defined
+      changed_when: false
+      no_log: true
+
+    - name: Clear sensitive LUKS-header variables from active facts
+      ansible.builtin.set_fact:
+        _luks_header_escrow_document: null
+        _luks_header_escrow_slurp: null
+        _luks_header_escrow_raw_stat: null
+        _luks_header_escrow_raw_path: null
+        _luks_header_escrow_temp_canonical: null
+        _luks_header_escrow_temp_stat: null
+      changed_when: false
+      no_log: true
+
+- name: Report verified independent LUKS-header escrow
+  ansible.builtin.debug:
+    msg: >-
+      LUKS2 header ciphertext exists at the declared controller escrow path
+      and passed exact immutable readback verification.

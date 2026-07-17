@@ -1,0 +1,64 @@
+---
+- name: Read local Terraform state file metadata
+  ansible.builtin.stat:
+    path: "{{ terraform_state_migrate_file.path }}"
+    get_checksum: true
+    checksum_algorithm: md5
+  register: terraform_state_migrate_stat
+  changed_when: false
+
+- name: Read remote Terraform state object metadata
+  ansible.builtin.command: >-
+    {{ terraform_state_migrate_aws_cli_path }}
+    s3api head-object
+    --bucket {{ terraform_state_migrate_s3_bucket }}
+    --key {{ terraform_state_migrate_object_key }}
+    --endpoint-url {{ terraform_state_migrate_s3_endpoint }}
+    {% if terraform_state_migrate_s3_region | length > 0 %}--region {{ terraform_state_migrate_s3_region }}{% endif %}
+    --query '{ETag:ETag,ContentLength:ContentLength}'
+    --output text
+  register: terraform_state_migrate_head
+  changed_when: false
+  failed_when: false
+  environment:
+    AWS_ACCESS_KEY_ID: "{{ terraform_state_migrate_s3_access_key }}"
+    AWS_SECRET_ACCESS_KEY: "{{ terraform_state_migrate_s3_secret_key }}"
+    AWS_EC2_METADATA_DISABLED: "true"
+  no_log: true
+
+- name: Upload Terraform state file when missing or changed
+  ansible.builtin.command: >-
+    {{ terraform_state_migrate_aws_cli_path }}
+    s3 cp
+    {{ terraform_state_migrate_file.path }}
+    s3://{{ terraform_state_migrate_s3_bucket }}/{{ terraform_state_migrate_object_key }}
+    --endpoint-url {{ terraform_state_migrate_s3_endpoint }}
+    {% if terraform_state_migrate_s3_region | length > 0 %}--region {{ terraform_state_migrate_s3_region }}{% endif %}
+    --no-progress
+  register: terraform_state_migrate_upload
+  changed_when: true
+  environment:
+    AWS_ACCESS_KEY_ID: "{{ terraform_state_migrate_s3_access_key }}"
+    AWS_SECRET_ACCESS_KEY: "{{ terraform_state_migrate_s3_secret_key }}"
+    AWS_EC2_METADATA_DISABLED: "true"
+  no_log: true
+  when: >-
+    terraform_state_migrate_head.rc != 0
+    or (terraform_state_migrate_head.stdout | length == 0)
+    or ((terraform_state_migrate_head.stdout.split() | length) < 2)
+    or ((terraform_state_migrate_head.stdout.split()[0] | regex_replace('\"', '') | lower)
+        != (terraform_state_migrate_stat.stat.checksum | lower))
+    or ((terraform_state_migrate_head.stdout.split()[1] | int)
+        != (terraform_state_migrate_stat.stat.size | int))
+  vars:
+    terraform_state_migrate_relpath: >-
+      {{
+        terraform_state_migrate_file.path
+        | regex_replace('^' ~ terraform_state_migrate_local_root ~ '/?', '')
+      }}
+    terraform_state_migrate_object_key: >-
+      {{
+        (terraform_state_migrate_prefix | length > 0)
+          | ternary(terraform_state_migrate_prefix ~ '/' ~ terraform_state_migrate_relpath,
+                    terraform_state_migrate_relpath)
+      }}

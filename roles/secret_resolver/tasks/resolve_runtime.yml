@@ -1,0 +1,30 @@
+---
+- name: Resolve an exact runtime variable name
+  ansible.builtin.set_fact:
+    __secret_resolver_attempt_found: >-
+      {{
+        query(
+          'ansible.builtin.varnames',
+          '^' ~ __secret_resolver_request.runtime.variable ~ '$'
+        )
+        | length > 0
+      }}
+    __secret_resolver_attempt_value: >-
+      {{
+        lookup(
+          'ansible.builtin.vars',
+          __secret_resolver_request.runtime.variable
+        )
+        if
+        (
+          query(
+            'ansible.builtin.varnames',
+            '^' ~ __secret_resolver_request.runtime.variable ~ '$'
+          )
+          | length > 0
+        )
+        else none
+      }}
+    __secret_resolver_attempt_failure: secret_not_found
+  changed_when: false
+  no_log: true

@@ -1,0 +1,127 @@
+---
+hetzner_rescue_validate_only: true
+hetzner_rescue_validate_expected_disks:
+  - serial: MOLECULE-DISK-1
+    model: Molecule Disk
+    size_bytes: 1073741824
+    rotational: false
+    purpose: system
+hetzner_rescue_validate_deploy_ssh_public_keys:
+  - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMoleculeOnlyKey fixture
+hetzner_rescue_validate_smart_policy:
+  require_passed_health: true
+  require_completed_extended_test: false
+  reallocated_sectors_max: 0
+  current_pending_sectors_max: 0
+  offline_uncorrectable_sectors_max: 0
+  nvme_critical_warning_allowed_mask: 0
+  nvme_media_errors_max: 0
+  nvme_error_log_entries_max: 0
+  nvme_percentage_used_max: 100
+  nvme_available_spare_min: 0
+hetzner_rescue_validate_data_plane:
+  enabled: true
+  parent_interface: enp1s0
+  vlan_interface: rescue900
+  vlan_id: 900
+  mtu: 1400
+  address: 192.0.2.10
+  prefix_length: 24
+  gateway: 192.0.2.1
+  peer_ipv4_addresses:
+    - 192.0.2.11
+    - 192.0.2.12
+hetzner_rescue_validate_known_hosts_path: /tmp/lit-molecule-rescue/known_hosts
+hetzner_rescue_validate_public_ipv4: 192.0.2.10
+hetzner_rescue_validate_ssh_ed25519_sha256: SHA256:0123456789012345678901234567890123456789012
+hetzner_rescue_validate_controller_required_ssh_public_keys:
+  - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMoleculeOnlyKey fixture
+hetzner_rescue_validate_controller_dns_resolver: 192.0.2.53
+hetzner_rescue_validate_controller_dns_records:
+  - name: rescue.example.com
+    type: A
+    value: 192.0.2.10
+  - name: 192.0.2.10
+    type: PTR
+    value: rescue.example.com.
+  - name: alias.example.com
+    type: CNAME
+    value: rescue.example.com.
+hetzner_rescue_validate_inventory_contract:
+  selected_hosts:
+    - localhost
+    - molecule-node-b
+  expected_fleet:
+    - localhost
+    - molecule-node-b
+  install_order:
+    - localhost
+    - molecule-node-b
+  prerequisite_hosts:
+    - localhost
+  host:
+    inventory_hostname: localhost
+    public_ipv4: 192.0.2.10
+  installimage:
+    hostname: localhost
+    public_ipv4: 192.0.2.10
+    action: plan
+  ssh_public_keys:
+    deploy:
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMoleculeDeployKey deploy
+    breakglass:
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMoleculeBreakglassKey breakglass
+  service_hosts:
+    tang: localhost
+    vault: localhost
+  robot_firewall:
+    enabled: true
+    dropbear_port: 2222
+    input_rules:
+      - ip_version: ipv4
+        protocol: tcp
+        dst_ip: 192.0.2.10
+        dst_port: "22"
+        name: Allow bootstrap SSH
+        action: accept
+      - ip_version: ipv4
+        protocol: tcp
+        dst_ip: 192.0.2.10
+        dst_port: "1905"
+        name: Allow hardened SSH
+        action: accept
+      - ip_version: ipv4
+        protocol: tcp
+        dst_ip: 192.0.2.10
+        dst_port: "2222"
+        name: Allow Dropbear
+        action: accept
+      - ip_version: ipv4
+        protocol: icmp
+        name: Allow wildcard ICMP
+        action: accept
+    output_rules:
+      - name: Authoritative outbound policy
+        action: accept
+  mgmt:
+    transport:
+      provider: hetzner_robot_vswitch
+      state: active
+      name: molecule-mgmt
+      vlan_id: 4091
+      mtu: 1400
+    network:
+      state: active
+      parent_interface: enp1s0
+      vlan_interface: litv4091
+      ipv4: 10.0.10.10
+    subnet:
+      prefix_length: 24
+      gateway: 10.0.10.1
+    netplan_vlan:
+      name: litv4091
+      id: 4091
+      link: enp1s0
+      mtu: 1400
+      addresses:
+        - 10.0.10.10/24

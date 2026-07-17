@@ -1,0 +1,54 @@
+---
+- name: Execute the ordinary check-mode resolver probe
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    ansible_python_interpreter: >-
+      {{ lookup('ansible.builtin.env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/controller-venv/bin/python
+    secret_resolver_vault_test_addr: >-
+      {{
+        lookup('ansible.builtin.env', 'SECRET_RESOLVER_VAULT_TEST_ADDR')
+        | default(
+            (
+              'http://host.docker.internal:18202'
+              if
+              (lookup('ansible.builtin.env', 'WUNDER_DEVTOOLS_HOST_WORKSPACE') | length > 0)
+              else 'http://127.0.0.1:18202'
+            ),
+            true
+          )
+      }}
+    secret_resolver_provider: hashicorp_vault
+    secret_resolver_vault_addr: "{{ secret_resolver_vault_test_addr }}"
+    secret_resolver_vault_token: molecule-root-token
+    secret_resolver_vault_validate_certs: false
+    secret_resolver_vault_timeout: 2
+    secret_resolver_vault_retries: 0
+    secret_resolver_requests:
+      - name: check_mode_generated
+        hashicorp_vault:
+          path: integration/check-mode
+          key: generated
+        generation:
+          enabled: true
+          type: password
+          length: 24
+        write_back:
+          enabled: true
+          provider: hashicorp_vault
+          overwrite: false
+  tasks:
+    - name: Resolve the predictive check-mode request
+      ansible.builtin.include_role:
+        name: lit.foundational.secret_resolver
+      no_log: true
+
+    - name: Assert check mode predicts without claiming persistence
+      ansible.builtin.assert:
+        that:
+          - secret_resolver_metadata.check_mode_generated.generated
+          - not secret_resolver_metadata.check_mode_generated.written_back
+          - secret_resolver_metadata.check_mode_generated.persistence_state == 'would_write'
+        quiet: true
+      no_log: true

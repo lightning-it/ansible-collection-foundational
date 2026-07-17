@@ -1,0 +1,20 @@
+---
+galaxy_info:
+  role_name: vmware_vsphere_packer_build
+  namespace: lit
+  author: Lightning IT
+  description: Build vSphere source images with Packer from inventory-driven values.
+  company: Lightning IT
+  license: MIT
+  min_ansible_version: "2.16"
+  platforms:
+    - name: EL
+      versions:
+        - "9"
+  galaxy_tags:
+    - modulix
+    - packer
+    - vmware
+    - vsphere
+    - virtualization
+dependencies: []

@@ -1,0 +1,7 @@
+---
+galaxy_info:
+  author: Lightning IT
+  description: Normalize generic secret backend configuration.
+  license: MIT
+  min_ansible_version: "2.16"
+dependencies: []

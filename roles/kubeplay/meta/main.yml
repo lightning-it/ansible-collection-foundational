@@ -5,7 +5,7 @@ galaxy_info:
   author: Rene Osorio
   description: Wrapper role to run application roles (vault, nexus, etc.).
   company: Lightning IT
-  license: GPL-3.0-only
+  license: MIT
   min_ansible_version: "2.18"
 
   platforms:

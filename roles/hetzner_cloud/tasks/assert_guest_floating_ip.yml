@@ -1,0 +1,27 @@
+---
+- name: Validate guest Floating IPv4 detection policy
+  ansible.builtin.assert:
+    that:
+      - hetzner_cloud_guest_persistent_config_paths | length > 0
+      - hetzner_cloud_guest_persistent_config_patterns | length > 0
+    fail_msg: "Guest Floating IPv4 detection requires configuration paths and filename patterns."
+    quiet: true
+  changed_when: false
+  tags: always
+
+- name: Validate expected guest Floating IPv4 addresses
+  ansible.builtin.assert:
+    that:
+      - hetzner_cloud_guest_floating_ip.name | default('', true) | trim | length > 0
+      - hetzner_cloud_guest_floating_ip.name is not search('[\r\n]')
+      - hetzner_cloud_guest_floating_ip.address | default('') is match(hetzner_cloud_ipv4_address_pattern)
+      - >-
+        ':' not in hetzner_cloud_guest_floating_ip.address
+    fail_msg: "Each guest Floating IP needs a safe name and an IPv4 address without a prefix length."
+    quiet: true
+  loop: "{{ hetzner_cloud_guest_floating_ips }}"
+  loop_control:
+    loop_var: hetzner_cloud_guest_floating_ip
+    label: "{{ hetzner_cloud_guest_floating_ip.name | default('unnamed') }}"
+  changed_when: false
+  tags: always

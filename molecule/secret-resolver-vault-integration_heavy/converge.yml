@@ -1,0 +1,281 @@
+---
+- name: Exercise real Vault reads, write-back, migration, and failures
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    secret_resolver_migration_input: migration-source-input
+    secret_resolver_vault_test_addr: >-
+      {{
+        lookup('ansible.builtin.env', 'SECRET_RESOLVER_VAULT_TEST_ADDR')
+        | default(
+            (
+              'http://host.docker.internal:18202'
+              if
+              (lookup('ansible.builtin.env', 'WUNDER_DEVTOOLS_HOST_WORKSPACE') | length > 0)
+              else 'http://127.0.0.1:18202'
+            ),
+            true
+          )
+      }}
+    secret_resolver_vault_failure_cases:
+      - name: invalid_authentication
+        category: authentication_failed
+        corrective_fragment: Check the controller authentication context
+        auth_method: approle
+        token: ""
+        provider_order:
+          - hashicorp_vault
+          - environment
+        allow_fallback: true
+        fallback_on:
+          - secret_not_found
+        request:
+          name: invalid_authentication
+          hashicorp_vault:
+            path: integration/existing
+            key: selected
+          environment:
+            variable: SECRET_RESOLVER_AUTH_FALLBACK_SENTINEL
+      - name: missing_path
+        category: secret_not_found
+        corrective_fragment: Create the secret
+        request:
+          name: missing_path
+          hashicorp_vault:
+            path: integration/absent
+            key: selected
+      - name: missing_key
+        category: secret_key_missing
+        corrective_fragment: Add the configured key
+        request:
+          name: missing_key
+          hashicorp_vault:
+            path: integration/existing
+            key: absent_key
+      - name: denied_path
+        category: authorization_failed
+        corrective_fragment: Grant the controller identity
+        token: molecule-denied-token
+        token_validate: false
+        request:
+          name: denied_path
+          hashicorp_vault:
+            path: integration/existing
+            key: selected
+      - name: unavailable_vault
+        category: provider_unavailable
+        corrective_fragment: Check the controller route
+        addr: http://127.0.0.1:18999
+        request:
+          name: unavailable_vault
+          hashicorp_vault:
+            path: integration/existing
+            key: selected
+      - name: tls_protocol_failure
+        category: tls_failed
+        corrective_fragment: Correct the CA trust
+        addr: "{{ secret_resolver_vault_test_addr | regex_replace('^http:', 'https:') }}"
+        request:
+          name: tls_protocol_failure
+          hashicorp_vault:
+            path: integration/existing
+            key: selected
+    secret_resolver_provider: hashicorp_vault
+    secret_resolver_phase: bootstrap
+    secret_resolver_vault_addr: "{{ secret_resolver_vault_test_addr }}"
+    secret_resolver_vault_token: molecule-root-token
+    secret_resolver_vault_validate_certs: false
+    secret_resolver_vault_timeout: 2
+    secret_resolver_vault_retries: 0
+    secret_resolver_requests:
+      - name: existing_value
+        hashicorp_vault:
+          path: integration/existing
+          key: selected
+      - name: generated_value
+        hashicorp_vault:
+          path: integration/generated
+          key: generated
+        generation:
+          enabled: true
+          type: password
+          length: 32
+          min_lower: 1
+          min_upper: 1
+          min_numeric: 1
+          min_special: 1
+        write_back:
+          enabled: true
+          provider: hashicorp_vault
+          overwrite: false
+      - name: migrated_value
+        provider_order:
+          - environment
+          - runtime
+        allow_fallback: true
+        fallback_on:
+          - authentication_failed
+        ansible_vault:
+          variable: secret_resolver_migration_input
+        hashicorp_vault:
+          path: integration/migrated
+          key: migrated
+        migration:
+          enabled: true
+          source_provider: ansible_vault
+          target_provider: hashicorp_vault
+          overwrite: false
+  tasks:
+    - name: Read pre-resolution generated target state
+      ansible.builtin.uri:
+        url: "{{ secret_resolver_vault_test_addr }}/v1/secret/data/integration/generated"
+        method: GET
+        headers:
+          X-Vault-Token: "{{ secret_resolver_vault_token }}"
+        return_content: true
+        status_code:
+          - 200
+      register: secret_resolver_vault_generated_before
+      no_log: true
+
+    - name: Read pre-resolution migration target state
+      ansible.builtin.uri:
+        url: "{{ secret_resolver_vault_test_addr }}/v1/secret/data/integration/migrated"
+        method: GET
+        headers:
+          X-Vault-Token: "{{ secret_resolver_vault_token }}"
+        return_content: true
+        status_code:
+          - 200
+          - 404
+      register: secret_resolver_vault_migrated_before
+      no_log: true
+
+    - name: Derive expected first-pass persistence state
+      ansible.builtin.set_fact:
+        secret_resolver_vault_expect_generation_write: >-
+          {{ 'generated' not in secret_resolver_vault_generated_before.json.data.data }}
+        secret_resolver_vault_expect_migration_write: >-
+          {{ secret_resolver_vault_migrated_before.status == 404 }}
+      changed_when: false
+      no_log: true
+
+    - name: Run the first resolver pass
+      ansible.builtin.include_role:
+        name: lit.foundational.secret_resolver
+
+    - name: Capture first-pass state without disclosure
+      ansible.builtin.set_fact:
+        secret_resolver_vault_first_generated_value: >-
+          {{ secret_resolver_result.generated_value }}
+        secret_resolver_vault_first_generated: >-
+          {{ secret_resolver_metadata.generated_value.generated | bool }}
+        secret_resolver_vault_first_written_back: >-
+          {{ secret_resolver_metadata.generated_value.written_back | bool }}
+        secret_resolver_vault_first_generation_state: >-
+          {{ secret_resolver_metadata.generated_value.persistence_state }}
+        secret_resolver_vault_first_migrated: >-
+          {{ secret_resolver_metadata.migrated_value.migrated | bool }}
+        secret_resolver_vault_first_migration_state: >-
+          {{ secret_resolver_metadata.migrated_value.persistence_state }}
+      changed_when: false
+      no_log: true
+
+    - name: Assert first-pass resolution and persistence semantics
+      ansible.builtin.assert:
+        that:
+          - secret_resolver_result.existing_value == 'vault-existing-input'
+          - secret_resolver_result.migrated_value == 'migration-source-input'
+          - secret_resolver_metadata.existing_value.provider == 'hashicorp_vault'
+          - >-
+            (
+              secret_resolver_vault_expect_generation_write
+              and secret_resolver_vault_first_generated
+              and secret_resolver_vault_first_written_back
+              and secret_resolver_vault_first_generation_state == 'written'
+            )
+            or
+            (
+              not secret_resolver_vault_expect_generation_write
+              and not secret_resolver_vault_first_generated
+              and not secret_resolver_vault_first_written_back
+              and secret_resolver_vault_first_generation_state == 'not_requested'
+            )
+          - >-
+            (
+              secret_resolver_vault_expect_migration_write
+              and secret_resolver_vault_first_migrated
+              and secret_resolver_vault_first_migration_state == 'written'
+            )
+            or
+            (
+              not secret_resolver_vault_expect_migration_write
+              and not secret_resolver_vault_first_migrated
+              and secret_resolver_vault_first_migration_state == 'already_present'
+            )
+          - secret_resolver_vault_first_generated_value | regex_findall('[a-z]') | length >= 1
+          - secret_resolver_vault_first_generated_value | regex_findall('[A-Z]') | length >= 1
+          - secret_resolver_vault_first_generated_value | regex_findall('[0-9]') | length >= 1
+          - secret_resolver_vault_first_generated_value | regex_findall('[^A-Za-z0-9]') | length >= 1
+          - ansible_failed_result | default({}) == {}
+          - ansible_failed_task | default({}) == {}
+        quiet: true
+      no_log: true
+
+    - name: Run an immediate idempotence resolver pass
+      ansible.builtin.include_role:
+        name: lit.foundational.secret_resolver
+
+    - name: Verify immediate normalized reread behavior
+      ansible.builtin.assert:
+        that:
+          - secret_resolver_result.existing_value == 'vault-existing-input'
+          - secret_resolver_result.generated_value == secret_resolver_vault_first_generated_value
+          - secret_resolver_result.migrated_value == 'migration-source-input'
+          - secret_resolver_metadata.generated_value.provider == 'hashicorp_vault'
+          - not secret_resolver_metadata.generated_value.generated
+          - not secret_resolver_metadata.generated_value.written_back
+          - secret_resolver_metadata.generated_value.persistence_state == 'not_requested'
+          - not secret_resolver_metadata.migrated_value.migrated
+          - secret_resolver_metadata.migrated_value.persistence_state == 'already_present'
+        quiet: true
+      no_log: true
+
+    - name: Exercise migration overwrite protection
+      block:
+        - name: Attempt a conflicting migration without overwrite permission
+          ansible.builtin.include_role:
+            name: lit.foundational.secret_resolver
+          vars:
+            secret_resolver_requests:
+              - name: conflicting_migration
+                ansible_vault:
+                  variable: secret_resolver_migration_input
+                hashicorp_vault:
+                  path: integration/conflict
+                  key: migrated
+                migration:
+                  enabled: true
+                  source_provider: ansible_vault
+                  target_provider: hashicorp_vault
+                  overwrite: false
+
+        - name: Fail if conflicting migration unexpectedly succeeded
+          ansible.builtin.fail:
+            msg: Expected migration overwrite protection to fail.
+      rescue:
+        - name: Verify sanitized migration policy failure
+          ansible.builtin.assert:
+            that:
+              - '''category=migration_failed'' in ansible_failed_result.msg'
+              - '''cause=overwrite_policy'' in ansible_failed_result.msg'
+              - '''migration-source-input'' not in ansible_failed_result.msg'
+            quiet: true
+
+    - name: Verify real Vault failure taxonomy and fail-closed fallback
+      ansible.builtin.include_tasks: includes/expect-vault-failure.yml
+      loop: "{{ secret_resolver_vault_failure_cases }}"
+      loop_control:
+        loop_var: secret_resolver_vault_failure_case
+        label: "{{ secret_resolver_vault_failure_case.name }}"

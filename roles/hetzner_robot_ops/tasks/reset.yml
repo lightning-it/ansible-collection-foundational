@@ -1,0 +1,31 @@
+---
+- name: Reset the selected dedicated server
+  block:
+    - name: Execute selected dedicated-server reset
+      community.hrobot.reset:
+        hetzner_user: "{{ hetzner_robot_ops_hetzner_user }}"
+        hetzner_password: "{{ hetzner_robot_ops_hetzner_password }}"
+        server_number: "{{ hetzner_robot_ops_server_number }}"
+        reset_type: "{{ hetzner_robot_ops_reset_type }}"
+        rate_limit_retry_timeout: "{{ hetzner_robot_ops_rate_limit_retry_timeout }}"
+      register: _hetzner_robot_ops_reset_result
+      delegate_to: localhost
+      run_once: true
+      no_log: true
+
+  always:
+    - name: Publish sanitized reset operation result
+      ansible.builtin.set_fact:
+        hetzner_robot_ops_result:
+          action: reset
+          changed: "{{ _hetzner_robot_ops_reset_result.changed | default(false) }}"
+          check_mode: "{{ ansible_check_mode }}"
+          executed: true
+          reset_type: "{{ hetzner_robot_ops_reset_type }}"
+          server_number: "{{ hetzner_robot_ops_server_number }}"
+      no_log: true
+
+    - name: Discard sensitive reset module response
+      ansible.builtin.set_fact:
+        _hetzner_robot_ops_reset_result: {}
+      no_log: true

@@ -1,0 +1,126 @@
+---
+- name: Publish sanitized Hetzner Cloud reconciliation results
+  ansible.builtin.set_fact:
+    hetzner_cloud_result:
+      changed: >-
+        {{
+          [
+            hetzner_cloud_ssh_key_operations.changed | default(false),
+            hetzner_cloud_firewall_operations.changed | default(false),
+            hetzner_cloud_placement_group_operations.changed | default(false),
+            hetzner_cloud_network_operations.changed | default(false),
+            hetzner_cloud_subnetwork_operations.changed | default(false),
+            hetzner_cloud_primary_ip_operations.changed | default(false),
+            hetzner_cloud_server_operations.changed | default(false),
+            hetzner_cloud_server_network_operations.changed | default(false),
+            hetzner_cloud_firewall_resource_operations.changed | default(false),
+            hetzner_cloud_floating_ip_operations.changed | default(false),
+            hetzner_cloud_reverse_dns_operations.changed | default(false),
+            hetzner_cloud_reverse_dns_absent_operations.changed | default(false),
+            hetzner_cloud_floating_ip_absent_operations.changed | default(false),
+            hetzner_cloud_firewall_resource_absent_operations.changed | default(false),
+            hetzner_cloud_server_network_absent_operations.changed | default(false),
+            hetzner_cloud_server_absent_operations.changed | default(false),
+            hetzner_cloud_primary_ip_absent_operations.changed | default(false),
+            hetzner_cloud_firewall_absent_operations.changed | default(false),
+            hetzner_cloud_subnetwork_absent_operations.changed | default(false),
+            hetzner_cloud_network_absent_operations.changed | default(false),
+            hetzner_cloud_placement_group_absent_operations.changed | default(false),
+            hetzner_cloud_ssh_key_absent_operations.changed | default(false)
+          ]
+          | select('equalto', true)
+          | list
+          | length > 0
+        }}
+      validated: true
+      ssh_keys: >-
+        {{
+          hetzner_cloud_ssh_key_operations.results
+          | default([])
+          | selectattr('hcloud_ssh_key', 'defined')
+          | map(attribute='hcloud_ssh_key')
+          | list
+        }}
+      firewalls: >-
+        {{
+          hetzner_cloud_firewall_operations.results
+          | default([])
+          | selectattr('hcloud_firewall', 'defined')
+          | map(attribute='hcloud_firewall')
+          | list
+        }}
+      placement_groups: >-
+        {{
+          hetzner_cloud_placement_group_operations.results
+          | default([])
+          | selectattr('hcloud_placement_group', 'defined')
+          | map(attribute='hcloud_placement_group')
+          | list
+        }}
+      networks: >-
+        {{
+          hetzner_cloud_network_operations.results
+          | default([])
+          | selectattr('hcloud_network', 'defined')
+          | map(attribute='hcloud_network')
+          | list
+        }}
+      subnetworks: >-
+        {{
+          hetzner_cloud_subnetwork_operations.results
+          | default([])
+          | selectattr('hcloud_subnetwork', 'defined')
+          | map(attribute='hcloud_subnetwork')
+          | list
+        }}
+      primary_ips: >-
+        {{
+          hetzner_cloud_primary_ip_operations.results
+          | default([])
+          | selectattr('hcloud_primary_ip', 'defined')
+          | map(attribute='hcloud_primary_ip')
+          | list
+        }}
+      servers: >-
+        {{
+          hetzner_cloud_server_operations.results
+          | default([])
+          | selectattr('hcloud_server', 'defined')
+          | map(attribute='hcloud_server')
+          | list
+        }}
+      server_networks: >-
+        {{
+          hetzner_cloud_server_network_operations.results
+          | default([])
+          | selectattr('hcloud_server_network', 'defined')
+          | map(attribute='hcloud_server_network')
+          | list
+        }}
+      firewall_resources: >-
+        {{
+          hetzner_cloud_firewall_resource_operations.results
+          | default([])
+          | selectattr('hcloud_firewall_resource', 'defined')
+          | map(attribute='hcloud_firewall_resource')
+          | list
+        }}
+      floating_ips: >-
+        {{
+          hetzner_cloud_floating_ip_operations.results
+          | default([])
+          | selectattr('hcloud_floating_ip', 'defined')
+          | map(attribute='hcloud_floating_ip')
+          | list
+        }}
+      reverse_dns: >-
+        {{
+          hetzner_cloud_reverse_dns_operations.results
+          | default([])
+          | selectattr('hcloud_rdns', 'defined')
+          | map(attribute='hcloud_rdns')
+          | list
+        }}
+    cacheable: false
+  changed_when: false
+  no_log: true

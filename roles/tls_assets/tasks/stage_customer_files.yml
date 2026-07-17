@@ -1,0 +1,84 @@
+---
+- name: Copy customer TLS service certificates to target
+  ansible.builtin.copy:
+    src: "{{ tls_assets_customer_files[item].cert_src }}"
+    dest: "{{ tls_assets_target_files[item].cert_path }}"
+    owner: "{{ tls_assets_owner }}"
+    group: "{{ tls_assets_group }}"
+    mode: "{{ tls_assets_cert_mode }}"
+  loop: "{{ tls_assets_services }}"
+  when: tls_assets_customer_files[item].cert_src | default('', true) | trim | length > 0
+
+- name: Write customer TLS service certificates to target from inline content
+  ansible.builtin.copy:
+    content: >-
+      {{
+        tls_assets_customer_files[item].cert_content
+        | default('', true)
+        | string
+        | replace('\\n', '\n')
+      }}
+    dest: "{{ tls_assets_target_files[item].cert_path }}"
+    owner: "{{ tls_assets_owner }}"
+    group: "{{ tls_assets_group }}"
+    mode: "{{ tls_assets_cert_mode }}"
+  loop: "{{ tls_assets_services }}"
+  when:
+    - tls_assets_customer_files[item].cert_src | default('', true) | trim | length == 0
+    - tls_assets_customer_files[item].cert_content | default('', true) | trim | length > 0
+
+- name: Copy customer TLS service keys to target
+  ansible.builtin.copy:
+    src: "{{ tls_assets_customer_files[item].key_src }}"
+    dest: "{{ tls_assets_target_files[item].key_path }}"
+    owner: "{{ tls_assets_owner }}"
+    group: "{{ tls_assets_group }}"
+    mode: "{{ tls_assets_key_mode }}"
+  loop: "{{ tls_assets_services }}"
+  when: tls_assets_customer_files[item].key_src | default('', true) | trim | length > 0
+  no_log: true
+
+- name: Write customer TLS service keys to target from inline content
+  ansible.builtin.copy:
+    content: >-
+      {{
+        tls_assets_customer_files[item].key_content
+        | default('', true)
+        | string
+        | replace('\\n', '\n')
+      }}
+    dest: "{{ tls_assets_target_files[item].key_path }}"
+    owner: "{{ tls_assets_owner }}"
+    group: "{{ tls_assets_group }}"
+    mode: "{{ tls_assets_key_mode }}"
+  loop: "{{ tls_assets_services }}"
+  when:
+    - tls_assets_customer_files[item].key_src | default('', true) | trim | length == 0
+    - tls_assets_customer_files[item].key_content | default('', true) | trim | length > 0
+  no_log: true
+
+- name: Copy customer CA certificate to target
+  ansible.builtin.copy:
+    src: "{{ tls_assets_customer_files.ca_cert_src }}"
+    dest: "{{ tls_assets_ca_cert_path }}"
+    owner: "{{ tls_assets_owner }}"
+    group: "{{ tls_assets_group }}"
+    mode: "{{ tls_assets_ca_mode }}"
+  when: tls_assets_customer_files.ca_cert_src | default('', true) | trim | length > 0
+
+- name: Write customer CA certificate to target from inline content
+  ansible.builtin.copy:
+    content: >-
+      {{
+        tls_assets_customer_files.ca_cert_content
+        | default('', true)
+        | string
+        | replace('\\n', '\n')
+      }}
+    dest: "{{ tls_assets_ca_cert_path }}"
+    owner: "{{ tls_assets_owner }}"
+    group: "{{ tls_assets_group }}"
+    mode: "{{ tls_assets_ca_mode }}"
+  when:
+    - tls_assets_customer_files.ca_cert_src | default('', true) | trim | length == 0
+    - tls_assets_customer_files.ca_cert_content | default('', true) | trim | length > 0

@@ -1,0 +1,95 @@
+---
+- name: Validate installed LUKS passphrase proof inputs
+  ansible.builtin.assert:
+    that:
+      - not ansible_check_mode
+      - hetzner_rescue_validate_expected_disks | length > 0
+      - >-
+        hetzner_rescue_validate_expected_disks
+        | selectattr('purpose', 'equalto', 'system') | list | length > 0
+      - hetzner_rescue_validate_luks_passphrase | length >= 20
+    fail_msg: "LUKS proof requires approved system disks and a non-empty retained passphrase."
+    quiet: true
+  changed_when: false
+  no_log: true
+
+- name: Identify the installed LUKS root on approved system disks
+  ansible.builtin.shell: |
+    set -euo pipefail
+    export LC_ALL=C
+
+    expected_serials() {
+      printf '%s\n' "${LIT_EXPECTED_SYSTEM_SERIALS}" |
+        tr ' ' '\n' | sed '/^$/d' | sort -u
+    }
+
+    device_serials() {
+      local device="$1"
+      local disk serial
+
+      while read -r disk; do
+        test -n "${disk}" || continue
+        serial="$(
+          "${LIT_LSBLK}" -dn -o SERIAL -- "${disk}" |
+            sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
+        )"
+        test -n "${serial}"
+        printf '%s\n' "${serial}"
+      done < <(
+        "${LIT_LSBLK}" -srpn -o PATH,TYPE -- "${device}" |
+          awk '$2 == "disk" {print $1}' | sort -u
+      )
+    }
+
+    expected_device_type=part
+    if test "${LIT_EXPECTED_RAID_ENABLED}" = 1; then
+      expected_device_type=raid1
+    fi
+
+    found=0
+    while read -r device fstype type; do
+      test "${fstype}" = crypto_LUKS || continue
+      test "${type}" = "${expected_device_type}" || continue
+      test "$(expected_serials)" = "$(device_serials "${device}" | sort -u)"
+      printf '%s\n' "${device}"
+      found=$((found + 1))
+    done < <("${LIT_LSBLK}" -rpn -o PATH,FSTYPE,TYPE | sort -u)
+    test "${found}" -eq 1
+  args:
+    executable: /bin/bash
+  environment:
+    LIT_EXPECTED_SYSTEM_SERIALS: >-
+      {{
+        hetzner_rescue_validate_expected_disks
+        | selectattr('purpose', 'equalto', 'system')
+        | map(attribute='serial') | list | sort | join(' ')
+      }}
+    LIT_EXPECTED_RAID_ENABLED: >-
+      {{ hetzner_rescue_validate_luks_software_raid_enabled | ternary('1', '0') }}
+    LIT_LSBLK: "{{ hetzner_rescue_validate_lsblk_path }}"
+  register: hetzner_rescue_validate_luks_root
+  changed_when: false
+
+- name: Prove the retained secret unlocks the installed LUKS root
+  ansible.builtin.command:
+    argv:
+      - "{{ hetzner_rescue_validate_cryptsetup_path }}"
+      - open
+      - --test-passphrase
+      - --type
+      - luks
+      - "{{ hetzner_rescue_validate_luks_root.stdout | trim }}"
+    stdin: "{{ hetzner_rescue_validate_luks_passphrase }}"
+    stdin_add_newline: true
+  changed_when: false
+  no_log: true
+
+- name: Publish installed LUKS passphrase proof
+  ansible.builtin.set_fact:
+    hetzner_rescue_validate_result:
+      changed: false
+      validated: true
+      luks_passphrase_valid: true
+      luks_root: "{{ hetzner_rescue_validate_luks_root.stdout | trim }}"
+    cacheable: false
+  changed_when: false

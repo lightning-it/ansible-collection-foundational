@@ -1,0 +1,34 @@
+---
+- name: Validate secret KV variables
+  ansible.builtin.assert:
+    that:
+      - secret_kv_enabled is boolean
+      - secret_kv_backend in ['hashicorp_vault', 'ansible_vault']
+      - secret_kv_action in secret_kv_allowed_actions
+      - secret_kv_allowed_actions is sequence
+      - secret_kv_allowed_actions is not string
+      - secret_kv_path | default('', true) | trim | length > 0
+      - secret_kv_data is mapping
+      - secret_kv_merge_existing is boolean
+    fail_msg: "Secret KV variables are missing or invalid."
+  tags: always
+
+- name: Validate HashiCorp Vault KV variables
+  ansible.builtin.assert:
+    that:
+      - secret_kv_vault_addr | default('', true) | trim | length > 0
+      - secret_kv_vault_mount_point | default('', true) | trim | length > 0
+      - secret_kv_vault_validate_certs is boolean
+      - secret_kv_vault_auth_method in ['token', 'approle']
+      - >-
+        (secret_kv_vault_auth_method == 'token'
+         and secret_kv_vault_token | default('', true) | trim | length > 0)
+        or
+        (secret_kv_vault_auth_method == 'approle'
+         and secret_kv_vault_role_id | default('', true) | trim | length > 0
+         and secret_kv_vault_secret_id | default('', true) | trim | length > 0)
+    fail_msg: "HashiCorp Vault KV requires address, mount, and token or AppRole credentials."
+  when:
+    - secret_kv_enabled | bool
+    - secret_kv_backend == 'hashicorp_vault'
+  tags: always

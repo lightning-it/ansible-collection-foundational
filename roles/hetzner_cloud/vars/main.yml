@@ -1,0 +1,4 @@
+---
+hetzner_cloud_ipv4_address_pattern: '^(?:(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])$'
+hetzner_cloud_ipv4_cidr_pattern: >-
+  {{ hetzner_cloud_ipv4_address_pattern | regex_replace('\$$', '') ~ '/(?:[0-9]|[12][0-9]|3[0-2])$' }}

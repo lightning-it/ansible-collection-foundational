@@ -1,0 +1,17 @@
+---
+terraform_state_migrate_local_root: ""
+
+terraform_state_migrate_s3_endpoint: ""
+terraform_state_migrate_s3_bucket: ""
+terraform_state_migrate_s3_access_key: ""
+terraform_state_migrate_s3_secret_key: ""
+terraform_state_migrate_s3_region: ""
+terraform_state_migrate_s3_key_prefix: ""
+
+terraform_state_migrate_globs:
+  - "*.tfstate"
+  - "*.tfstate.backup"
+  - "*.tfstate.*"
+terraform_state_migrate_recurse: false
+
+terraform_state_migrate_aws_cli_path: "aws"

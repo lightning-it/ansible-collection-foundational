@@ -1,0 +1,62 @@
+---
+- name: Execute the persistence-required check-mode resolver probe
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    ansible_python_interpreter: >-
+      {{ lookup('ansible.builtin.env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/controller-venv/bin/python
+    secret_resolver_vault_test_addr: >-
+      {{
+        lookup('ansible.builtin.env', 'SECRET_RESOLVER_VAULT_TEST_ADDR')
+        | default(
+            (
+              'http://host.docker.internal:18202'
+              if
+              (lookup('ansible.builtin.env', 'WUNDER_DEVTOOLS_HOST_WORKSPACE') | length > 0)
+              else 'http://127.0.0.1:18202'
+            ),
+            true
+          )
+      }}
+    secret_resolver_provider: hashicorp_vault
+    secret_resolver_vault_addr: "{{ secret_resolver_vault_test_addr }}"
+    secret_resolver_vault_token: molecule-root-token
+    secret_resolver_vault_validate_certs: false
+    secret_resolver_vault_timeout: 2
+    secret_resolver_vault_retries: 0
+    secret_resolver_requests:
+      - name: check_mode_persistence_required
+        hashicorp_vault:
+          path: integration/check-mode
+          key: generated
+        generation:
+          enabled: true
+          type: password
+          length: 24
+          persistence_required: true
+        write_back:
+          enabled: true
+          provider: hashicorp_vault
+          overwrite: false
+  tasks:
+    - name: Expect persistence-required check mode to fail safely
+      block:
+        - name: Resolve a persistence-required check-mode request
+          ansible.builtin.include_role:
+            name: lit.foundational.secret_resolver
+          no_log: true
+
+        - name: Fail if persistence-required check mode unexpectedly succeeded
+          ansible.builtin.fail:
+            msg: Expected persistence-required generation to fail in check mode.
+      rescue:
+        - name: Assert the sanitized persistence-required failure
+          ansible.builtin.assert:
+            that:
+              - '''category=write_back_failed'' in ansible_failed_result.msg'
+              - '''check mode cannot satisfy persistence_required'' in ansible_failed_result.msg'
+              - secret_resolver_result == {}
+              - secret_resolver_metadata == {}
+            quiet: true
+          no_log: true

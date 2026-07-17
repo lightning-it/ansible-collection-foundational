@@ -1,0 +1,158 @@
+---
+- name: Validate Hetzner Rescue observation policy
+  vars:
+    _hetzner_rescue_validate_smart_policy_fields:
+      - require_passed_health
+      - require_completed_extended_test
+      - reallocated_sectors_max
+      - current_pending_sectors_max
+      - offline_uncorrectable_sectors_max
+      - nvme_critical_warning_allowed_mask
+      - nvme_media_errors_max
+      - nvme_error_log_entries_max
+      - nvme_percentage_used_max
+      - nvme_available_spare_min
+  ansible.builtin.assert:
+    that:
+      - hetzner_rescue_validate_only | bool or not ansible_check_mode
+      - hetzner_rescue_validate_expected_disks | length > 0
+      - >-
+        hetzner_rescue_validate_expected_disks | map(attribute='serial') | unique | length
+        == hetzner_rescue_validate_expected_disks | length
+      - hetzner_rescue_validate_robot_user_keys_max_bytes | int > 0
+      - hetzner_rescue_validate_robot_user_keys_max_bytes | int <= 1048576
+      - hetzner_rescue_validate_smart_policy is mapping
+      - >-
+        hetzner_rescue_validate_smart_policy.keys() | list
+        | difference(_hetzner_rescue_validate_smart_policy_fields)
+        | length == 0
+      - hetzner_rescue_validate_smart_policy.require_passed_health is boolean
+      - hetzner_rescue_validate_smart_policy.require_completed_extended_test is boolean
+      - hetzner_rescue_validate_smart_policy.reallocated_sectors_max | type_debug == 'int'
+      - hetzner_rescue_validate_smart_policy.reallocated_sectors_max | int >= 0
+      - hetzner_rescue_validate_smart_policy.current_pending_sectors_max | type_debug == 'int'
+      - hetzner_rescue_validate_smart_policy.current_pending_sectors_max | int >= 0
+      - hetzner_rescue_validate_smart_policy.offline_uncorrectable_sectors_max | type_debug == 'int'
+      - hetzner_rescue_validate_smart_policy.offline_uncorrectable_sectors_max | int >= 0
+      - >-
+        hetzner_rescue_validate_smart_policy.get('nvme_critical_warning_allowed_mask', 0)
+        | type_debug == 'int'
+      - >-
+        hetzner_rescue_validate_smart_policy.get('nvme_critical_warning_allowed_mask', 0) | int == 0
+      - hetzner_rescue_validate_smart_policy.get('nvme_media_errors_max', 0) | type_debug == 'int'
+      - hetzner_rescue_validate_smart_policy.get('nvme_media_errors_max', 0) | int >= 0
+      - >-
+        hetzner_rescue_validate_smart_policy.get('nvme_error_log_entries_max', 0)
+        | type_debug == 'int'
+      - >-
+        hetzner_rescue_validate_smart_policy.get('nvme_error_log_entries_max', 0) | int >= 0
+      - >-
+        hetzner_rescue_validate_smart_policy.get('nvme_percentage_used_max', 100)
+        | type_debug == 'int'
+      - >-
+        hetzner_rescue_validate_smart_policy.get('nvme_percentage_used_max', 100) | int
+        in range(0, 101)
+      - >-
+        hetzner_rescue_validate_smart_policy.get('nvme_available_spare_min', 0)
+        | type_debug == 'int'
+      - >-
+        hetzner_rescue_validate_smart_policy.get('nvme_available_spare_min', 0) | int
+        in range(0, 101)
+      - hetzner_rescue_validate_smart_overrides is mapping
+      - >-
+        hetzner_rescue_validate_smart_overrides.keys() | list
+        | difference(hetzner_rescue_validate_expected_disks | map(attribute='serial') | list)
+        | length == 0
+      - hetzner_rescue_validate_egress_url is match('^https://')
+      - hetzner_rescue_validate_egress_timeout | int > 0
+      - hetzner_rescue_validate_egress_status_codes | length > 0
+      - >-
+        hetzner_rescue_validate_egress_status_codes | unique | length
+        == hetzner_rescue_validate_egress_status_codes | length
+      - >-
+        hetzner_rescue_validate_egress_status_codes | select('lt', 100) | list | length == 0
+      - >-
+        hetzner_rescue_validate_egress_status_codes | select('gt', 599) | list | length == 0
+      - hetzner_rescue_validate_lsblk_path is match('^/')
+      - hetzner_rescue_validate_smartctl_path is match('^/')
+      - hetzner_rescue_validate_nvme_path is match('^/')
+      - hetzner_rescue_validate_ip_path is match('^/')
+      - hetzner_rescue_validate_ping_path is match('^/')
+      - hetzner_rescue_validate_cryptsetup_path is match('^/')
+      - >-
+        not (hetzner_rescue_validate_data_plane.enabled | bool)
+        or
+        (
+          hetzner_rescue_validate_data_plane.parent_interface | length > 0
+          and hetzner_rescue_validate_data_plane.vlan_interface is match('^[A-Za-z0-9_.-]{1,15}$')
+          and hetzner_rescue_validate_data_plane.vlan_id | int >= 1
+          and hetzner_rescue_validate_data_plane.vlan_id | int <= 4094
+          and hetzner_rescue_validate_data_plane.mtu | int >= 1280
+          and hetzner_rescue_validate_data_plane.address is match('^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$')
+          and hetzner_rescue_validate_data_plane.prefix_length | int >= 1
+          and hetzner_rescue_validate_data_plane.prefix_length | int <= 32
+          and
+          (
+            hetzner_rescue_validate_data_plane.gateway | default('', true) | length == 0
+            or hetzner_rescue_validate_data_plane.gateway is match('^(?:[0-9]{1,3}\\.){3}[0-9]{1,3}$')
+          )
+          and
+          (
+            hetzner_rescue_validate_data_plane.peer_ipv4_addresses
+            | reject('match', '^(?:[0-9]{1,3}\\.){3}[0-9]{1,3}$')
+            | list | length == 0
+          )
+        )
+    fail_msg: "Hetzner Rescue validation inputs are incomplete or unsafe."
+    quiet: true
+  changed_when: false
+  tags: always
+
+- name: Validate per-disk SMART policy overrides
+  vars:
+    _hetzner_rescue_validate_smart_override_fields:
+      - reallocated_sectors_max
+      - current_pending_sectors_max
+      - offline_uncorrectable_sectors_max
+      - nvme_critical_warning_allowed_mask
+      - nvme_media_errors_max
+      - nvme_error_log_entries_max
+      - nvme_percentage_used_max
+      - nvme_available_spare_min
+  ansible.builtin.assert:
+    that:
+      - item.value is mapping
+      - >-
+        item.value.keys() | list
+        | difference(_hetzner_rescue_validate_smart_override_fields)
+        | length == 0
+      - >-
+        item.value.values() | map('type_debug') | reject('equalto', 'int') | list | length == 0
+      - item.value.values() | select('lt', 0) | list | length == 0
+      - item.value.get('nvme_critical_warning_allowed_mask', 0) | int == 0
+      - item.value.get('nvme_percentage_used_max', 100) | int <= 100
+      - item.value.get('nvme_available_spare_min', 0) | int <= 100
+    fail_msg: >-
+      SMART overrides must target declared disk serials and contain only supported non-negative integer thresholds.
+    quiet: true
+  loop: "{{ hetzner_rescue_validate_smart_overrides | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+  changed_when: false
+  tags: always
+
+- name: Validate expected physical disk contracts
+  ansible.builtin.assert:
+    that:
+      - hetzner_rescue_validate_disk.serial | trim | length > 0
+      - hetzner_rescue_validate_disk.model | trim | length > 0
+      - hetzner_rescue_validate_disk.size_bytes | int > 0
+      - hetzner_rescue_validate_disk.purpose in ['system', 'preserve']
+    fail_msg: "Every expected disk needs exact serial, model, size, rotational state, and purpose."
+    quiet: true
+  loop: "{{ hetzner_rescue_validate_expected_disks }}"
+  loop_control:
+    loop_var: hetzner_rescue_validate_disk
+    label: "{{ hetzner_rescue_validate_disk.serial | default('invalid') }}"
+  changed_when: false
+  tags: always

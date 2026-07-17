@@ -1,0 +1,217 @@
+---
+- name: Check the controller Python Vault dependency
+  community.general.python_requirements_info:
+    dependencies:
+      - hvac
+  register: __secret_resolver_hvac_check
+  changed_when: false
+  failed_when: false
+  no_log: true
+
+- name: Verify the controller Python Vault module can import hvac
+  ansible.builtin.command:
+    argv:
+      - "{{ __secret_resolver_hvac_check.python }}"
+      - -c
+      - import hvac
+  register: __secret_resolver_hvac_import_check
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  no_log: true
+  when: __secret_resolver_hvac_check.python is defined
+
+- name: Normalize controller Python Vault dependency state
+  ansible.builtin.set_fact:
+    __secret_resolver_hvac_available: >-
+      {{
+        not (__secret_resolver_hvac_check.failed | default(false) | bool)
+        and __secret_resolver_hvac_check.failed_when_suppressed_exception is not defined
+        and (__secret_resolver_hvac_import_check.rc | default(1) | int == 0)
+        and 'hvac' not in (__secret_resolver_hvac_check.not_found | default([]))
+        and 'hvac' not in (__secret_resolver_hvac_check.mismatched | default({}))
+      }}
+  changed_when: false
+  no_log: true
+
+- name: Categorize a missing controller Python Vault dependency
+  ansible.builtin.set_fact:
+    __secret_resolver_attempt_found: false
+    __secret_resolver_attempt_failure: dependency_missing
+  changed_when: false
+  no_log: true
+  when: not __secret_resolver_hvac_available
+
+- name: Read HashiCorp Vault KV version 2 secret
+  when: __secret_resolver_hvac_available
+  block:
+    - name: Query HashiCorp Vault KV version 2
+      community.hashi_vault.vault_kv2_get:
+        url: "{{ __secret_resolver_vault_addr }}"
+        namespace: >-
+          {{ __secret_resolver_vault_namespace if (__secret_resolver_vault_namespace | length > 0) else omit }}
+        validate_certs: "{{ __secret_resolver_vault_validate_certs }}"
+        ca_cert: "{{ secret_resolver_vault_ca_cert | default(omit, true) }}"
+        timeout: "{{ secret_resolver_vault_timeout | default(omit) }}"
+        retries: "{{ secret_resolver_vault_retries | default(omit) }}"
+        auth_method: "{{ __secret_resolver_vault_auth_method }}"
+        mount_point: "{{ secret_resolver_vault_auth_mount_point | default(omit, true) }}"
+        token: "{{ secret_resolver_vault_token | default(omit, true) }}"
+        token_validate: "{{ __secret_resolver_vault_token_validate }}"
+        role_id: "{{ secret_resolver_vault_role_id | default(omit, true) }}"
+        secret_id: "{{ secret_resolver_vault_secret_id | default(omit, true) }}"
+        jwt: "{{ secret_resolver_vault_jwt | default(omit, true) }}"
+        engine_mount_point: >-
+          {{
+            __secret_resolver_request.hashicorp_vault.mount_point
+            | default(__secret_resolver_vault_mount_point)
+          }}
+        path: "{{ __secret_resolver_request.hashicorp_vault.path }}"
+      register: __secret_resolver_vault_read
+      changed_when: false
+      diff: false
+      no_log: true
+  rescue:
+    - name: Retain only the Vault failure text for categorization
+      ansible.builtin.set_fact:
+        __secret_resolver_vault_read:
+          failed: true
+          msg: >-
+            {{
+              (ansible_failed_result.msg | default('') | string)
+              ~ ' '
+              ~ (ansible_failed_result.exception | default('') | string)
+            }}
+      changed_when: false
+      no_log: true
+
+- name: Normalize successful HashiCorp Vault response
+  ansible.builtin.set_fact:
+    __secret_resolver_attempt_found: >-
+      {{ __secret_resolver_request.hashicorp_vault.key in __secret_resolver_vault_read.secret }}
+    __secret_resolver_attempt_value: >-
+      {{
+        __secret_resolver_vault_read.secret[__secret_resolver_request.hashicorp_vault.key]
+        if (__secret_resolver_request.hashicorp_vault.key in __secret_resolver_vault_read.secret)
+        else none
+      }}
+    __secret_resolver_attempt_failure: >-
+      {{
+        'secret_key_missing'
+        if (__secret_resolver_request.hashicorp_vault.key not in __secret_resolver_vault_read.secret)
+        else none
+      }}
+  changed_when: false
+  no_log: true
+  when:
+    - __secret_resolver_hvac_available
+    - __secret_resolver_vault_read.secret is defined
+    - __secret_resolver_vault_read.secret is mapping
+
+- name: Categorize an invalid successful HashiCorp Vault response
+  ansible.builtin.set_fact:
+    __secret_resolver_attempt_found: false
+    __secret_resolver_attempt_failure: invalid_response
+  changed_when: false
+  no_log: true
+  when:
+    - __secret_resolver_hvac_available
+    - __secret_resolver_vault_read.msg is not defined
+    - __secret_resolver_vault_read.secret is not defined or __secret_resolver_vault_read.secret is not mapping
+
+- name: Capture only the HashiCorp Vault failure text for categorization
+  ansible.builtin.set_fact:
+    __secret_resolver_vault_failure_text: >-
+      {{
+        (
+          (__secret_resolver_vault_read.msg | default('') | string)
+        )
+        | lower
+      }}
+  changed_when: false
+  no_log: true
+  when:
+    - __secret_resolver_hvac_available
+    - >-
+      (__secret_resolver_vault_read.msg is defined)
+      or (__secret_resolver_vault_read.failed | default(false) | bool)
+
+- name: Categorize a failed HashiCorp Vault read conservatively
+  ansible.builtin.set_fact:
+    __secret_resolver_attempt_found: false
+    __secret_resolver_attempt_failure: >-
+      {%- if
+        'invalid or missing path' in __secret_resolver_vault_failure_text
+        or 'invalidpath' in __secret_resolver_vault_failure_text
+      -%}
+      secret_not_found
+      {%- elif
+        (
+          __secret_resolver_vault_auth_method in ['approle', 'jwt']
+          and (secret_resolver_vault_role_id | default('') | length == 0)
+          and
+          (
+            __secret_resolver_vault_auth_method == 'jwt'
+            or (secret_resolver_vault_secret_id | default('') | length == 0)
+          )
+        )
+        or 'missing required' in __secret_resolver_vault_failure_text
+      -%}
+      authentication_failed
+      {%- elif
+        'forbidden' in __secret_resolver_vault_failure_text
+        or 'permission denied' in __secret_resolver_vault_failure_text
+      -%}
+      authorization_failed
+      {%- elif
+        'certificate verify failed' in __secret_resolver_vault_failure_text
+        or 'sslerror' in __secret_resolver_vault_failure_text
+        or 'tls handshake' in __secret_resolver_vault_failure_text
+        or 'wrong version number' in __secret_resolver_vault_failure_text
+      -%}
+      tls_failed
+      {%- elif
+        'authentication' in __secret_resolver_vault_failure_text
+        or 'invalid token' in __secret_resolver_vault_failure_text
+        or 'invalid vault token' in __secret_resolver_vault_failure_text
+        or 'invalid secret id' in __secret_resolver_vault_failure_text
+        or 'failed to authenticate' in __secret_resolver_vault_failure_text
+        or 'no vault token' in __secret_resolver_vault_failure_text
+        or 'token specified or discovered' in __secret_resolver_vault_failure_text
+        or 'missing required' in __secret_resolver_vault_failure_text
+      -%}
+      authentication_failed
+      {%- elif
+        'connection' in __secret_resolver_vault_failure_text
+        or 'timed out' in __secret_resolver_vault_failure_text
+        or 'unreachable' in __secret_resolver_vault_failure_text
+        or 'name or service not known' in __secret_resolver_vault_failure_text
+        or 'connection refused' in __secret_resolver_vault_failure_text
+        or 'failed to establish' in __secret_resolver_vault_failure_text
+        or 'urlopen error' in __secret_resolver_vault_failure_text
+      -%}
+      provider_unavailable
+      {%- elif
+        'hvac' in __secret_resolver_vault_failure_text
+        and 'required' in __secret_resolver_vault_failure_text
+      -%}
+      dependency_missing
+      {%- else -%}
+      invalid_response
+      {%- endif -%}
+  changed_when: false
+  no_log: true
+  when:
+    - __secret_resolver_hvac_available
+    - >-
+      (__secret_resolver_vault_read.msg is defined)
+      or (__secret_resolver_vault_read.failed | default(false) | bool)
+
+- name: Clear complete HashiCorp Vault response objects
+  ansible.builtin.set_fact:
+    __secret_resolver_vault_read: {}
+    __secret_resolver_vault_failure_text: ""
+    __secret_resolver_hvac_check: {}
+    __secret_resolver_hvac_import_check: {}
+  changed_when: false
+  no_log: true
