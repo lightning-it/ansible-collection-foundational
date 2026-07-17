@@ -162,26 +162,48 @@ def test_generic_cap_supports_large_exact_documents_on_create_read_and_race_path
     assert created["created"] is True
     assert rerun["changed"] is False
     assert race_digest == created["ciphertext_sha256"]
-    assert store._max_ciphertext_bytes == 128 * 1024 * 1024
-    assert store._max_plaintext_bytes == 128 * 1024 * 1024
+    assert store._max_ciphertext_bytes == 512 * 1024 * 1024
+    assert store._max_plaintext_bytes == 192 * 1024 * 1024
     with pytest.raises(AnsibleActionFail):
         secret_plugin._VaultSecretDocumentStore(vault).ensure_exact(str(path), document)
 
 
-def test_generic_fixed_cap_rejects_oversize_ciphertext_before_path_creation(
+def test_generic_fixed_ciphertext_cap_rejects_before_path_creation(
     tmp_path,
     vault,
     monkeypatch,
 ):
     path = tmp_path / "absent" / "oversize.vault.yml"
     document = {"payload": "A" * (700 * 1024)}
-    monkeypatch.setattr(plugin, "_MAX_DOCUMENT_BYTES", 1024 * 1024)
+    monkeypatch.setattr(plugin, "_MAX_CIPHERTEXT_BYTES", 1024 * 1024)
+    monkeypatch.setattr(plugin, "_MAX_PLAINTEXT_BYTES", 2 * 1024 * 1024)
     store = plugin._new_document_store(vault)
 
     with pytest.raises(AnsibleActionFail):
         store.ensure_exact(str(path), document)
 
     assert store._max_ciphertext_bytes == 1024 * 1024
+    assert store._max_plaintext_bytes == 2 * 1024 * 1024
+    assert not path.exists()
+    assert not path.parent.exists()
+
+
+def test_generic_fixed_plaintext_cap_rejects_before_path_creation(
+    tmp_path,
+    vault,
+    monkeypatch,
+):
+    path = tmp_path / "absent" / "oversize.vault.yml"
+    document = {"payload": "A" * ((1024 * 1024) + 1)}
+    monkeypatch.setattr(plugin, "_MAX_CIPHERTEXT_BYTES", 4 * 1024 * 1024)
+    monkeypatch.setattr(plugin, "_MAX_PLAINTEXT_BYTES", 1024 * 1024)
+    store = plugin._new_document_store(vault)
+
+    with pytest.raises(AnsibleActionFail):
+        store.ensure_exact(str(path), document)
+
+    assert store._max_ciphertext_bytes == 4 * 1024 * 1024
+    assert store._max_plaintext_bytes == 1024 * 1024
     assert not path.exists()
     assert not path.parent.exists()
 
