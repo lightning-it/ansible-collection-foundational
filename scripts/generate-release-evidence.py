@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 """Generate release evidence JSON and Markdown without exposing secrets."""
 
 from __future__ import annotations
