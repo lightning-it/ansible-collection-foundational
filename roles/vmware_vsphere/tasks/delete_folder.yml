@@ -1,0 +1,12 @@
+---
+# tasks/delete_folder.yml
+#
+# Delete the VM folder for the current target host through the role's canonical
+# guarded path. That path requires the independent destroy-folder opt-in and
+# fails closed while the target exists. No run_once here, because folder_name
+# can be host-specific.
+
+- name: Manage VM folder through the canonical guarded destroy path
+  ansible.builtin.include_tasks: manage_folder.yml
+  when:
+    - vmware_vsphere_destroy | bool

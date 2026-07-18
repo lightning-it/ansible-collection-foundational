@@ -1,0 +1,11 @@
+---
+# tasks/create_folder.yml
+#
+# Create the VM folder for the current target host through the role's canonical
+# folder-management path. No run_once here, because folder_name can be
+# host-specific.
+
+- name: Manage VM folder through the canonical create path
+  ansible.builtin.include_tasks: manage_folder.yml
+  when:
+    - not vmware_vsphere_destroy | bool
