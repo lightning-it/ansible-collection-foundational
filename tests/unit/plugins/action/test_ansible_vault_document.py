@@ -50,6 +50,17 @@ def _write_encrypted(path, vault, document):
     path.chmod(0o600)
 
 
+def _vault_envelope_size(plaintext_bytes, vault_id=None):
+    padded_plaintext = 16 * ((plaintext_bytes // 16) + 1)
+    encoded_payload = 2 * (64 + 1 + 64 + 1 + (2 * padded_plaintext))
+    if vault_id:
+        header = "$ANSIBLE_VAULT;1.2;AES256;{0}".format(vault_id)
+    else:
+        header = "$ANSIBLE_VAULT;1.1;AES256"
+    wrapped_lines = math.ceil(encoded_payload / 80)
+    return len(header.encode("ascii")) + encoded_payload + wrapped_lines + 1
+
+
 def test_exact_document_is_created_once_and_rerun_is_unchanged(tmp_path, vault):
     path = tmp_path / "private" / "service.vault.yml"
     store = _store(vault)
@@ -163,29 +174,72 @@ def test_generic_cap_supports_large_exact_documents_on_create_read_and_race_path
     assert rerun["changed"] is False
     assert race_digest == created["ciphertext_sha256"]
     assert store._max_ciphertext_bytes == 512 * 1024 * 1024
-    assert store._max_plaintext_bytes == 192 * 1024 * 1024
+    assert store._max_plaintext_bytes == 126 * 1024 * 1024
     with pytest.raises(AnsibleActionFail):
         secret_plugin._VaultSecretDocumentStore(vault).ensure_exact(str(path), document)
 
 
-def test_generic_fixed_ciphertext_cap_rejects_before_path_creation(
+@pytest.mark.parametrize("plaintext_size", (0, 1, 15, 16, 17, 79, 80, 81, 1024))
+def test_vault_envelope_formula_matches_real_vault_output(vault, plaintext_size):
+    plaintext = b"A" * plaintext_size
+
+    assert len(vault.encrypt(plaintext)) == _vault_envelope_size(plaintext_size)
+    assert len(vault.encrypt(plaintext, vault_id="unit-test")) == _vault_envelope_size(
+        plaintext_size,
+        vault_id="unit-test",
+    )
+
+
+def test_configured_plaintext_cap_fits_vault_ciphertext_cap_with_margin():
+    exact_default_identity_maximum = 132_560_639
+
+    assert _vault_envelope_size(
+        plugin._MAX_PLAINTEXT_BYTES,
+        vault_id="unit-test",
+    ) < plugin._MAX_CIPHERTEXT_BYTES
+    assert _vault_envelope_size(
+        exact_default_identity_maximum,
+    ) <= plugin._MAX_CIPHERTEXT_BYTES
+    assert _vault_envelope_size(
+        exact_default_identity_maximum + 1,
+    ) > plugin._MAX_CIPHERTEXT_BYTES
+
+
+def test_real_vault_ciphertext_boundary_accepts_exact_and_rejects_one_byte_less(
     tmp_path,
     vault,
     monkeypatch,
 ):
-    path = tmp_path / "absent" / "oversize.vault.yml"
-    document = {"payload": "A" * (700 * 1024)}
-    monkeypatch.setattr(plugin, "_MAX_CIPHERTEXT_BYTES", 1024 * 1024)
-    monkeypatch.setattr(plugin, "_MAX_PLAINTEXT_BYTES", 2 * 1024 * 1024)
-    store = plugin._new_document_store(vault)
+    accepted_path = tmp_path / "accepted" / "boundary.vault.yml"
+    rejected_path = tmp_path / "rejected" / "boundary.vault.yml"
+    document = {"payload": "A" * (256 * 1024)}
+    plaintext = yaml.safe_dump(
+        document,
+        allow_unicode=True,
+        default_flow_style=False,
+        sort_keys=True,
+    )
+    ciphertext_bytes = len(vault.encrypt(plaintext))
+    plaintext_bytes = len(plaintext.encode("utf-8"))
+
+    monkeypatch.setattr(plugin, "_MAX_CIPHERTEXT_BYTES", ciphertext_bytes)
+    monkeypatch.setattr(plugin, "_MAX_PLAINTEXT_BYTES", plaintext_bytes)
+
+    created = plugin._new_document_store(vault).ensure_exact(
+        str(accepted_path),
+        document,
+    )
+
+    assert created["created"] is True
+    assert accepted_path.stat().st_size == ciphertext_bytes
+
+    monkeypatch.setattr(plugin, "_MAX_CIPHERTEXT_BYTES", ciphertext_bytes - 1)
 
     with pytest.raises(AnsibleActionFail):
-        store.ensure_exact(str(path), document)
+        plugin._new_document_store(vault).ensure_exact(str(rejected_path), document)
 
-    assert store._max_ciphertext_bytes == 1024 * 1024
-    assert store._max_plaintext_bytes == 2 * 1024 * 1024
-    assert not path.exists()
-    assert not path.parent.exists()
+    assert not rejected_path.exists()
+    assert not rejected_path.parent.exists()
 
 
 def test_generic_fixed_plaintext_cap_rejects_before_path_creation(

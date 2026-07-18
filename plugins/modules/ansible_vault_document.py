@@ -57,7 +57,8 @@ notes:
   - Set C(vault_id) when more than one identity is loaded so creation cannot silently use the wrong identity.
   - The action requires task-level C(no_log=true) to suppress secret task arguments at every callback verbosity.
   - Plaintext is serialized, encrypted, decrypted, and compared only in controller process memory.
-  - Serialized plaintext has a fixed 192 MiB safety limit and ciphertext has a fixed 512 MiB safety limit.
+  - Serialized plaintext has a fixed 126 MiB safety limit and Ansible Vault ciphertext has a fixed 512 MiB safety limit.
+  - The plaintext limit includes a conservative margin for the Ansible Vault encoding envelope.
   - The safety limits are not caller-configurable.
   - Check mode never creates a directory, serializes the mapping, or invokes Vault encryption for an absent path.
 author:
