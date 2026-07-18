@@ -19,7 +19,15 @@ None.
   VMware Tools after clone/reconfigure. This catches failed guest customization
   where a VM falls back to DHCP.
 - `vmware_vsphere_username`, `vmware_vsphere_password` can be supplied directly or pulled from Vault using `vmware_vsphere_vmware_username_lookup` / `vmware_vsphere_vmware_password_lookup`. These lookup vars default to empty strings (and are normalized in `tasks/assets.yaml`); set them to a valid Vault path to enable lookups. The role will fail early if neither direct values nor lookup paths are provided.
-- Set `vmware_vsphere_destroy: true` to remove VMs instead of creating them. Folder deletion is skipped by default for safety; set `vmware_vsphere_destroy_folder: true` if you want the folder removed once it is empty. When folder deletion is requested but the folder still contains VMs, the role reports an informational message and continues. Additional tags (`create_vms`, `destroy_all`, etc.) gate individual task files.
+- Set `vmware_vsphere_destroy: true` to remove VMs instead of creating them.
+  Folder deletion is skipped by default for safety. Setting
+  `vmware_vsphere_destroy_folder: true` verifies that the target is a strict
+  descendant of the datacenter VM root and whether it already is absent, but
+  fails closed while the folder exists. The available vSphere deletion
+  operation is recursive and can unregister or destroy descendants, so an
+  emptiness precheck alone cannot make it safe. Remove an empty folder through
+  a separately controlled process. Additional tags (`create_vms`,
+  `destroy_all`, etc.) gate individual task files.
 
 ### Required inputs
 

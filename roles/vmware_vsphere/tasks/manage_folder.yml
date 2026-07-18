@@ -20,44 +20,107 @@
     state: present
   when: not vmware_vsphere_destroy | bool
 
-- name: Ensure VM folder absent ({{ vmware_vsphere_folder_name }})
+- name: Normalize guarded VM folder deletion path
+  ansible.builtin.set_fact:
+    _vmware_vsphere_folder_delete_path: >-
+      /{{ vmware_vsphere_folder_full_path | trim | regex_replace('^/+', '') | regex_replace('/+$', '') }}
+    _vmware_vsphere_folder_delete_root: >-
+      /{{ vmware_vsphere_datacenter | trim | regex_replace('^/+', '') | regex_replace('/+$', '') }}/vm
+  when:
+    - vmware_vsphere_destroy | bool
+    - vmware_vsphere_destroy_folder | default(false) | bool
+
+- name: Validate guarded VM folder deletion target
+  ansible.builtin.assert:
+    that:
+      - >-
+          _vmware_vsphere_folder_delete_path
+          is match(
+            '^'
+            ~ (_vmware_vsphere_folder_delete_root | regex_escape)
+            ~ '/[^/]+(?:/[^/]+)*$'
+          )
+      - "'.' not in _vmware_vsphere_folder_delete_path.split('/')"
+      - "'..' not in _vmware_vsphere_folder_delete_path.split('/')"
+    fail_msg: >-
+      Refusing unsafe VM folder target
+      '{{ _vmware_vsphere_folder_delete_path }}'. The target must be a strict
+      descendant of '{{ _vmware_vsphere_folder_delete_root }}'.
+  when:
+    - vmware_vsphere_destroy | bool
+    - vmware_vsphere_destroy_folder | default(false) | bool
+
+- name: Inspect existing VM folders before refusing recursive deletion
   module_defaults:
     group/vmware: "{{ vmware_vsphere_module_defaults_vmware_group }}"
-    community.vmware.vmware_guest: >-
-      {{ vmware_vsphere_module_defaults_vmware_guest }}
   delegate_to: "{{ vmware_vsphere_delegate_to }}"
-  vmware.vmware.folder:
+  community.vmware.vmware_folder_info:
     hostname: "{{ vmware_vsphere_hostname }}"
     username: "{{ vmware_vsphere_username }}"
     password: "{{ vmware_vsphere_password }}"
     validate_certs: "{{ vmware_vsphere_validate_certs }}"
     datacenter: "{{ vmware_vsphere_datacenter }}"
-    absolute_path: "{{ vmware_vsphere_folder_full_path }}"
-    state: absent
-  register: vmware_vsphere_folder_absent_result
-  failed_when: false
+  register: vmware_vsphere_folder_delete_info
+  changed_when: false
   when:
     - vmware_vsphere_destroy | bool
     - vmware_vsphere_destroy_folder | default(false) | bool
 
-- name: Folder not deleted because other VMs still exist
+- name: Validate VM folder inventory response
+  ansible.builtin.assert:
+    that:
+      - vmware_vsphere_folder_delete_info.flat_folder_info is defined
+      - vmware_vsphere_folder_delete_info.flat_folder_info is sequence
+      - vmware_vsphere_folder_delete_info.flat_folder_info is not string
+    fail_msg: >-
+      Refusing VM folder deletion because vCenter returned an invalid folder
+      inventory response.
+  when:
+    - vmware_vsphere_destroy | bool
+    - vmware_vsphere_destroy_folder | default(false) | bool
+
+- name: Find exact guarded VM folder deletion target
+  ansible.builtin.set_fact:
+    _vmware_vsphere_folder_delete_matches: >-
+      {{
+        vmware_vsphere_folder_delete_info.flat_folder_info
+        | default([])
+        | selectattr('path', 'equalto', _vmware_vsphere_folder_delete_path)
+        | list
+      }}
+  when:
+    - vmware_vsphere_destroy | bool
+    - vmware_vsphere_destroy_folder | default(false) | bool
+
+- name: Validate exact VM folder lookup is unambiguous
+  ansible.builtin.assert:
+    that:
+      - _vmware_vsphere_folder_delete_matches | length <= 1
+    fail_msg: >-
+      Refusing VM folder deletion because vCenter returned multiple exact
+      matches for '{{ _vmware_vsphere_folder_delete_path }}'.
+  when:
+    - vmware_vsphere_destroy | bool
+    - vmware_vsphere_destroy_folder | default(false) | bool
+
+- name: Confirm absent VM folder needs no deletion
   ansible.builtin.debug:
     msg: >-
-      Directory {{ vmware_vsphere_folder_full_path }} has not been deleted
-      because other VMs still exist.
+      VM folder {{ _vmware_vsphere_folder_delete_path }} is already absent.
   when:
     - vmware_vsphere_destroy | bool
     - vmware_vsphere_destroy_folder | default(false) | bool
-    - vmware_vsphere_folder_absent_result is defined
-    - vmware_vsphere_folder_absent_result.failed | default(false)
-    - "'contains a vm' in (vmware_vsphere_folder_absent_result.msg | default('') | lower)"
+    - _vmware_vsphere_folder_delete_matches | length == 0
 
-- name: Fail when folder deletion failed for another reason
+- name: Refuse recursive VM folder deletion
   ansible.builtin.fail:
-    msg: "{{ vmware_vsphere_folder_absent_result.msg | default('Folder deletion failed') }}"
+    msg: >-
+      Refusing automated deletion of VM folder
+      '{{ _vmware_vsphere_folder_delete_path }}'. The available vSphere folder
+      deletion operation is recursive and can unregister or destroy descendants;
+      an emptiness precheck would still leave a data-loss race. Remove the folder
+      through a separately controlled process after proving it is empty.
   when:
     - vmware_vsphere_destroy | bool
     - vmware_vsphere_destroy_folder | default(false) | bool
-    - vmware_vsphere_folder_absent_result is defined
-    - vmware_vsphere_folder_absent_result.failed | default(false)
-    - "'contains a vm' not in (vmware_vsphere_folder_absent_result.msg | default('') | lower)"
+    - _vmware_vsphere_folder_delete_matches | length > 0
