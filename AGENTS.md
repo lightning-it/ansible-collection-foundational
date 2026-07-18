@@ -33,7 +33,8 @@ If generic guidance conflicts with repository behavior, you MUST prefer reposito
 3. Managed default files from `shared-assets-lit/default`:
    1. `CODE_OF_CONDUCT.md`
    2. `SECURITY.md`
-   3. `scripts/wunder-devtools-ee.sh`
+   3. `scripts/wunder-container-run.sh`
+   4. `scripts/wunder-devtools-ee.sh`
 4. Managed collection baseline files from `shared-assets-lit/ansible-collection/base`:
    1. `AGENTS.md`
    2. `CONTRIBUTING.md`
@@ -264,7 +265,10 @@ Automation safety requirements:
 - Protected branches must require pull request review.
 - Only trusted Renovate PRs may be auto-approved by collection automation.
 - A trusted Renovate PR must have `renovate[bot]` as both trigger actor and PR author, a `renovate/*` source
-  branch, `develop` as the base branch, and both `renovate` and `dependencies` labels.
+  branch, `develop` as the base branch, and the `renovate`, `dependencies`, and package-rule-controlled
+  `safe-automerge` labels. The latest `safe-automerge` label event must come from Renovate.
+- Major updates receive `breaking-update`, never receive `safe-automerge`, and must remain manual. Removing or
+  spoofing labels does not make a PR eligible because the guarded workflow checks label-event history.
 - Human, external contributor, and develop-to-main promotion PRs must not be auto-approved or auto-merged by
   collection automation.
 - Do not use `pull_request_target` for Renovate approval or merge automation.
