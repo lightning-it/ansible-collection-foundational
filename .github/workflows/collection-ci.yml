@@ -34,7 +34,9 @@ jobs:
     steps:
       # 1) Checkout the repository
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7
+        with:
+          persist-credentials: false
 
       # 2) Run ansible-lint inside the ee-wunder-devtools-ubi9 container
       - name: Run ansible-lint via devtools-ansible-lint.sh
@@ -52,7 +54,9 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7
+        with:
+          persist-credentials: false
 
       # Run Molecule via ee-wunder-devtools-ubi9.
       # scripts/devtools-molecule.sh is expected to:
@@ -72,7 +76,9 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7
+        with:
+          persist-credentials: false
 
       # Run a full collection smoke test inside ee-wunder-devtools-ubi9:
       #  - build the collection
