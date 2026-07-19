@@ -1,7 +1,6 @@
 ---
 - name: Clean fixture-only Hetzner installimage test
-  hosts: localhost
-  connection: local
+  hosts: hetzner_installimage
   gather_facts: false
   tasks:
     - name: Inspect synthetic Rescue SSH public-key ownership marker
@@ -15,6 +14,11 @@
         state: absent
       when: hetzner_installimage_molecule_robot_keys_marker.stat.exists
 
+    - name: Inspect root-level fixture ownership marker
+      ansible.builtin.stat:
+        path: /tmp/lit-hetzner-installimage-test/owns-root-artifacts
+      register: hetzner_installimage_molecule_root_artifacts_marker
+
     - name: Remove known synthetic root-level installimage artifacts
       ansible.builtin.file:
         path: "{{ item }}"
@@ -25,7 +29,7 @@
         - /post-install
         - /post-mount
         - /run/lit-installimage-post-mount-sanitized
-      when: hetzner_installimage_molecule_robot_keys_marker.stat.exists
+      when: hetzner_installimage_molecule_root_artifacts_marker.stat.exists
 
     - name: Remove Hetzner installimage fixture directory
       ansible.builtin.file:

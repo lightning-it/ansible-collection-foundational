@@ -31,8 +31,7 @@ Do not add a passing OpenSSF Best Practices badge until the repository is actual
 - `main` is the protected release branch.
 - `develop` is the integration branch for normal work, Renovate, and shared-assets-lit PRs.
 - Every pull request must have a completed GitHub Copilot review for its current head revision.
-- Integration PRs may auto-merge only after required checks pass and all review conversations are resolved.
-- Promotion PRs (develop-to-main) must remain a manual merge gate.
+- Promotion and integration PRs may auto-merge only after required checks pass and all review conversations are resolved.
 - Releases and publishing happen only from trusted `main` workflows after validation.
 - Release evidence is generated for repositories with release artifacts.
 
