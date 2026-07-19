@@ -1,7 +1,0 @@
----
-minor_changes:
-  - >-
-    ansible_vault_document - separate the non-configurable document safety
-    bounds, setting them to 126 MiB for serialized plaintext and 512 MiB for
-    Ansible Vault ciphertext, so bounded large recovery escrows fit within the
-    ciphertext envelope with a conservative margin.

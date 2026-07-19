@@ -4,6 +4,25 @@ Lightning IT Collection Release Notes Release Notes
 
 .. contents:: Topics
 
+v1.32.0
+=======
+
+Minor Changes
+-------------
+
+- ansible_vault_document - separate the non-configurable document safety bounds, setting them to 126 MiB for serialized plaintext and 512 MiB for Ansible Vault ciphertext, so bounded large recovery escrows fit within the ciphertext envelope with a conservative margin.
+- vmware_vsphere - Add dedicated task entry points for creating and requesting guarded deletion of target VM folders.
+
+Security Fixes
+--------------
+
+- vmware_vsphere - Route folder entry points through canonical management and fail closed instead of invoking vSphere's recursive folder deletion while a target folder exists.
+
+Bugfixes
+--------
+
+- collection examples and fixture-only Molecule coverage now avoid writing controller artifacts to read-only system directories in hardened execution environments.
+
 v1.31.0
 =======
 

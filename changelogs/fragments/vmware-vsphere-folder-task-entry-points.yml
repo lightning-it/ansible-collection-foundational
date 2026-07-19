@@ -1,7 +1,0 @@
----
-minor_changes:
-  - vmware_vsphere - Add dedicated task entry points for creating and requesting guarded deletion of target VM folders.
-security_fixes:
-  - >-
-    vmware_vsphere - Route folder entry points through canonical management and fail closed instead of invoking
-    vSphere's recursive folder deletion while a target folder exists.
