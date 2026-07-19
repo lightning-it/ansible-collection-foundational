@@ -22,6 +22,7 @@ env:
 
   # Example playbook that MUST exist in this repository.
   EXAMPLE_PLAYBOOK: "playbooks/example.yml"
+  EXAMPLE_PLAYBOOK_ARGS: ${{ github.event.repository.name == 'ansible-collection-ubuntu' && '--check' || '' }}
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -88,5 +89,6 @@ jobs:
         env:
           COLLECTION_NAMESPACE: ${{ env.COLLECTION_NAMESPACE }}
           EXAMPLE_PLAYBOOK: ${{ env.EXAMPLE_PLAYBOOK }}
+          EXAMPLE_PLAYBOOK_ARGS: ${{ env.EXAMPLE_PLAYBOOK_ARGS }}
         run: |
           bash scripts/devtools-collection-smoke.sh
