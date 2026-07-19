@@ -29,7 +29,7 @@ on:
       publish_galaxy:
         description: Publish to Ansible Galaxy.
         required: false
-        default: "false"
+        default: "true"
         type: choice
         options: ["true", "false"]
 
@@ -112,29 +112,17 @@ jobs:
       group: collection-publication-${{ github.repository }}
       cancel-in-progress: false
     steps:
-      - name: Create GitHub App token
-        id: app-token
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3
-        with:
-          client-id: ${{ secrets.RELEASE_BOT_APP_CLIENT_ID }}
-          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-          repositories: ${{ github.event.repository.name }}
-          permission-actions: write
-          permission-contents: write
-
       - name: Checkout main
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7
         with:
           ref: ${{ inputs.expected_release_sha }}
-          token: ${{ steps.app-token.outputs.token }}
           fetch-depth: 0
           persist-credentials: false
 
       - name: Setup Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
         with:
-          python-version: "3.11"
+          python-version: "3.14"
 
       - name: Install build tools
         run: >-
@@ -294,12 +282,19 @@ jobs:
       - name: Create or verify immutable GitHub Release
         if: inputs.create_github_release == 'true'
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_TOKEN: ${{ secrets.LITRELEASEBOT_TOKEN }}
           RELEASE_SHA: ${{ steps.candidate.outputs.release_sha }}
           TAG: ${{ steps.candidate.outputs.tag }}
           TARBALL: ${{ steps.candidate.outputs.tarball }}
         run: |
           set -euo pipefail
+
+          bot_login="$(gh api user --jq .login)"
+          if [ "$bot_login" != "litreleasebot" ]; then
+            echo "::error::LITRELEASEBOT_TOKEN must authenticate exactly as litreleasebot."
+            exit 1
+          fi
+          gh auth setup-git
 
           assert_remote_main() {
             local remote_main

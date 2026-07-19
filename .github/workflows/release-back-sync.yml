@@ -20,33 +20,27 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Create GitHub App token
-        id: app-token
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3
-        with:
-          client-id: ${{ secrets.RELEASE_BOT_APP_CLIENT_ID }}
-          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-          repositories: ${{ github.event.repository.name }}
-          permission-contents: write
-          permission-issues: write
-          permission-pull-requests: write
-
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7
         with:
-          token: ${{ steps.app-token.outputs.token }}
           fetch-depth: 0
           persist-credentials: false
 
       - name: Open or update release back-sync PR
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_TOKEN: ${{ secrets.LITRELEASEBOT_TOKEN }}
           TAG_INPUT: ${{ github.event.inputs.tag }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
+
+          bot_login="$(gh api user --jq .login)"
+          if [ "$bot_login" != "litreleasebot" ]; then
+            echo "::error::LITRELEASEBOT_TOKEN must authenticate exactly as litreleasebot."
+            exit 1
+          fi
+          gh auth setup-git
 
           tag="${RELEASE_TAG:-${TAG_INPUT:-}}"
           if [ -z "$tag" ]; then
