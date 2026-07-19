@@ -14,13 +14,21 @@ if [ -z "${COLLECTION_NAME:-}" ]; then
 fi
 
 EXAMPLE_PLAYBOOK="${EXAMPLE_PLAYBOOK:-playbooks/example.yml}"
+EXAMPLE_PLAYBOOK_ARGS="${EXAMPLE_PLAYBOOK_ARGS:-}"
+case "$EXAMPLE_PLAYBOOK_ARGS" in
+  ""|--check) ;;
+  *) echo "ERROR: unsupported example playbook arguments." >&2; exit 1 ;;
+esac
 
 echo "Running collection smoke test for ${COLLECTION_NAMESPACE}.${COLLECTION_NAME} using ${EXAMPLE_PLAYBOOK}"
 
 COLLECTION_NAMESPACE="$COLLECTION_NAMESPACE" \
 COLLECTION_NAME="$COLLECTION_NAME" \
 EXAMPLE_PLAYBOOK="$EXAMPLE_PLAYBOOK" \
+EXAMPLE_PLAYBOOK_ARGS="$EXAMPLE_PLAYBOOK_ARGS" \
 WUNDER_DEVTOOLS_NETWORK=bridge \
+WUNDER_DEVTOOLS_ROOTFS_MODE=rw \
+WUNDER_DEVTOOLS_RUN_AS_ROOT=1 \
 CONTAINER_HOME=/tmp/wunder \
 bash scripts/wunder-devtools-ee.sh bash -c '
   set -euo pipefail
@@ -28,6 +36,7 @@ bash scripts/wunder-devtools-ee.sh bash -c '
   ns="${COLLECTION_NAMESPACE}"
   name="${COLLECTION_NAME}"
   example="${EXAMPLE_PLAYBOOK:-playbooks/example.yml}"
+  example_args="${EXAMPLE_PLAYBOOK_ARGS:-}"
 
   export HOME="$(mktemp -d /tmp/collection-smoke-home.XXXXXX)"
   mkdir -p "${HOME}"
@@ -56,5 +65,9 @@ bash scripts/wunder-devtools-ee.sh bash -c '
   # -------------------------------------------------------------------
   # 3) Run example playbook
   # -------------------------------------------------------------------
-  ansible-playbook -i localhost, "${example}"
+  if [ "${example_args}" = "--check" ]; then
+    ansible-playbook -i localhost, "${example}" --check
+  else
+    ansible-playbook -i localhost, "${example}"
+  fi
 '
