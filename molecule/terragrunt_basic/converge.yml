@@ -5,7 +5,7 @@
 
   vars:
     cluster_id: demo
-    terragrunt_controller_bin_dir: /tmp/lit-foundational-molecule-bin
+    terragrunt_controller_bin_dir: /tmp/wunder/lit-foundational-molecule-bin
     terragrunt_source: "./module"
     terragrunt_plan_file: /tmp/terragrunt.plan
     terragrunt_skip_confirmation: true

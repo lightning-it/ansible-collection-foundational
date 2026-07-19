@@ -7,7 +7,7 @@
   vars:
     ansible_connection: local
     cluster_id: example
-    terragrunt_demo_bin_dir: /tmp/lit-foundational-example-bin
+    terragrunt_demo_bin_dir: /tmp/wunder/lit-foundational-example-bin
     terragrunt_source: "./module"
     terragrunt_plan_file: /tmp/terragrunt.plan
     terragrunt_skip_confirmation: true
