@@ -159,3 +159,25 @@ releases:
     fragments:
       - ansible-posix-21-compat.yml
     release_date: '2026-07-14'
+  1.32.0:
+    changes:
+      bugfixes:
+        - collection examples and fixture-only Molecule coverage now avoid writing
+          controller artifacts to read-only system directories in hardened execution
+          environments.
+      minor_changes:
+        - ansible_vault_document - separate the non-configurable document safety bounds,
+          setting them to 126 MiB for serialized plaintext and 512 MiB for Ansible
+          Vault ciphertext, so bounded large recovery escrows fit within the ciphertext
+          envelope with a conservative margin.
+        - vmware_vsphere - Add dedicated task entry points for creating and requesting
+          guarded deletion of target VM folders.
+      security_fixes:
+        - vmware_vsphere - Route folder entry points through canonical management
+          and fail closed instead of invoking vSphere's recursive folder deletion
+          while a target folder exists.
+    fragments:
+      - ansible-vault-document-bounded-large-escrow.yml
+      - ci-read-only-execution-environment.yml
+      - vmware-vsphere-folder-task-entry-points.yml
+    release_date: '2026-07-19'
