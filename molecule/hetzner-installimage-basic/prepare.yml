@@ -1,7 +1,6 @@
 ---
 - name: Prepare fixture-only Hetzner installimage test
-  hosts: localhost
-  connection: local
+  hosts: hetzner_installimage
   gather_facts: false
   vars:
     hetzner_installimage_molecule_root: /tmp/lit-hetzner-installimage-test

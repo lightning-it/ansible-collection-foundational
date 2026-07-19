@@ -1,0 +1,5 @@
+---
+bugfixes:
+  - >-
+    collection examples and fixture-only Molecule coverage now avoid writing controller artifacts to read-only
+    system directories in hardened execution environments.

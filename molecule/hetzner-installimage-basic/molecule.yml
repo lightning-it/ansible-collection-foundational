@@ -4,18 +4,19 @@ dependency:
   command: ":"
 
 driver:
-  name: default
+  name: docker
 
 platforms:
-  - name: localhost
-    managed: false
+  - name: hetzner_installimage
+    image: quay.io/rockylinux/rockylinux:9
+    pre_build_image: true
 
 provisioner:
   name: ansible
   inventory:
     host_vars:
-      localhost:
-        ansible_connection: local
+      hetzner_installimage:
+        ansible_connection: docker
   playbooks:
     prepare: prepare.yml
     converge: converge.yml
@@ -26,12 +27,15 @@ scenario:
   name: hetzner-installimage-basic
   test_sequence:
     - dependency
+    - destroy
     - syntax
+    - create
     - prepare
     - converge
     - idempotence
     - verify
     - cleanup
+    - destroy
 
 verifier:
   name: ansible

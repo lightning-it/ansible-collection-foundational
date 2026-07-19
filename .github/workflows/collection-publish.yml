@@ -12,6 +12,14 @@ on:
       - changelogs/changelog.yaml
   workflow_dispatch:
     inputs:
+      expected_release_sha:
+        description: Exact reviewed merge SHA that must still be the main tip.
+        required: true
+        type: string
+      reviewed_pull_request:
+        description: Merged release pull request containing the reviewed SHA.
+        required: true
+        type: string
       create_github_release:
         description: Create the GitHub Release.
         required: false
@@ -21,13 +29,12 @@ on:
       publish_galaxy:
         description: Publish to Ansible Galaxy.
         required: false
-        default: "false"
+        default: "true"
         type: choice
         options: ["true", "false"]
 
 permissions:
-  actions: write
-  contents: write
+  contents: read
 
 jobs:
   dispatch:
@@ -38,6 +45,9 @@ jobs:
       startsWith(github.event.pull_request.head.ref, 'release/v')
     name: Dispatch collection publish from main
     runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
 
     steps:
       - name: Derive release publishing settings
@@ -66,13 +76,30 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           CREATE_GITHUB_RELEASE: ${{ steps.settings.outputs.create_github_release }}
+          EVENT_MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
           PUBLISH_GALAXY: ${{ steps.settings.outputs.publish_galaxy }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
+
+          live_pr="$(gh api "repos/${REPO}/pulls/${PR_NUMBER}")"
+          live_merged="$(jq -r '.merged' <<<"$live_pr")"
+          merge_sha="$(jq -r '.merge_commit_sha // ""' <<<"$live_pr")"
+          main_sha="$(gh api "repos/${REPO}/git/ref/heads/main" --jq '.object.sha')"
+          if [ "$live_merged" != true ] \
+            || ! [[ "$merge_sha" =~ ^[0-9a-f]{40}$ ]] \
+            || [ "$merge_sha" != "$EVENT_MERGE_SHA" ] \
+            || [ "$main_sha" != "$merge_sha" ]; then
+            echo "::error::The reviewed merge SHA is no longer the exact main tip."
+            exit 1
+          fi
 
           gh workflow run collection-publish.yml \
             --repo "$GITHUB_REPOSITORY" \
             --ref main \
+            -f expected_release_sha="$merge_sha" \
+            -f reviewed_pull_request="$PR_NUMBER" \
             -f create_github_release="$CREATE_GITHUB_RELEASE" \
             -f publish_galaxy="$PUBLISH_GALAXY"
 
@@ -81,142 +108,330 @@ jobs:
     name: Publish collection release
     runs-on: ubuntu-latest
     environment: ansible-collections
-    env:
-      RELEASE_BOT_APP_ID: ${{ secrets.RELEASE_BOT_APP_ID }}
-      RELEASE_BOT_PRIVATE_KEY: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
-      GALAXY_API_TOKEN: ${{ secrets.ANSIBLE_GALAXY_API_KEY }}
-
+    concurrency:
+      group: collection-publication-${{ github.repository }}
+      cancel-in-progress: false
     steps:
-      - name: Create GitHub App token
-        id: app-token
-        if: ${{ env.RELEASE_BOT_APP_ID != '' && env.RELEASE_BOT_PRIVATE_KEY != '' }}
-        uses: actions/create-github-app-token@v3
-        with:
-          app-id: ${{ env.RELEASE_BOT_APP_ID }}
-          private-key: ${{ env.RELEASE_BOT_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-          repositories: ${{ github.event.repository.name }}
-
-      - name: Resolve release token
-        id: token
-        env:
-          APP_TOKEN: ${{ steps.app-token.outputs.token }}
-          TOKEN: ${{ secrets.LITRELEASEBOT_TOKEN }}
-        run: |
-          set -euo pipefail
-          if [ -n "${APP_TOKEN:-}" ]; then
-            echo "value=$APP_TOKEN" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          if [ -n "${TOKEN:-}" ]; then
-            echo "value=$TOKEN" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          echo "value=${{ github.token }}" >> "$GITHUB_OUTPUT"
-
       - name: Checkout main
-        uses: actions/checkout@v7
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7
         with:
-          ref: main
-          token: ${{ steps.token.outputs.value }}
+          ref: ${{ inputs.expected_release_sha }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Setup Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
         with:
           python-version: "3.14"
 
       - name: Install build tools
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install ansible-core pyyaml
+        run: >-
+          python -m pip install --disable-pip-version-check --no-input
+          ansible-core==2.18.13 PyYAML==6.0.3
 
-      - name: Build and publish
+      - name: Validate reviewed main SHA and build release evidence
+        id: candidate
         env:
-          GH_TOKEN: ${{ steps.token.outputs.value }}
           CREATE_GITHUB_RELEASE: ${{ inputs.create_github_release }}
+          EXPECTED_SHA: ${{ inputs.expected_release_sha }}
+          GH_TOKEN: ${{ github.token }}
           PUBLISH_GALAXY: ${{ inputs.publish_galaxy }}
+          REVIEWED_PR: ${{ inputs.reviewed_pull_request }}
         run: |
           set -euo pipefail
 
-          version="$(python - <<'PY'
+          release_sha="$(git rev-parse HEAD)"
+          remote_main="$(
+            gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha'
+          )"
+          if ! [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]] \
+            || [ "$release_sha" != "$EXPECTED_SHA" ] \
+            || [ "$remote_main" != "$EXPECTED_SHA" ]; then
+            echo "::error::Publish must remain bound to the reviewed main SHA."
+            echo "expected=${EXPECTED_SHA} checkout=${release_sha} remote-main=${remote_main}"
+            exit 1
+          fi
+          if ! [[ "$REVIEWED_PR" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::A valid reviewed release pull request is required."
+            exit 1
+          fi
+          reviewed_pr="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${REVIEWED_PR}")"
+          if ! jq -e \
+            --arg expected "$EXPECTED_SHA" \
+            '(.merged == true) and (.base.ref == "main")
+             and (.head.ref | startswith("release/v"))
+             and (.merge_commit_sha == $expected)' \
+            >/dev/null <<<"$reviewed_pr"; then
+            echo "::error::The supplied SHA is not the exact reviewed release merge."
+            exit 1
+          fi
+          if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+            echo "::error::Tracked release inputs are not clean."
+            exit 1
+          fi
+
+          metadata="$(python - <<'PY'
           import yaml
-          print(yaml.safe_load(open("galaxy.yml"))["version"])
+          data = yaml.safe_load(open("galaxy.yml"))
+          print(data["namespace"], data["name"], data["version"], sep="\t")
           PY
           )"
+          IFS=$'\t' read -r namespace collection version <<<"$metadata"
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::galaxy.yml contains an invalid release version: ${version}"
+            exit 1
+          fi
           tag="v${version}"
 
           ansible-galaxy collection build --force
-          tarball="$(ls ./*.tar.gz)"
+          mapfile -t tarballs < <(find . -maxdepth 1 -type f -name '*.tar.gz' -print)
+          if [ "${#tarballs[@]}" -ne 1 ]; then
+            echo "::error::Expected exactly one collection tarball, found ${#tarballs[@]}."
+            exit 1
+          fi
+          tarball="${tarballs[0]#./}"
 
-          notes="$(mktemp)"
+          source_date_epoch="$(git show -s --format=%ct "$release_sha")"
+          normalized_tree="$(mktemp -d)"
+          normalized_tarball="$(mktemp)"
+          tar -xzf "$tarball" -C "$normalized_tree"
+          (
+            cd "$normalized_tree"
+            find . -mindepth 1 -printf '%P\0' \
+              | LC_ALL=C sort -z \
+              | tar --null --no-recursion --files-from=- \
+                  --format=gnu --mtime="@${source_date_epoch}" \
+                  --owner=0 --group=0 --numeric-owner -cf - \
+              | gzip -n >"$normalized_tarball"
+          )
+          mv "$normalized_tarball" "$tarball"
+
           if [ ! -f CHANGELOG.rst ]; then
             echo "::error::CHANGELOG.rst is required for collection GitHub Release notes."
             exit 1
           fi
-          awk '/^v'"$version"'$/{flag=1; print; next} /^v[0-9]/{if(flag) exit} flag {print}' CHANGELOG.rst > "$notes"
-
-          if [ "$CREATE_GITHUB_RELEASE" = "true" ]; then
-            if [ ! -s "$notes" ]; then
-              echo "::error::No CHANGELOG.rst section found for $tag."
-              exit 1
-            fi
-            if gh release view "$tag" >/dev/null 2>&1; then
-              echo "GitHub release $tag already exists; leaving it unchanged."
-            else
-              gh release create "$tag" "$tarball" --target main --title "$tag" --notes-file "$notes"
-            fi
-            gh workflow run release-back-sync.yml --ref main -f tag="$tag"
-          else
-            echo "GitHub release creation disabled for this release."
+          mkdir -p dist
+          notes="dist/release-notes.rst"
+          awk '/^v'"$version"'$/{flag=1; print; next} /^v[0-9]/{if(flag) exit} flag {print}' \
+            CHANGELOG.rst >"$notes"
+          if [ ! -s "$notes" ]; then
+            echo "::error::No CHANGELOG.rst section found for $tag."
+            exit 1
           fi
 
-          if [ "$PUBLISH_GALAXY" = "true" ]; then
-            if [ -z "${GALAXY_API_TOKEN:-}" ]; then
-              echo "::error::GALAXY_API_TOKEN is required when publish_galaxy is true."
-              exit 1
-            fi
-            ansible-galaxy collection publish "$tarball" --api-key "$GALAXY_API_TOKEN"
-          fi
+          tarball_sha256="$(sha256sum "$tarball" | awk '{print $1}')"
+          printf '%s  %s\n' "$tarball_sha256" "$tarball" >dist/SHA256SUMS
+          export namespace collection version tag release_sha tarball tarball_sha256
+          export CREATE_GITHUB_RELEASE PUBLISH_GALAXY
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
 
-          TESTED_MATRIX="ansible-core,molecule,collection-build" \
-          PASSED_JOBS="Publish collection release" \
-          BUILT_ARTIFACTS="$tarball" \
-          PUBLISHED_ARTIFACTS="$(
-            if [ "$CREATE_GITHUB_RELEASE" = "true" ]; then
-              printf 'github-release:%s' "$tag"
-            fi
-            if [ "$PUBLISH_GALAXY" = "true" ]; then
-              printf ',ansible-galaxy:lit.%s:%s' "$(python - <<'PY'
-          import yaml
-          print(yaml.safe_load(open("galaxy.yml"))["name"])
+          evidence = {
+              "schema_version": 1,
+              "status": "validated_release_candidate",
+              "repository": os.environ["GITHUB_REPOSITORY"],
+              "release_sha": os.environ["release_sha"],
+              "tag": os.environ["tag"],
+              "version": os.environ["version"],
+              "collection": f'{os.environ["namespace"]}.{os.environ["collection"]}',
+              "artifact": {
+                  "path": os.environ["tarball"],
+                  "sha256": os.environ["tarball_sha256"],
+              },
+              "requested_publication": {
+                  "github_release": os.environ["CREATE_GITHUB_RELEASE"] == "true",
+                  "ansible_galaxy": os.environ["PUBLISH_GALAXY"] == "true",
+              },
+          }
+          Path("dist/release-evidence.json").write_text(
+              json.dumps(evidence, indent=2, sort_keys=True) + "\n"
+          )
+          Path("dist/release-evidence.md").write_text(
+              "# Validated collection release candidate\n\n"
+              f'- Collection: `{evidence["collection"]}`\n'
+              f'- Version: `{evidence["version"]}`\n'
+              f'- Tag: `{evidence["tag"]}`\n'
+              f'- Exact commit: `{evidence["release_sha"]}`\n'
+              f'- Artifact SHA-256: `{evidence["artifact"]["sha256"]}`\n'
+          )
           PY
-          )" "$version"
-            fi
-          )" \
-          ANSIBLE_GALAXY_ARTIFACT="lit.$(python - <<'PY'
-          import yaml
-          print(yaml.safe_load(open("galaxy.yml"))["name"])
-          PY
-          ):${version}" \
-          RELEASE_TAG="$tag" \
-          RELEASE_VERSION="$version" \
-          CHANGELOG_URL="https://github.com/${{ github.repository }}/blob/main/CHANGELOG.rst" \
-          python scripts/generate-release-evidence.py
 
-          if [ "$CREATE_GITHUB_RELEASE" = "true" ]; then
-            gh release upload "$tag" \
-              dist/release-evidence.json \
-              dist/release-evidence.md \
-              --clobber
-          fi
+          {
+            echo "release_sha=$release_sha"
+            echo "version=$version"
+            echo "tag=$tag"
+            echo "namespace=$namespace"
+            echo "collection=$collection"
+            echo "tarball=$tarball"
+            echo "tarball_sha256=$tarball_sha256"
+          } >>"$GITHUB_OUTPUT"
 
-      - name: Upload release evidence artifact
-        if: always()
-        uses: actions/upload-artifact@v5
+      - name: Persist validated release evidence before publication
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
         with:
-          name: release-evidence
+          name: >-
+            collection-release-evidence-${{ inputs.expected_release_sha }}-${{ github.run_attempt }}
           path: |
+            dist/SHA256SUMS
             dist/release-evidence.json
             dist/release-evidence.md
-          if-no-files-found: ignore
+          if-no-files-found: error
+
+      - name: Create or verify immutable GitHub Release
+        if: inputs.create_github_release == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.LITRELEASEBOT_TOKEN }}
+          RELEASE_SHA: ${{ steps.candidate.outputs.release_sha }}
+          TAG: ${{ steps.candidate.outputs.tag }}
+          TARBALL: ${{ steps.candidate.outputs.tarball }}
+        run: |
+          set -euo pipefail
+
+          bot_login="$(gh api user --jq .login)"
+          if [ "$bot_login" != "litreleasebot" ]; then
+            echo "::error::LITRELEASEBOT_TOKEN must authenticate exactly as litreleasebot."
+            exit 1
+          fi
+          gh auth setup-git
+
+          assert_remote_main() {
+            local remote_main
+            remote_main="$(
+              gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha'
+            )"
+            if [ "$remote_main" != "$RELEASE_SHA" ]; then
+              echo "::error::main moved to ${remote_main} before GitHub publication."
+              exit 1
+            fi
+          }
+
+          if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null; then
+            git fetch --force origin "refs/tags/${TAG}:refs/tags/${TAG}"
+            tag_sha="$(git rev-parse "${TAG}^{commit}")"
+            if [ "$tag_sha" != "$RELEASE_SHA" ]; then
+              echo "::error::Existing ${TAG} points to ${tag_sha}, expected ${RELEASE_SHA}."
+              exit 1
+            fi
+          fi
+
+          assets=("$TARBALL" dist/SHA256SUMS dist/release-evidence.json dist/release-evidence.md)
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            expected_assets="$(printf '%s\n' "${assets[@]##*/}" | sort)"
+            actual_assets="$(gh release view "$TAG" --json assets --jq '.assets[].name' | sort)"
+            if [ "$actual_assets" != "$expected_assets" ]; then
+              echo "::error::Existing ${TAG} release assets differ from the immutable set."
+              diff -u <(printf '%s\n' "$expected_assets") <(printf '%s\n' "$actual_assets")
+              exit 1
+            fi
+            download_dir="$(mktemp -d)"
+            gh release download "$TAG" --dir "$download_dir"
+            for asset in "${assets[@]}"; do
+              if ! cmp -s "$asset" "$download_dir/${asset##*/}"; then
+                echo "::error::Existing ${TAG} asset ${asset##*/} differs byte-for-byte."
+                exit 1
+              fi
+            done
+            echo "GitHub release $TAG already exists with the exact SHA and assets."
+          else
+            assert_remote_main
+            gh release create "$TAG" "${assets[@]}" \
+              --target "$RELEASE_SHA" \
+              --title "$TAG" \
+              --notes-file dist/release-notes.rst
+          fi
+
+          assert_remote_main
+          gh workflow run release-back-sync.yml --ref main -f tag="$TAG"
+
+      - name: Publish or verify exact Ansible Galaxy version
+        if: inputs.publish_galaxy == 'true'
+        env:
+          GALAXY_API_TOKEN: ${{ secrets.ANSIBLE_GALAXY_API_KEY }}
+          GH_TOKEN: ${{ github.token }}
+          NAMESPACE: ${{ steps.candidate.outputs.namespace }}
+          COLLECTION: ${{ steps.candidate.outputs.collection }}
+          VERSION: ${{ steps.candidate.outputs.version }}
+          TARBALL: ${{ steps.candidate.outputs.tarball }}
+          TARBALL_SHA256: ${{ steps.candidate.outputs.tarball_sha256 }}
+          RELEASE_SHA: ${{ steps.candidate.outputs.release_sha }}
+        run: |
+          set -euo pipefail
+
+          assert_remote_main() {
+            local remote_main
+            remote_main="$(
+              gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha'
+            )"
+            if [ "$remote_main" != "$RELEASE_SHA" ]; then
+              echo "::error::main moved to ${remote_main} before Galaxy publication."
+              exit 1
+            fi
+          }
+
+          if [ -z "${GALAXY_API_TOKEN:-}" ]; then
+            echo "::error::ANSIBLE_GALAXY_API_KEY is required when publish_galaxy is true."
+            exit 1
+          fi
+          version_url="https://galaxy.ansible.com/api/v3/plugin/ansible/content/published/collections/index/${NAMESPACE}/${COLLECTION}/versions/${VERSION}/"
+          response="$(mktemp)"
+          status="$(curl --silent --show-error --output "$response" --write-out '%{http_code}' "$version_url")"
+          case "$status" in
+            200)
+              python - "$response" "$VERSION" "$TARBALL_SHA256" <<'PY'
+          import json
+          import sys
+          data = json.load(open(sys.argv[1]))
+          if str(data.get("version", "")) != sys.argv[2]:
+              raise SystemExit("Galaxy returned a mismatched existing version")
+          remote_sha256 = str(data.get("artifact", {}).get("sha256", ""))
+          remote_sha256 = remote_sha256.removeprefix("sha256:").lower()
+          if remote_sha256 != sys.argv[3].lower():
+              raise SystemExit(
+                  "Galaxy existing artifact SHA-256 does not match the local artifact"
+              )
+          PY
+              echo "Ansible Galaxy already contains the exact local artifact for ${NAMESPACE}.${COLLECTION}:${VERSION}."
+              ;;
+            404)
+              assert_remote_main
+              ansible-galaxy collection publish "$TARBALL" --api-key "$GALAXY_API_TOKEN"
+              published=false
+              for attempt in 1 2 3 4 5 6; do
+                status="$(curl --silent --show-error --output "$response" --write-out '%{http_code}' "$version_url")"
+                if [ "$status" = 200 ]; then
+                  published=true
+                  break
+                fi
+                if [ "$status" != 404 ]; then
+                  cat "$response" >&2
+                  echo "::error::Galaxy post-publish lookup returned HTTP ${status}."
+                  exit 1
+                fi
+                sleep "$attempt"
+              done
+              if [ "$published" != true ]; then
+                echo "::error::Galaxy did not expose the published version for verification."
+                exit 1
+              fi
+              python - "$response" "$VERSION" "$TARBALL_SHA256" <<'PY'
+          import json
+          import sys
+          data = json.load(open(sys.argv[1]))
+          if str(data.get("version", "")) != sys.argv[2]:
+              raise SystemExit("Galaxy returned a mismatched published version")
+          remote_sha256 = str(data.get("artifact", {}).get("sha256", ""))
+          remote_sha256 = remote_sha256.removeprefix("sha256:").lower()
+          if remote_sha256 != sys.argv[3].lower():
+              raise SystemExit(
+                  "Galaxy published artifact SHA-256 does not match the local artifact"
+              )
+          PY
+              ;;
+            *)
+              cat "$response" >&2
+              echo "::error::Galaxy version lookup returned HTTP ${status}."
+              exit 1
+              ;;
+          esac

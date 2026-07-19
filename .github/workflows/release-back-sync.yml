@@ -12,65 +12,35 @@ on:
         required: true
 
 permissions:
-  contents: write
-  issues: write
-  pull-requests: write
+  contents: read
 
 jobs:
   back-sync:
     name: Open release back-sync PR
     runs-on: ubuntu-latest
-    env:
-      RELEASE_BOT_APP_ID: ${{ secrets.RELEASE_BOT_APP_ID }}
-      RELEASE_BOT_PRIVATE_KEY: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
 
     steps:
-      - name: Create GitHub App token
-        id: app-token
-        if: ${{ env.RELEASE_BOT_APP_ID != '' && env.RELEASE_BOT_PRIVATE_KEY != '' }}
-        uses: actions/create-github-app-token@v3
-        with:
-          app-id: ${{ env.RELEASE_BOT_APP_ID }}
-          private-key: ${{ env.RELEASE_BOT_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-          repositories: ${{ github.event.repository.name }}
-
-      - name: Resolve release token
-        id: token
-        env:
-          APP_TOKEN: ${{ steps.app-token.outputs.token }}
-          TOKEN: ${{ secrets.LITRELEASEBOT_TOKEN }}
-        run: |
-          set -euo pipefail
-          if [ -n "${APP_TOKEN:-}" ]; then
-            echo "value=$APP_TOKEN" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          if [ -n "${TOKEN:-}" ]; then
-            echo "value=$TOKEN" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          {
-            echo "::error::RELEASE_BOT_APP_ID and RELEASE_BOT_PRIVATE_KEY,"
-            echo "or LITRELEASEBOT_TOKEN, are required to create release"
-            echo "back-sync branches and PRs."
-          }
-          exit 1
-
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7
         with:
-          token: ${{ steps.token.outputs.value }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Open or update release back-sync PR
         env:
-          GH_TOKEN: ${{ steps.token.outputs.value }}
+          GH_TOKEN: ${{ secrets.LITRELEASEBOT_TOKEN }}
           TAG_INPUT: ${{ github.event.inputs.tag }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
+
+          bot_login="$(gh api user --jq .login)"
+          if [ "$bot_login" != "litreleasebot" ]; then
+            echo "::error::LITRELEASEBOT_TOKEN must authenticate exactly as litreleasebot."
+            exit 1
+          fi
+          gh auth setup-git
 
           tag="${RELEASE_TAG:-${TAG_INPUT:-}}"
           if [ -z "$tag" ]; then
@@ -123,8 +93,8 @@ jobs:
             fi
           done
 
-          release_base="$(git rev-parse origin/main^1 2>/dev/null || true)"
-          if [ -n "$release_base" ]; then
+          release_base=""
+          if release_base="$(git rev-parse origin/main^1 2>/dev/null)"; then
             git diff --name-only --diff-filter=D \
               "$release_base" origin/main -- changelogs/fragments/ \
               | xargs -r rm -f
@@ -140,6 +110,7 @@ jobs:
             exit 0
           fi
 
+          gh auth setup-git
           if ! git push --force-with-lease origin "$branch"; then
             existing="$(
               gh pr list \
@@ -161,10 +132,19 @@ jobs:
           if ! gh label list --repo "$REPO" --json name --jq '.[].name' \
             | grep -Fxq skip-changelog
           then
-            gh label create skip-changelog \
-              --repo "$REPO" \
-              --description "Changelog fragment intentionally not required for this PR." \
-              --color "6f42c1" || true
+            label_error="$(mktemp)"
+            if ! gh label create skip-changelog \
+                --repo "$REPO" \
+                --description "Changelog fragment intentionally not required for this PR." \
+                --color "6f42c1" 2>"$label_error"
+            then
+              if ! gh label list --repo "$REPO" --json name --jq '.[].name' \
+                | grep -Fxq skip-changelog
+              then
+                cat "$label_error" >&2
+                exit 1
+              fi
+            fi
           fi
 
           existing="$(

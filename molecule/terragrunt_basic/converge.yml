@@ -5,6 +5,7 @@
 
   vars:
     cluster_id: demo
+    terragrunt_controller_bin_dir: /tmp/wunder/lit-foundational-molecule-bin
     terragrunt_source: "./module"
     terragrunt_plan_file: /tmp/terragrunt.plan
     terragrunt_skip_confirmation: true
@@ -29,9 +30,16 @@
           fi
       changed_when: false
 
+    - name: Create writable controller binary directory
+      ansible.builtin.file:
+        path: "{{ terragrunt_controller_bin_dir }}"
+        state: directory
+        mode: "0700"
+      delegate_to: localhost
+
     - name: Create terragrunt stub on controller (test only)
       ansible.builtin.copy:
-        dest: /usr/local/bin/terragrunt
+        dest: "{{ terragrunt_controller_bin_dir }}/terragrunt"
         mode: "0755"
         content: |
           #!/bin/sh
@@ -41,6 +49,9 @@
           fi
       delegate_to: localhost
       changed_when: false
+
+  environment:
+    PATH: "{{ terragrunt_controller_bin_dir }}:{{ lookup('ansible.builtin.env', 'PATH') }}"
 
   roles:
     - role: lit.foundational.terragrunt

@@ -55,7 +55,9 @@ notes:
   - Set C(vault_id) when more than one identity is loaded so creation cannot silently use the wrong identity.
   - The action requires task-level C(no_log=true) to suppress secret task arguments at every callback verbosity.
   - Plaintext is serialized, encrypted, decrypted, and compared only in controller process memory.
-  - Plaintext and ciphertext each have a fixed 128 MiB safety limit; the limit is not caller-configurable.
+  - Serialized plaintext has a fixed 126 MiB safety limit and Ansible Vault ciphertext has a fixed 512 MiB safety limit.
+  - The plaintext limit includes a conservative margin for the Ansible Vault encoding envelope.
+  - The safety limits are not caller-configurable.
   - Check mode validates an existing document. An absent document reports pending creation without creating a
     directory, serializing the mapping, or invoking Vault encryption.
 author:
@@ -96,7 +98,8 @@ ciphertext_sha256:
 
 
 _EXPECTED_ARGS = frozenset(("path", "document", "vault_id"))
-_MAX_DOCUMENT_BYTES = 128 * 1024 * 1024
+_MAX_PLAINTEXT_BYTES = 126 * 1024 * 1024
+_MAX_CIPHERTEXT_BYTES = 512 * 1024 * 1024
 _VAULT_ID_PATTERN = re.compile(r"[A-Za-z0-9_.-]+\Z", re.ASCII)
 
 
@@ -147,8 +150,8 @@ def _require_task_no_log(task):
 def _new_document_store(vault):
     return _VaultDocumentStore(
         vault,
-        max_ciphertext_bytes=_MAX_DOCUMENT_BYTES,
-        max_plaintext_bytes=_MAX_DOCUMENT_BYTES,
+        max_ciphertext_bytes=_MAX_CIPHERTEXT_BYTES,
+        max_plaintext_bytes=_MAX_PLAINTEXT_BYTES,
     )
 
 

@@ -170,6 +170,29 @@ Collections assume the following tooling:
 - **pre-commit** with shared hooks. The collection hooks are devtools-backed
   and intentionally mirror the PR gates: changelog policy, ansible-lint,
   Molecule light scenarios, and collection smoke build/install.
+- The actionlint and Renovate validation hooks use digest-pinned containers
+  through `scripts/wunder-container-run.sh`. They receive only read-only inputs,
+  run without network access or Linux capabilities, and never receive a
+  container-engine socket.
+- The canonical devtools image is also tag-and-digest pinned. Its wrapper uses
+  a read-only workspace, no network, no sibling-source mounts, and no engine
+  socket by default. `HOME` is a fresh engine-managed tmpfs for every
+  invocation. It is explicitly mounted `exec` for identical Docker and Podman
+  behavior because Molecule stages executable test shims below `HOME`, while
+  `nosuid`, `nodev`, `no-new-privileges`, and capability dropping retain the
+  surrounding isolation. Ansible plugins, configuration, and other
+  home-directory state are never reused from another run or repository. No
+  persistent whole-home cache is mounted.
+- A Docker-compatible engine socket grants host-control-equivalent authority:
+  code with socket access can ask the engine to launch containers and expose
+  host resources available to that engine. Enable it only for trusted code.
+  Molecule explicitly opts into this socket access, bridge networking, and only
+  the `CHOWN`, `DAC_OVERRIDE`, and `FOWNER` Linux capabilities for its nested
+  container lifecycle. The controller runs as container UID 0 so those narrow
+  capabilities can manage owner-only service directories and exercise
+  production ownership contracts. Rootless Podman maps that UID to the invoking
+  host user; hosted Docker receives a read-only checkout, preventing root-owned
+  workspace artifacts or cleanup failures. Privileged mode remains disabled.
 - **ee-wunder-devtools-ubi9** container as the canonical dev/CI environment:
   - Terraform, tflint, terraform-docs,
   - ansible-core, ansible-lint, Molecule,
