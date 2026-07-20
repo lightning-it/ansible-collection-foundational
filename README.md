@@ -21,11 +21,11 @@ Publishing targets: `github-release, ansible-galaxy`.
 
 ## Supported and Tested Platforms
 
-| Platform / Product | Status | Validation |
-|---|---:|---|
-| ubuntu-latest | Supported | Molecule |
-| ansible-core | Tested where applicable | Molecule |
-| molecule | Tested where applicable | Molecule |
+| Platform / Product |                  Status | Validation |
+| ------------------ | ----------------------: | ---------- |
+| ubuntu-latest      |               Supported | Molecule   |
+| ansible-core       | Tested where applicable | Molecule   |
+| molecule           | Tested where applicable | Molecule   |
 
 <!-- END LIT_SHARED_RELEASE_MODEL -->
 
