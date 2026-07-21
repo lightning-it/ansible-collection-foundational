@@ -48,7 +48,7 @@ jobs:
       )
     steps:
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -63,10 +63,35 @@ jobs:
           python -m pip install --disable-pip-version-check --no-input
           ansible-core==2.18.13 antsibull-changelog==0.35.1 PyYAML==6.0.3
 
+      - name: Mint release automation App token
+        id: release-app
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.0.0
+        with:
+          client-id: ${{ vars.RELEASE_AUTOMATION_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_AUTOMATION_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Resolve release automation App bot identity
+        id: release-bot
+        env:
+          APP_SLUG: ${{ steps.release-app.outputs.app-slug }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          bot_json="$(gh api "users/${APP_SLUG}%5Bbot%5D")"
+          login="$(jq -r '.login // ""' <<<"$bot_json")"
+          bot_id="$(jq -r '.id // ""' <<<"$bot_json")"
+          if [ "$login" != "${APP_SLUG}[bot]" ] || ! [[ "$bot_id" =~ ^[0-9]+$ ]]; then
+            echo "::error::Unable to resolve the release automation App bot identity."
+            exit 1
+          fi
+          echo "login=$login" >>"$GITHUB_OUTPUT"
+          echo "email=${bot_id}+${login}@users.noreply.github.com" >>"$GITHUB_OUTPUT"
+
       - name: Prepare release branch
         id: prepare-release
         env:
-          GH_TOKEN: ${{ secrets.LITRELEASEBOT_TOKEN }}
+          GH_TOKEN: ${{ steps.release-app.outputs.token }}
           VERSION_INPUT: ${{ github.event.inputs.version }}
           BASE_BRANCH_INPUT: ${{ github.event.inputs.base_branch }}
           TARGET_BRANCH_INPUT: ${{ github.event.inputs.target_branch }}
@@ -76,9 +101,9 @@ jobs:
         run: |
           set -euo pipefail
 
-          bot_login="$(gh api user --jq .login)"
-          if [ "$bot_login" != "litreleasebot" ]; then
-            echo "::error::LITRELEASEBOT_TOKEN must authenticate exactly as litreleasebot."
+          bot_login="$(gh api "users/lightning-it-release-automation%5Bbot%5D" --jq .login)"
+          if [ "$bot_login" != "lightning-it-release-automation[bot]" ]; then
+            echo "::error::Release App identity mismatch: expected lightning-it-release-automation[bot]."
             exit 1
           fi
           gh auth setup-git
@@ -105,8 +130,8 @@ jobs:
             exit 1
           fi
 
-          git config user.name "litreleasebot"
-          git config user.email "litreleasebot@users.noreply.github.com"
+          git config user.name "lightning-it-release-automation[bot]"
+          git config user.email "307565056+lightning-it-release-automation[bot]@users.noreply.github.com"
           git fetch origin "$BASE_BRANCH" "$TARGET_BRANCH"
           git switch -C release-prepare-base "origin/$BASE_BRANCH"
 
