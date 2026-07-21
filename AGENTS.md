@@ -603,6 +603,32 @@ Example:
 
 ## 8. Molecule Standards
 
+### 8.0 Test Ownership Boundary (Mandatory)
+
+Collection repositories own reusable role implementation and fast, repository-local validation. Keep Molecule
+scenarios here only when they are deterministic, secret-free, isolated to one collection, and suitable for the
+standard pull-request runner.
+
+`lightning-it/modulix-validation` is the public validation repository and owns execution and orchestration for tests
+that require any of the following:
+
+1. real Incus virtual machines or other persistent infrastructure;
+2. self-hosted or protected runners;
+3. private images, subscriptions, credentials, licenses, DNS, or environment-specific inventory;
+4. cross-collection, cross-service, or end-to-end composition;
+5. Heavy, live, nightly, upgrade, disaster-recovery, or Application Acceptance lifecycles; or
+6. runtime and cleanup budgets that are unsuitable for the normal collection pull-request gate.
+
+Do not add such orchestration to a collection workflow. The collection MAY retain a reusable, environment-neutral
+scenario or helper close to the role, but `modulix-validation` MUST own its matrix, schedule, protected
+environment, secrets, runner contract, lifecycle finalizer, and evidence collection. A collection PR gate may call a
+reusable workflow from `modulix-validation` when that validation is required for release eligibility.
+
+The `-lit` suffix is reserved for private repositories. Do not use it for this public validation repository.
+
+Names such as `*_heavy`, `*-application-acceptance`, `*_live_*`, and `.molecule-mode: protected-incus` are routing
+signals, not permission to run expensive infrastructure directly in the collection's ordinary GitHub Actions job.
+
 ### 8.1 Location
 
 Molecule scenarios MUST live at repository root under `molecule/`.
