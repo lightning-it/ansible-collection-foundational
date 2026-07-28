@@ -139,7 +139,7 @@ jobs:
       (github.event_name == 'push' &&
        (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main'))
     needs: build-candidate
-    uses: lightning-it/modulix-validation/.github/workflows/collection-molecule-profile.yml@c1d10884dd80357698242996502ea81f2eadefc7
+    uses: lightning-it/modulix-validation/.github/workflows/collection-molecule-profile.yml@a3e114b4b49eecfd74cd3981a323699ab3124114
     with:
       profile: heavy
       matrix-json: >-
@@ -152,19 +152,19 @@ jobs:
            "instance_type":"container",
            "roles":["hetzner_cloud"],
            "success_marker":"assertions/hetzner-cloud-incus.passed"},
-          {"runner":"ubuntu-latest",
+          {"runner":["self-hosted","linux","x64"],
            "scenario":"secret-resolver-vault-integration_heavy",
            "target":"vault-dev",
            "infrastructure":"local",
            "roles":["secret_resolver"],
            "success_marker":"assertions/secret-resolver-vault.passed"},
-          {"runner":"ubuntu-latest",
+          {"runner":["self-hosted","linux","x64"],
            "scenario":"hetzner-robot-live_heavy",
            "target":"hetzner-robot-live",
            "infrastructure":"external",
            "roles":["hetzner_robot_cac"],
            "success_marker":"assertions/hetzner-robot-live.passed"},
-          {"runner":"ubuntu-latest",
+          {"runner":["self-hosted","linux","x64"],
            "scenario":"hetzner_cloud_live_heavy",
            "target":"hetzner-cloud-live",
            "infrastructure":"external",
