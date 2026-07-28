@@ -186,3 +186,14 @@
           - secret_resolver_check_mode_document.json.data.metadata.version == 1
         quiet: true
       no_log: true
+
+    - name: Record successful meaningful Heavy verification
+      ansible.builtin.copy:
+        content: "secret-resolver-vault verified\n"
+        dest: >-
+          {{
+            lookup('ansible.builtin.env', 'MOLECULE_TEST_SUCCESS_MARKER')
+            | default('/tmp/secret-resolver-vault-heavy.passed', true)
+          }}
+        mode: "0600"
+      no_log: true
