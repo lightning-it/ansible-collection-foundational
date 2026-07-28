@@ -51,17 +51,12 @@ Their protected execution is owned exclusively by the commit-pinned reusable
 workflow in `lightning-it/modulix-validation`, in accordance with the accepted
 [Modulix test execution ownership ADR](https://wiki.cloud.l-it.io/wiki/spaces/LIT/pages/2886566105).
 
-The required central matrix currently contains the executable Incus floating-IP
-scenario and the disposable local Vault integration scenario. Each must write a
-post-assertion success marker; a skipped or incomplete scenario therefore
-cannot pass. The exact candidate archive and source SHA are recorded in
-normalized evidence.
-
-The `hetzner-robot-live_heavy` and `hetzner_cloud_live_heavy` scenarios remain
-versioned here but are not release-required until the protected environment has
-the documented narrowly scoped Hetzner credentials. They are never executed by
-a collection-owned workflow and must not be represented as passing through a
-skip.
+The required central matrix contains every routed Heavy scenario: Incus
+floating-IP, disposable Vault integration, read-only Hetzner Robot audit, and
+disposable Hetzner Cloud infrastructure. Each writes a post-assertion success
+marker; a missing protected credential, skipped scenario, or incomplete
+verification therefore cannot pass. The exact candidate archive and source SHA
+are recorded in normalized evidence.
 
 ## Interpreting GitHub Actions
 
