@@ -1,0 +1,3 @@
+---
+trivial:
+  - Document the governing enterprise ADRs and assign repository ownership for their enforcement.
