@@ -187,13 +187,16 @@
         quiet: true
       no_log: true
 
+    - name: Require centrally provided Heavy success marker
+      ansible.builtin.assert:
+        that:
+          - lookup('ansible.builtin.env', 'MOLECULE_TEST_SUCCESS_MARKER') | length > 0
+        fail_msg: MOLECULE_TEST_SUCCESS_MARKER must be provided by central orchestration.
+      no_log: true
+
     - name: Record successful meaningful Heavy verification
       ansible.builtin.copy:
         content: "secret-resolver-vault verified\n"
-        dest: >-
-          {{
-            lookup('ansible.builtin.env', 'MOLECULE_TEST_SUCCESS_MARKER')
-            | default('/tmp/secret-resolver-vault-heavy.passed', true)
-          }}
+        dest: "{{ lookup('ansible.builtin.env', 'MOLECULE_TEST_SUCCESS_MARKER') }}"
         mode: "0600"
       no_log: true
