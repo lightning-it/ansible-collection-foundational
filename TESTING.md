@@ -50,6 +50,8 @@ Heavy scenarios and their component assertions remain in this repository.
 Their protected execution is owned exclusively by the commit-pinned reusable
 workflow in `lightning-it/modulix-validation`, in accordance with the accepted
 [Modulix test execution ownership ADR](https://wiki.cloud.l-it.io/wiki/spaces/LIT/pages/2886566105).
+The workflow pin must resolve to protected long-lived branch history so it
+remains available after rollout branches are deleted.
 
 The required central matrix contains every routed Heavy scenario: Incus
 floating-IP, disposable Vault integration, read-only Hetzner Robot audit, and
