@@ -2,6 +2,19 @@
 
 This repository follows the Lightning IT shared OpenSSF readiness model generated from `lightning-it/shared-assets-lit`.
 
+## Governing Decisions And Standards
+
+- [Repository Topology and Shared Engineering Assets](https://lit.atlassian.net/wiki/spaces/LIT/pages/2878636297)
+- [Branching, Review and Release Governance](https://lit.atlassian.net/wiki/spaces/LIT/pages/2878603438)
+- [Mandatory CI Quality and Artifact Assurance](https://lit.atlassian.net/wiki/spaces/LIT/pages/2878636340)
+- [Distributed Test Ownership and Central Heavy Execution](https://lit.atlassian.net/wiki/spaces/LIT/pages/2886566105)
+- [ModuLix Lifecycle, Versioning and Release Evidence](https://lit.atlassian.net/wiki/spaces/LIT/pages/2886926524)
+- [Repository and Secure SDLC Standard](https://lit.atlassian.net/wiki/spaces/LIT/pages/2887778335)
+- [Technology Engineering Standards](https://lit.atlassian.net/wiki/spaces/LIT/pages/2886762765)
+- [Quality Gates and Definition of Done](https://lit.atlassian.net/wiki/spaces/LIT/pages/2887123058)
+- [OpenSSF and Software Supply Chain Assurance](https://lit.atlassian.net/wiki/spaces/LIT/pages/2887024876)
+- [Compliance Gaps and Migration Roadmap](https://lit.atlassian.net/wiki/spaces/LIT/pages/2886926554)
+
 ## Repository
 
 - Repository: `ansible-collection-foundational`
@@ -47,3 +60,5 @@ ansible-lint, yamllint, changelog checks, collection build/smoke validation, and
 ## Exceptions
 
 Repository-specific exceptions must be documented in this file or in `.lit/repository.yml`. Exceptions must not expose secrets, private infrastructure details, customer data, or credential-bearing examples.
+
+The current Galaxy release path records and remotely verifies the immutable collection tarball SHA-256, but does not yet attach a CycloneDX SBOM, signed checksum bundle, or GitHub provenance attestation. Migration target: the verified `ansible-collection-supplementary` release-evidence model. Exception owner: `@lightning-it/ent:release`; compensating controls: protected exact-SHA release flow, candidate build/install tests, Galaxy post-publish digest verification, and immutable GitHub Release assets; review/expiry: `2026-10-31`.

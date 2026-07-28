@@ -1,0 +1,6 @@
+* @lightning-it/ent:release
+/.github/ @lightning-it/ent:release
+/galaxy.yml @lightning-it/ent:release
+/meta/ @lightning-it/ent:release
+/roles/ @lightning-it/ent:release
+/scripts/ @lightning-it/ent:release
