@@ -107,3 +107,11 @@
         quiet: true
       changed_when: false
       no_log: true
+
+    - name: Record successful meaningful Heavy verification
+      ansible.builtin.copy:
+        dest: "{{ lookup('env', 'MOLECULE_TEST_SUCCESS_MARKER') }}"
+        mode: "0600"
+        content: "hetzner-cloud-live verified\n"
+      delegate_to: localhost
+      no_log: true

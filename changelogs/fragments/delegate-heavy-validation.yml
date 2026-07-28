@@ -1,0 +1,6 @@
+---
+minor_changes:
+  - >-
+    Delegate required Heavy execution to the pinned ``modulix-validation``
+    reusable workflow with an immutable candidate, meaningful success markers,
+    owner-scoped cleanup, and normalized evidence.
