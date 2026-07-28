@@ -139,7 +139,7 @@ jobs:
       (github.event_name == 'push' &&
        (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main'))
     needs: build-candidate
-    uses: lightning-it/modulix-validation/.github/workflows/collection-molecule-profile.yml@f95f900d341d260f8fd6c9b5ab2b3b3b57bd38fa
+    uses: lightning-it/modulix-validation/.github/workflows/collection-molecule-profile.yml@c1d10884dd80357698242996502ea81f2eadefc7
     with:
       profile: heavy
       matrix-json: >-
