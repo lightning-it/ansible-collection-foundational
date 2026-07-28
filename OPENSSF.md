@@ -60,5 +60,3 @@ ansible-lint, yamllint, changelog checks, collection build/smoke validation, and
 ## Exceptions
 
 Repository-specific exceptions must be documented in this file or in `.lit/repository.yml`. Exceptions must not expose secrets, private infrastructure details, customer data, or credential-bearing examples.
-
-The current Galaxy release path records and remotely verifies the immutable collection tarball SHA-256, but does not yet attach a CycloneDX SBOM, signed checksum bundle, or GitHub provenance attestation. Migration target: the verified `ansible-collection-supplementary` release-evidence model. Exception owner: `@lightning-it/ent:release`; compensating controls: protected exact-SHA release flow, candidate build/install tests, Galaxy post-publish digest verification, and immutable GitHub Release assets; review/expiry: `2026-10-31`.
