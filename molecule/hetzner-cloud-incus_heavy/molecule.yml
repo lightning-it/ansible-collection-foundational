@@ -7,17 +7,17 @@ driver:
   name: default
 
 platforms:
-  - name: lit-hetzner-cloud-floating-ip-ct
-    image: images:ubuntu/24.04
-    type: container
-    network: lit-hc-fip-net
-    owner: lit-foundational-hetzner-cloud-incus-heavy
+  - name: "${MOLECULE_TEST_INSTANCE:-lit-hetzner-cloud-floating-ip-ct}"
+    image: "${MOLECULE_TEST_IMAGE:-images:ubuntu/24.04}"
+    type: "${MOLECULE_TEST_INSTANCE_TYPE:-container}"
+    network: "${MOLECULE_TEST_NETWORK:-lit-hc-fip-net}"
+    owner: "${MOLECULE_TEST_OWNER:-lit-foundational-hetzner-cloud-incus-heavy}"
 
 provisioner:
   name: ansible
   inventory:
     host_vars:
-      lit-hetzner-cloud-floating-ip-ct:
+      "${MOLECULE_TEST_INSTANCE:-lit-hetzner-cloud-floating-ip-ct}":
         ansible_connection: community.general.incus
         ansible_python_interpreter: /usr/bin/python3
   playbooks:
