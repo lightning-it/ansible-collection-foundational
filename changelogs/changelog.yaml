@@ -181,3 +181,14 @@ releases:
       - ci-read-only-execution-environment.yml
       - vmware-vsphere-folder-task-entry-points.yml
     release_date: '2026-07-19'
+  1.33.0:
+    changes:
+      minor_changes:
+        - Delegate required Heavy execution to the pinned ``modulix-validation`` reusable
+          workflow with an immutable candidate, meaningful success markers, owner-scoped
+          cleanup, and normalized evidence.
+    fragments:
+      - adr-assurance.yml
+      - delegate-heavy-validation.yml
+      - shared-assets-sync.yml
+    release_date: '2026-07-29'
