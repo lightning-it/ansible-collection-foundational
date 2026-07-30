@@ -4,6 +4,14 @@ Lightning IT Collection Release Notes Release Notes
 
 .. contents:: Topics
 
+v1.33.0
+=======
+
+Minor Changes
+-------------
+
+- Delegate required Heavy execution to the pinned ``modulix-validation`` reusable workflow with an immutable candidate, meaningful success markers, owner-scoped cleanup, and normalized evidence.
+
 v1.32.0
 =======
 
