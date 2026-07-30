@@ -130,9 +130,13 @@ jobs:
             git commit --amend --no-edit
           fi
 
-          if git diff --quiet origin/develop...HEAD; then
-            echo "No release back-sync changes to push."
-            exit 0
+          if [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/develop)" ]; then
+            echo "::error::Release back-sync did not create an ancestry commit."
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor origin/main HEAD; then
+            echo "::error::Release back-sync head does not contain current main ancestry."
+            exit 1
           fi
 
           gh auth setup-git
