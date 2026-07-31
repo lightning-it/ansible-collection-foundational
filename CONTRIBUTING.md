@@ -186,13 +186,13 @@ Collections assume the following tooling:
 - A Docker-compatible engine socket grants host-control-equivalent authority:
   code with socket access can ask the engine to launch containers and expose
   host resources available to that engine. Enable it only for trusted code.
-  Molecule explicitly opts into this socket access, bridge networking, and only
-  the `CHOWN`, `DAC_OVERRIDE`, and `FOWNER` Linux capabilities for its nested
-  container lifecycle. The controller runs as container UID 0 so those narrow
-  capabilities can manage owner-only service directories and exercise
-  production ownership contracts. Rootless Podman maps that UID to the invoking
-  host user; hosted Docker receives a read-only checkout, preventing root-owned
-  workspace artifacts or cleanup failures. Privileged mode remains disabled.
+  Molecule explicitly opts into this socket access, bridge networking, and a
+  read-write workspace and container root filesystem for its nested test
+  lifecycle. The controller runs with the invoking host identity (or rootless
+  Podman's equivalent user-namespace mapping), so generated workspace artifacts
+  remain host-owned. It receives no added Linux capabilities, container-root
+  policy, or privileged mode; production ownership contracts are exercised
+  inside the nested test containers instead.
 - **ee-wunder-devtools-ubi9** container as the canonical dev/CI environment:
   - Terraform, tflint, terraform-docs,
   - ansible-core, ansible-lint, Molecule,
