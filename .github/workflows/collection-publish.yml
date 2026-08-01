@@ -460,3 +460,31 @@ jobs:
               exit 1
               ;;
           esac
+
+      - name: Mint central validation dispatch token
+        id: transition-app
+        if: inputs.publish_galaxy == 'true'
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
+        with:
+          client-id: ${{ vars.RELEASE_AUTOMATION_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_AUTOMATION_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: modulix-validation
+          permission-actions: write
+
+      - name: Dispatch transitional central validation
+        if: inputs.publish_galaxy == 'true'
+        env:
+          GH_TOKEN: ${{ steps.transition-app.outputs.token }}
+          SOURCE_REPOSITORY: ${{ github.repository }}
+          SOURCE_SHA: ${{ steps.candidate.outputs.release_sha }}
+          VERSION: ${{ steps.candidate.outputs.version }}
+          ARTIFACT_NAME: ${{ steps.candidate.outputs.tarball }}
+          ARTIFACT_SHA256: ${{ steps.candidate.outputs.tarball_sha256 }}
+        run: |
+          python scripts/dispatch-transition-validation.py \
+            --source-repository "$SOURCE_REPOSITORY" \
+            --source-sha "$SOURCE_SHA" \
+            --version "$VERSION" \
+            --artifact-name "${ARTIFACT_NAME##*/}" \
+            --artifact-sha256 "$ARTIFACT_SHA256"
