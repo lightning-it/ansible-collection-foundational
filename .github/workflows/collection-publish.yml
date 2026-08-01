@@ -487,4 +487,5 @@ jobs:
             --source-sha "$SOURCE_SHA" \
             --version "$VERSION" \
             --artifact-name "${ARTIFACT_NAME##*/}" \
-            --artifact-sha256 "$ARTIFACT_SHA256"
+            --artifact-sha256 "$ARTIFACT_SHA256" \
+            --ref main
