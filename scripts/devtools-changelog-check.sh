@@ -19,15 +19,19 @@ bash scripts/wunder-devtools-ee.sh bash -lc '
   }
 
   changed=""
+  comparison_base=""
   if [ -n "${BASE_SHA:-}" ] && [ -n "${HEAD_SHA:-}" ]; then
+    comparison_base="$BASE_SHA"
     changed="$(diff_names "$BASE_SHA" "$HEAD_SHA")"
   elif [ -n "${PRE_COMMIT_FROM_REF:-}" ] && [ -n "${PRE_COMMIT_TO_REF:-}" ]; then
+    comparison_base="$PRE_COMMIT_FROM_REF"
     changed="$(diff_names "$PRE_COMMIT_FROM_REF" "$PRE_COMMIT_TO_REF")"
   else
     base_ref="${CHANGELOG_BASE_REF:-origin/develop}"
     if git rev-parse --verify "$base_ref" >/dev/null 2>&1; then
       merge_base="$(git merge-base "$base_ref" HEAD)"
       if [ -n "${merge_base:-}" ]; then
+        comparison_base="$merge_base"
         changed="$(diff_names "$merge_base" HEAD)"
       fi
     fi
@@ -58,6 +62,7 @@ bash scripts/wunder-devtools-ee.sh bash -lc '
   generated_re="^(CHANGELOG\\.(md|rst)|changelogs/(changelog|\\.plugin-cache)\\.yaml)$"
   is_release_branch=false
   is_release_promotion=false
+  is_initial_collection_bootstrap=false
   head_ref="${GITHUB_HEAD_REF:-$(git rev-parse --abbrev-ref HEAD)}"
   base_ref="${GITHUB_BASE_REF:-}"
 
@@ -67,12 +72,27 @@ bash scripts/wunder-devtools-ee.sh bash -lc '
   if [[ "$head_ref" == develop && "$base_ref" == main ]]; then
     is_release_promotion=true
   fi
+  if [ -n "$comparison_base" ] \
+    && ! git cat-file -e "$comparison_base:galaxy.yml" 2>/dev/null \
+    && grep -Fxq "galaxy.yml" <<<"$changed" \
+    && grep -Fxq "changelogs/changelog.yaml" <<<"$changed"; then
+    is_initial_collection_bootstrap=true
+  fi
 
-  if grep -E "$generated_re" <<<"$changed"; then
-    if [ "$is_release_branch" != "true" ] && [ "$is_release_promotion" != "true" ]; then
+  generated_changes="$(grep -E "$generated_re" <<<"$changed" || true)"
+  if [ "$is_initial_collection_bootstrap" = "true" ]; then
+    generated_changes="$(grep -Fxv "changelogs/changelog.yaml" <<<"$generated_changes" || true)"
+  fi
+  if [ -n "$generated_changes" ]; then
+    if [ "$is_release_branch" != "true" ] \
+      && [ "$is_release_promotion" != "true" ]; then
       echo "::error::Generated changelog files may only be changed by release/vX.Y.Z or release back-sync PRs."
       exit 1
     fi
+  fi
+
+  if [ "$is_initial_collection_bootstrap" = "true" ]; then
+    echo "Initial collection bootstrap may initialize the generated changelog index."
   fi
 
   if [ "$is_release_branch" = "true" ]; then
