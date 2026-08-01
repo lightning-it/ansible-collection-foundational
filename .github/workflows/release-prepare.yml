@@ -183,6 +183,8 @@ jobs:
           echo "Preparing release PR for v${VERSION} from ${BASE_BRANCH} to ${TARGET_BRANCH}."
 
           git switch -C "$RELEASE_BRANCH" "origin/$BASE_BRANCH"
+          RELEASE_BASE_SHA="$(git rev-parse HEAD)"
+          export RELEASE_BASE_SHA
 
           python - <<'PY'
           import os
@@ -237,6 +239,29 @@ jobs:
                       explicit_start=True,
                   )
               )
+          PY
+
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          payload = {
+              "schema_version": 1,
+              "repository": os.environ["GITHUB_REPOSITORY"],
+              "base_sha": os.environ["RELEASE_BASE_SHA"],
+              "next_version": os.environ["VERSION"],
+              "preparer": {
+                  "login": "lightning-it-release-automation[bot]",
+              },
+              "workflow": {
+                  "source_sha": os.environ["RELEASE_BASE_SHA"],
+              },
+          }
+          Path("changelogs/release-preparation.json").write_text(
+              json.dumps(payload, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
           PY
 
           ansible-galaxy collection build --force
