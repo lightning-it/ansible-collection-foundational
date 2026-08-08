@@ -53,7 +53,12 @@ If generic guidance conflicts with repository behavior, you MUST prefer reposito
    16. `scripts/devtools-molecule.sh`
    17. `scripts/wunder-devtools-ee.sh`
    18. `.github/workflows/shared-assets-guarded-automerge.yml`
-5. Repo-local exceptions MUST be explicit in the sync workflow and documented in the repository.
+   19. `scripts/security-release-intake.py`
+   20. `.github/workflows/security-release-intake.yml`
+5. The Security intake files in items 19 and 20 are MLX-90 Security-only.
+   They MUST NOT remove the human-controlled checkpoint for normal
+   `develop` to `main` promotions.
+6. Repo-local exceptions MUST be explicit in the sync workflow and documented in the repository.
 
 ## 2. Repository Baseline (This Repo)
 
