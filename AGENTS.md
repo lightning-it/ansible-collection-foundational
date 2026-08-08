@@ -261,7 +261,14 @@ The standard branch and release model is:
 - Major updates require manual approval.
 - `main` is the stable release branch.
 - Promotion from `develop` to `main` must happen through a pull request.
-- Promotion pull requests must remain a human-visible manual merge checkpoint after required checks pass.
+- Promotion pull requests remain a human-visible manual checkpoint after all
+  required checks pass.
+- In `ansible-collection-supplementary`, that checkpoint is an exact-head
+  protected human environment approval; a manual merge click alone is not the
+  approval record. Only an exact App-authored, evidence-bound MLX-90 Security
+  Release may use the dedicated reviewer-free authorization environment. It
+  remains subject to every independent Security and branch gate and receives
+  no bypass.
 - Do not direct-push from `develop` to `main`.
 - Collection release PRs are created automatically from `release/vX.Y.Z` branches after `main` receives unreleased
   changelog fragments.
