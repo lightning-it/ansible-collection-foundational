@@ -57,17 +57,16 @@ If generic guidance conflicts with repository behavior, you MUST prefer reposito
    20. `.github/workflows/security-release-intake.yml`
    21. `scripts/security-release-dispatch.py`
    22. `.github/workflows/security-release-dispatch.yml`
-   23. `.lit/push-ready-secret-fixtures.json`
-   24. `docs/development/push-ready-secret-fixtures.md`
-   25. `tests/unit/test_security_release_request_dispatch.py`
-5. The Security intake and dispatch files in items 19 through 22, the temporary fixture-policy files in items
-   23 and 24, and the dispatch contract assertion in item 25 are supplementary-only MLX-90 Security assets.
+   23. `tests/unit/test_security_release_request_dispatch.py`
+5. The Security intake and dispatch files in items 19 through 22 and the dispatch contract assertion in item 23
+   are supplementary-only MLX-90 Security assets.
    Generic collection synchronization MUST exclude them;
    only the narrow `ansible-collection-supplementary` enterprise sync may
    install them. They MUST NOT remove the human-controlled checkpoint for
-   normal `develop` to `main` promotions. The fixture manifest MUST match only
-   unchanged synthetic lines at exact target positions, MUST NOT weaken a
-   scanner, and MUST be retired through the same guarded sync after cleanup.
+   normal `develop` to `main` promotions. The retired temporary paths
+   `.lit/push-ready-secret-fixtures.json` and
+   `docs/development/push-ready-secret-fixtures.md` MUST remain absent after
+   the guarded cleanup sync and MUST NOT be recreated.
 6. Repo-local exceptions MUST be explicit in the sync workflow and documented in the repository.
 
 ## 2. Repository Baseline (This Repo)
