@@ -15,7 +15,7 @@ from tests.unit.plugins.action.onepassword_approval_support import (
 )
 
 
-ACCOUNT_ID = "a" * 26
+ACCOUNT_ID = "A" * 26
 VAULT_ID = "v" * 26
 ITEM_ID = "i" * 26
 ITEM_VERSION = 1
@@ -32,7 +32,7 @@ PUBLIC_KEY = "ssh-ed25519 {0} recovery@test".format(
 FINGERPRINT = "SHA256:{0}".format(
     base64.b64encode(hashlib.sha256(KEY_BLOB).digest()).decode("ascii").rstrip("=")
 )
-USER_UUID = "u" * 26
+USER_UUID = "U" * 26
 
 
 def _arguments(**overrides):

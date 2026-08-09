@@ -18,13 +18,13 @@ from tests.unit.plugins.action.onepassword_approval_support import (
 )
 
 
-ACCOUNT_ID = "a" * 26
+ACCOUNT_ID = "A" * 26
 VAULT_ID = "v" * 26
 PASSWORD_ITEM_ID = "p" * 26
 PASSWORD_ITEM_VERSION = 1
 SSH_ITEM_ID = "i" * 26
 SSH_ITEM_VERSION = 1
-USER_UUID = "u" * 26
+USER_UUID = "U" * 26
 SUBJECT = "host01.example.test"
 SECRET = b"S" * 64
 PUBLIC_KEY = (

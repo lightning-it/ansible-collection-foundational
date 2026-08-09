@@ -16,7 +16,7 @@ from ansible.plugins.action import ActionBase
 from ._onepassword_boundary import (
     claim_approval,
     normalize_approval,
-    normalize_object_id_list,
+    normalize_user_uuid_list,
     normalize_sha256,
     safe_approval_metadata,
 )
@@ -127,9 +127,9 @@ EXAMPLES = r"""
     cli_path: /usr/local/bin/op
     cli_sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
     cli_version: 2.38.1
-    account_id: aaaaaaaaaaaaaaaaaaaaaaaaaa
+    account_id: AAAAAAAAAAAAAAAAAAAAAAAAAA
     account_sign_in_address: example.1password.com
-    authorized_user_uuids: [oooooooooooooooooooooooooo]
+    authorized_user_uuids: [OOOOOOOOOOOOOOOOOOOOOOOOOO]
     vault_id: vvvvvvvvvvvvvvvvvvvvvvvvvv
     user_uuid: uuuuuuuuuuuuuuuuuuuuuuuuuu
     user_email: custodian@example.com
@@ -195,7 +195,8 @@ _EXPECTED_ARGS = frozenset(
         "approval",
     )
 )
-_OBJECT_ID_PATTERN = re.compile(r"[a-z0-9]{26}\Z", re.ASCII)
+_ACCOUNT_USER_UUID_PATTERN = re.compile(r"[A-Z0-9]{26}\Z", re.ASCII)
+_VAULT_ID_PATTERN = re.compile(r"[a-z0-9]{26}\Z", re.ASCII)
 _VERSION_PATTERN = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+\Z", re.ASCII)
 _HOST_PATTERN = re.compile(
     r"[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?\Z",
@@ -254,20 +255,20 @@ def _normalize_arguments(args):
     if not isinstance(cli_version, str) or not _VERSION_PATTERN.fullmatch(cli_version):
         _fail("cli_version must be an exact semantic version.")
     cli_sha256 = normalize_sha256(args.get("cli_sha256"), "cli_sha256")
-    authorized_user_uuids = normalize_object_id_list(
+    authorized_user_uuids = normalize_user_uuid_list(
         args.get("authorized_user_uuids"), "authorized_user_uuids"
     )
 
     account_id = _plain_text(args.get("account_id"))
     vault_id = _plain_text(args.get("vault_id"))
     user_uuid = _plain_text(args.get("user_uuid"))
-    for name, value in (
-        ("account_id", account_id),
-        ("vault_id", vault_id),
-        ("user_uuid", user_uuid),
-    ):
-        if not isinstance(value, str) or not _OBJECT_ID_PATTERN.fullmatch(value):
-            _fail("{0} must be an exact 1Password object ID.".format(name))
+    for name, value in (("account_id", account_id), ("user_uuid", user_uuid)):
+        if not isinstance(value, str) or not _ACCOUNT_USER_UUID_PATTERN.fullmatch(
+            value
+        ):
+            _fail("{0} must be an exact 1Password UUID.".format(name))
+    if not isinstance(vault_id, str) or not _VAULT_ID_PATTERN.fullmatch(vault_id):
+        _fail("vault_id must be an exact 1Password vault ID.")
 
     sign_in_address = _plain_text(args.get("account_sign_in_address"))
     if not isinstance(sign_in_address, str) or not _HOST_PATTERN.fullmatch(
@@ -347,7 +348,7 @@ def _row_uuid(row, context):
         not identifiers
         or any(not isinstance(identifier, str) for identifier in identifiers)
         or len(set(identifiers)) != 1
-        or not _OBJECT_ID_PATTERN.fullmatch(identifiers[0])
+        or not _ACCOUNT_USER_UUID_PATTERN.fullmatch(identifiers[0])
     ):
         _fail("1Password returned invalid {0} identity metadata.".format(context))
     return identifiers[0]
@@ -410,7 +411,7 @@ class _OnePasswordVaultCoManagerStore:
         operator_user_uuid = identity.get("user_uuid")
         if (
             not isinstance(operator_user_uuid, str)
-            or not _OBJECT_ID_PATTERN.fullmatch(operator_user_uuid)
+            or not _ACCOUNT_USER_UUID_PATTERN.fullmatch(operator_user_uuid)
             or operator_user_uuid not in config["authorized_user_uuids"]
         ):
             _fail("The signed-in 1Password operator is not authorized for this action.")

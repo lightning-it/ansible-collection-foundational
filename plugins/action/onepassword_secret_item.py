@@ -18,7 +18,7 @@ from ansible.plugins.action import ActionBase
 from ._onepassword_boundary import (
     claim_approval,
     normalize_approval,
-    normalize_object_id_list,
+    normalize_user_uuid_list,
     normalize_sha256,
     safe_approval_metadata,
     trusted_executable,
@@ -170,9 +170,9 @@ EXAMPLES = r"""
     cli_path: /usr/local/bin/op
     cli_sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
     cli_version: 2.38.1
-    account_id: aaaaaaaaaaaaaaaaaaaaaaaaaa
+    account_id: AAAAAAAAAAAAAAAAAAAAAAAAAA
     account_sign_in_address: example.1password.com
-    authorized_user_uuids: [uuuuuuuuuuuuuuuuuuuuuuuuuu]
+    authorized_user_uuids: [UUUUUUUUUUUUUUUUUUUUUUUUUU]
     vault_id: vvvvvvvvvvvvvvvvvvvvvvvvvv
     item_id: ""
     item_title: host01.example.test LUKS recovery
@@ -239,7 +239,8 @@ _EXPECTED_ARGS = frozenset(
         "approval",
     )
 )
-_OBJECT_ID_PATTERN = re.compile(r"[a-z0-9]{26}\Z", re.ASCII)
+_ACCOUNT_USER_UUID_PATTERN = re.compile(r"[A-Z0-9]{26}\Z", re.ASCII)
+_VAULT_ITEM_ID_PATTERN = re.compile(r"[a-z0-9]{26}\Z", re.ASCII)
 _VERSION_PATTERN = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+\Z", re.ASCII)
 _HOST_PATTERN = re.compile(
     r"[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?\Z",
@@ -322,7 +323,7 @@ def _normalize_arguments(args):
     if not isinstance(cli_version, str) or not _VERSION_PATTERN.fullmatch(cli_version):
         _fail("cli_version must be an exact semantic version.")
     cli_sha256 = normalize_sha256(args.get("cli_sha256"), "cli_sha256")
-    authorized_user_uuids = normalize_object_id_list(
+    authorized_user_uuids = normalize_user_uuid_list(
         args.get("authorized_user_uuids"), "authorized_user_uuids"
     )
 
@@ -330,11 +331,14 @@ def _normalize_arguments(args):
     vault_id = _plain_text(args.get("vault_id"))
     item_id = _plain_text(args.get("item_id", ""))
     item_version = _normalize_integer(args.get("item_version", 0), "item_version")
-    for name, value in (("account_id", account_id), ("vault_id", vault_id)):
-        if not isinstance(value, str) or not _OBJECT_ID_PATTERN.fullmatch(value):
-            _fail("{0} must be an exact 1Password object ID.".format(name))
+    if not isinstance(account_id, str) or not _ACCOUNT_USER_UUID_PATTERN.fullmatch(
+        account_id
+    ):
+        _fail("account_id must be an exact 1Password account UUID.")
+    if not isinstance(vault_id, str) or not _VAULT_ITEM_ID_PATTERN.fullmatch(vault_id):
+        _fail("vault_id must be an exact 1Password vault ID.")
     if not isinstance(item_id, str) or (
-        item_id and not _OBJECT_ID_PATTERN.fullmatch(item_id)
+        item_id and not _VAULT_ITEM_ID_PATTERN.fullmatch(item_id)
     ):
         _fail("item_id must be empty or an exact 1Password object ID.")
     if item_version < 0:
@@ -622,7 +626,7 @@ class _OnePasswordSecretItemStore:
         operator_user_uuid = identity.get("user_uuid")
         if (
             not isinstance(operator_user_uuid, str)
-            or not _OBJECT_ID_PATTERN.fullmatch(operator_user_uuid)
+            or not _ACCOUNT_USER_UUID_PATTERN.fullmatch(operator_user_uuid)
             or operator_user_uuid not in config["authorized_user_uuids"]
         ):
             _fail("The signed-in 1Password operator is not authorized for this action.")
@@ -677,7 +681,7 @@ class _OnePasswordSecretItemStore:
 
         item = matches[0]
         observed_item_id = item.get("id")
-        if not isinstance(observed_item_id, str) or not _OBJECT_ID_PATTERN.fullmatch(
+        if not isinstance(observed_item_id, str) or not _VAULT_ITEM_ID_PATTERN.fullmatch(
             observed_item_id
         ):
             _fail("The 1Password item has no exact object ID.")

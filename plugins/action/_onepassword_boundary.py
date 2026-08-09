@@ -76,9 +76,9 @@ def normalize_sha256(value, name):
     return value
 
 
-def normalize_object_id_list(value, name):
-    """Require a unique, non-empty allowlist of 1Password object IDs."""
-    pattern = re.compile(r"[a-z0-9]{26}\Z", re.ASCII)
+def normalize_user_uuid_list(value, name):
+    """Require a unique, non-empty allowlist of 1Password user UUIDs."""
+    pattern = re.compile(r"[A-Z0-9]{26}\Z", re.ASCII)
     if (
         not isinstance(value, list)
         or not value

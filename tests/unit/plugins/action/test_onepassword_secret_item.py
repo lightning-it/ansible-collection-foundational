@@ -9,13 +9,13 @@ from tests.unit.plugins.action.onepassword_approval_support import (
 )
 
 
-ACCOUNT_ID = "a" * 26
+ACCOUNT_ID = "A" * 26
 VAULT_ID = "v" * 26
 ITEM_ID = "i" * 26
 ITEM_VERSION = 1
 SUBJECT = "host01.example.test"
 SECRET = "A" * 64
-USER_UUID = "u" * 26
+USER_UUID = "U" * 26
 
 
 def _arguments(**overrides):
@@ -250,7 +250,7 @@ def test_operator_user_uuid_must_be_allowlisted():
             operation="plan",
             item_id=ITEM_ID,
             item_version=ITEM_VERSION,
-            authorized_user_uuids=["z" * 26],
+            authorized_user_uuids=["Z" * 26],
         )
     )
     with pytest.raises(AnsibleActionFail):

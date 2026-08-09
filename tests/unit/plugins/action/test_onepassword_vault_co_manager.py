@@ -9,10 +9,10 @@ from tests.unit.plugins.action.onepassword_approval_support import (
 )
 
 
-ACCOUNT_ID = "a" * 26
+ACCOUNT_ID = "A" * 26
 VAULT_ID = "v" * 26
-OPERATOR_UUID = "o" * 26
-USER_UUID = "u" * 26
+OPERATOR_UUID = "O" * 26
+USER_UUID = "U" * 26
 USER_EMAIL = "custodian@example.com"
 REQUIRED_PERMISSIONS = ["allow_viewing", "allow_editing", "allow_managing"]
 

@@ -113,9 +113,9 @@ EXAMPLES = r"""
     cli_path: /usr/local/bin/op
     cli_sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
     cli_version: 2.38.1
-    account_id: aaaaaaaaaaaaaaaaaaaaaaaaaa
+    account_id: AAAAAAAAAAAAAAAAAAAAAAAAAA
     account_sign_in_address: example.1password.com
-    authorized_user_uuids: [uuuuuuuuuuuuuuuuuuuuuuuuuu]
+    authorized_user_uuids: [UUUUUUUUUUUUUUUUUUUUUUUUUU]
     vault_id: vvvvvvvvvvvvvvvvvvvvvvvvvv
     item_id: iiiiiiiiiiiiiiiiiiiiiiiiii
     item_version: 1
