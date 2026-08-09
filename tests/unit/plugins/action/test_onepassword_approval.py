@@ -9,16 +9,15 @@ from tests.unit.plugins.action.onepassword_approval_support import build_authori
 
 def _arguments(tmp_path):
     authority = build_authority(tmp_path)
-    signing_key = tmp_path / "signing-key"
-    signing_key.write_bytes(b"test-only-key")
-    signing_key.chmod(0o600)
     return {
         "approval_authority": authority,
         "binding": {"operation": "apply", "allow_create": True},
         "commit_shas": {"automation": "a" * 40, "foundational": "b" * 40},
         "execution_id_prefix": "WBX-1P-PASSWORD",
         "operation": "create-onepassword-secret",
-        "signing_key_path": str(signing_key),
+        "signing_agent_socket_path": str(tmp_path / "agent.sock"),
+        "signing_ssh_add_path": str(tmp_path / "ssh-add"),
+        "signing_ssh_add_sha256": "c" * 64,
         "target": "host01.example.test",
         "validity_seconds": 600,
     }
@@ -50,9 +49,6 @@ def test_normalize_rejects_invalid_contract(tmp_path, mutation):
         signer._normalize_arguments(arguments)
 
 
-def test_signing_key_must_be_owner_only(tmp_path):
-    arguments = _arguments(tmp_path)
-    signing_key = tmp_path / "signing-key"
-    signing_key.chmod(0o640)
-    with pytest.raises(AnsibleActionFail):
-        signer._normalize_arguments(arguments)
+def test_authority_public_key_is_derived_from_pinned_allowed_signers(tmp_path):
+    normalized = signer._normalize_arguments(_arguments(tmp_path))
+    assert normalized["signing_public_key"].startswith("ssh-ed25519 ")

@@ -34,8 +34,14 @@ options:
   operation:
     type: str
     required: true
-  signing_key_path:
+  signing_agent_socket_path:
     type: path
+    required: true
+  signing_ssh_add_path:
+    type: path
+    required: true
+  signing_ssh_add_sha256:
+    type: str
     required: true
   target:
     type: str
@@ -55,7 +61,9 @@ EXAMPLES = r"""
     commit_shas: "{{ exact_commits }}"
     execution_id_prefix: WBX-1P-CREATE
     operation: create-onepassword-secret
-    signing_key_path: /absolute/controller-only/signing-key
+    signing_agent_socket_path: /absolute/controller-only/agent.sock
+    signing_ssh_add_path: /usr/bin/ssh-add
+    signing_ssh_add_sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
     target: host01.example.test
     validity_seconds: 600
   no_log: true

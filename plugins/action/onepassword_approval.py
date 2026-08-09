@@ -12,7 +12,6 @@ import os
 from pathlib import Path
 import re
 import secrets
-import stat
 import subprocess
 import tempfile
 
@@ -20,12 +19,12 @@ from ansible.errors import AnsibleActionFail
 from ansible.plugins.action import ActionBase
 
 from ._onepassword_boundary import (
-    _validate_parent_chain,
     _write_private_file,
     approval_signing_payload,
     normalize_approval,
     normalize_approval_authority,
     safe_approval_metadata,
+    trusted_agent_socket,
     trusted_executable,
 )
 
@@ -37,7 +36,9 @@ _EXPECTED_ARGS = frozenset(
         "commit_shas",
         "execution_id_prefix",
         "operation",
-        "signing_key_path",
+        "signing_agent_socket_path",
+        "signing_ssh_add_path",
+        "signing_ssh_add_sha256",
         "target",
         "validity_seconds",
     }
@@ -70,31 +71,70 @@ def _normalize_commit_shas(value):
     return dict(sorted(value.items()))
 
 
-def _trusted_signing_key(path):
-    if (
-        not isinstance(path, str)
-        or not os.path.isabs(path)
-        or os.path.normpath(path) != path
-        or any(character in path for character in "\x00\r\n")
-    ):
-        _fail("signing_key_path must be one normalized absolute path.")
+def _authority_public_key(authority):
     try:
-        resolved = Path(path).resolve(strict=True)
-    except OSError:
-        _fail("signing_key_path does not exist.")
-    if str(resolved) != path:
-        _fail("signing_key_path must be canonical and may not be a symbolic link.")
-    _validate_parent_chain(resolved.parent, "signing_key_path")
-    status = os.lstat(path)
-    if (
-        not stat.S_ISREG(status.st_mode)
-        or stat.S_ISLNK(status.st_mode)
-        or status.st_uid not in {0, os.getuid()}
-        or status.st_mode & 0o077
-        or status.st_nlink != 1
-    ):
-        _fail("signing_key_path must be one owner-only regular file.")
-    return str(resolved)
+        rows = authority["_allowed_signers_payload"].decode(
+            "ascii", errors="strict"
+        ).splitlines()
+    except (KeyError, UnicodeError):
+        _fail("Approval Authority public-key material is invalid.")
+    entries = [
+        row.strip()
+        for row in rows
+        if row.strip() and not row.lstrip().startswith("#")
+    ]
+    if len(entries) != 1:
+        _fail("Approval Authority must contain exactly one signer entry.")
+    fields = entries[0].split()
+    if len(fields) not in (3, 4):
+        _fail("Approval Authority signer entry is invalid.")
+    return "{0} {1}".format(fields[1], fields[2])
+
+
+def _verified_agent_signer(config):
+    ssh_add = trusted_executable(
+        config["signing_ssh_add_path"],
+        config["signing_ssh_add_sha256"],
+        "signing_ssh_add_path",
+    )
+    agent_socket = trusted_agent_socket(
+        config["signing_agent_socket_path"], "signing_agent_socket_path"
+    )
+    environment = {
+        "LANG": "C",
+        "LC_ALL": "C",
+        "SSH_AUTH_SOCK": agent_socket,
+    }
+    try:
+        completed = subprocess.run(
+            [ssh_add, "-L"],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            env=environment,
+            check=False,
+            timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError):
+        _fail("The approved signing SSH Agent could not be inspected safely.")
+    if completed.returncode != 0 or len(completed.stdout) > 65536:
+        _fail("The approved signing SSH Agent is unavailable or locked.")
+    try:
+        rows = completed.stdout.decode("ascii", errors="strict").splitlines()
+    except UnicodeError:
+        _fail("The approved signing SSH Agent returned invalid public metadata.")
+    expected_public_key = config["signing_public_key"]
+    matches = [
+        row
+        for row in rows
+        if " ".join(row.strip().split()[:2]) == expected_public_key
+    ]
+    if len(matches) != 1:
+        _fail(
+            "The exact Approval Authority key is not uniquely available from "
+            "the approved signing SSH Agent."
+        )
+    return agent_socket
 
 
 def _normalize_arguments(args, now=None):
@@ -136,7 +176,10 @@ def _normalize_arguments(args, now=None):
         "authority": authority,
         "binding": args["binding"],
         "operation": operation,
-        "signing_key_path": _trusted_signing_key(args["signing_key_path"]),
+        "signing_agent_socket_path": args["signing_agent_socket_path"],
+        "signing_ssh_add_path": args["signing_ssh_add_path"],
+        "signing_ssh_add_sha256": args["signing_ssh_add_sha256"],
+        "signing_public_key": _authority_public_key(authority),
         "target": target,
         "now": now,
     }
@@ -158,9 +201,14 @@ def _sign(config):
     temporary_root = tempfile.mkdtemp(prefix="lit-onepassword-approval-sign-")
     os.chmod(temporary_root, 0o700)
     payload_path = os.path.join(temporary_root, "approval.json")
+    public_key_path = os.path.join(temporary_root, "signer.pub")
     signature_path = payload_path + ".sig"
     try:
         _write_private_file(payload_path, payload)
+        _write_private_file(
+            public_key_path, (config["signing_public_key"] + "\n").encode("ascii")
+        )
+        agent_socket = _verified_agent_signer(config)
         try:
             completed = subprocess.run(
                 [
@@ -168,7 +216,7 @@ def _sign(config):
                     "-Y",
                     "sign",
                     "-f",
-                    config["signing_key_path"],
+                    public_key_path,
                     "-n",
                     config["authority"]["namespace"],
                     payload_path,
@@ -176,7 +224,11 @@ def _sign(config):
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
-                env={"LANG": "C", "LC_ALL": "C"},
+                env={
+                    "LANG": "C",
+                    "LC_ALL": "C",
+                    "SSH_AUTH_SOCK": agent_socket,
+                },
                 check=False,
                 timeout=30,
             )
@@ -220,7 +272,7 @@ def _sign(config):
             "approval_metadata": safe_approval_metadata(normalized),
         }
     finally:
-        for path in (signature_path, payload_path):
+        for path in (signature_path, public_key_path, payload_path):
             if os.path.lexists(path):
                 os.unlink(path)
         os.rmdir(temporary_root)
