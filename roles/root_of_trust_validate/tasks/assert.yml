@@ -1,0 +1,10 @@
+---
+- name: Validate root-of-trust role action
+  ansible.builtin.assert:
+    that:
+      - root_of_trust_validate_action in ['none', 'g0_observe', 'g2_plan']
+    fail_msg: >-
+      root_of_trust_validate_action must be none, g0_observe, or g2_plan.
+    quiet: true
+  changed_when: false
+  tags: always

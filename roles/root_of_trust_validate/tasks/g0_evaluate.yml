@@ -1,0 +1,157 @@
+---
+- name: Initialize sanitized G0 drift findings
+  ansible.builtin.set_fact:
+    _root_of_trust_validate_g0_findings: []
+    cacheable: false
+  changed_when: false
+
+- name: Record Robot server-name drift as a finding
+  ansible.builtin.set_fact:
+    _root_of_trust_validate_g0_findings: >-
+      {{
+        _root_of_trust_validate_g0_findings
+        + [{'code': 'server_name_drift', 'resource': 'server', 'severity': 'unsafe'}]
+      }}
+    cacheable: false
+  when: >-
+    _root_of_trust_validate_g0_server.server_name
+    != root_of_trust_validate_target.server_name
+  changed_when: false
+
+- name: Record Robot server lifecycle drift as a finding
+  ansible.builtin.set_fact:
+    _root_of_trust_validate_g0_findings: >-
+      {{
+        _root_of_trust_validate_g0_findings
+        + [{'code': 'server_status_drift', 'resource': 'server', 'severity': 'unsafe'}]
+      }}
+    cacheable: false
+  when: >-
+    _root_of_trust_validate_g0_server.status
+    != root_of_trust_validate_target.status
+  changed_when: false
+
+- name: Record Robot server cancellation drift as a finding
+  ansible.builtin.set_fact:
+    _root_of_trust_validate_g0_findings: >-
+      {{
+        _root_of_trust_validate_g0_findings
+        + [{'code': 'server_cancellation_drift', 'resource': 'server', 'severity': 'unsafe'}]
+      }}
+    cacheable: false
+  when: >-
+    _root_of_trust_validate_g0_server.cancelled | bool
+    != root_of_trust_validate_target.cancelled | bool
+  changed_when: false
+
+- name: Record Robot firewall status drift as a finding
+  ansible.builtin.set_fact:
+    _root_of_trust_validate_g0_findings: >-
+      {{
+        _root_of_trust_validate_g0_findings
+        + [{'code': 'firewall_status_drift', 'resource': 'firewall', 'severity': 'unsafe'}]
+      }}
+    cacheable: false
+  when: >-
+    _root_of_trust_validate_g0_firewall_info.firewall.status
+    != root_of_trust_validate_expected_firewall.status
+  changed_when: false
+
+- name: Record Robot firewall port drift as a finding
+  ansible.builtin.set_fact:
+    _root_of_trust_validate_g0_findings: >-
+      {{
+        _root_of_trust_validate_g0_findings
+        + [{'code': 'firewall_port_drift', 'resource': 'firewall', 'severity': 'unsafe'}]
+      }}
+    cacheable: false
+  when: >-
+    _root_of_trust_validate_g0_firewall_info.firewall.port
+    != root_of_trust_validate_expected_firewall.port
+  changed_when: false
+
+- name: Record Robot firewall IPv6-filter drift as a finding
+  ansible.builtin.set_fact:
+    _root_of_trust_validate_g0_findings: >-
+      {{
+        _root_of_trust_validate_g0_findings
+        + [{'code': 'firewall_filter_ipv6_drift', 'resource': 'firewall', 'severity': 'unsafe'}]
+      }}
+    cacheable: false
+  when: >-
+    _root_of_trust_validate_g0_firewall_info.firewall.filter_ipv6 | bool
+    != root_of_trust_validate_expected_firewall.filter_ipv6 | bool
+  changed_when: false
+
+- name: Record Robot firewall Hetzner-services allowlist drift as a finding
+  ansible.builtin.set_fact:
+    _root_of_trust_validate_g0_findings: >-
+      {{
+        _root_of_trust_validate_g0_findings
+        + [{'code': 'firewall_allowlist_hos_drift', 'resource': 'firewall', 'severity': 'unsafe'}]
+      }}
+    cacheable: false
+  when: >-
+    _root_of_trust_validate_g0_firewall_info.firewall.allowlist_hos | bool
+    != root_of_trust_validate_expected_firewall.allowlist_hos | bool
+  changed_when: false
+
+- name: Record Robot firewall rule drift as a finding
+  ansible.builtin.set_fact:
+    _root_of_trust_validate_g0_findings: >-
+      {{
+        _root_of_trust_validate_g0_findings
+        + [{'code': 'firewall_rules_drift', 'resource': 'firewall', 'severity': 'unsafe'}]
+      }}
+    cacheable: false
+  when: >-
+    _root_of_trust_validate_g0_actual_input
+    != _root_of_trust_validate_g0_expected_input
+    or _root_of_trust_validate_g0_actual_output
+       != _root_of_trust_validate_g0_expected_output
+  changed_when: false
+
+- name: Record Robot vSwitch identity drift as a finding
+  ansible.builtin.set_fact:
+    _root_of_trust_validate_g0_findings: >-
+      {{
+        _root_of_trust_validate_g0_findings
+        + [{'code': 'vswitch_identity_drift', 'resource': 'vswitch', 'severity': 'unsafe'}]
+      }}
+    cacheable: false
+  when: >-
+    _root_of_trust_validate_g0_vswitch_probe.v_switch | default({}) | length == 0
+    or _root_of_trust_validate_g0_vswitch_probe.v_switch.name | default('')
+       != root_of_trust_validate_expected_vswitch.name
+    or _root_of_trust_validate_g0_vswitch_probe.v_switch.vlan | default(0) | int
+       != root_of_trust_validate_expected_vswitch.vlan | int
+  changed_when: false
+
+- name: Record Robot vSwitch membership drift as a finding
+  ansible.builtin.set_fact:
+    _root_of_trust_validate_g0_findings: >-
+      {{
+        _root_of_trust_validate_g0_findings
+        + [{'code': 'vswitch_membership_drift', 'resource': 'vswitch', 'severity': 'unsafe'}]
+      }}
+    cacheable: false
+  when: >-
+    root_of_trust_validate_expected_vswitch.servers
+    | difference(_root_of_trust_validate_g0_vswitch_identity_tokens)
+    | length > 0
+    or _root_of_trust_validate_g0_vswitch_members | length
+       != root_of_trust_validate_expected_vswitch.servers | length
+  changed_when: false
+
+- name: Record non-ready Robot vSwitch membership as a finding
+  ansible.builtin.set_fact:
+    _root_of_trust_validate_g0_findings: >-
+      {{
+        _root_of_trust_validate_g0_findings
+        + [{'code': 'vswitch_member_state_drift', 'resource': 'vswitch', 'severity': 'unsafe'}]
+      }}
+    cacheable: false
+  when: >-
+    _root_of_trust_validate_g0_vswitch_members
+    | rejectattr('status', 'equalto', 'ready') | list | length > 0
+  changed_when: false

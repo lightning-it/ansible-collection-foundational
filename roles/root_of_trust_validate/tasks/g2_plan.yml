@@ -1,0 +1,22 @@
+---
+- name: Validate the local G2 root-of-trust plan
+  ansible.builtin.import_tasks: g2_assert.yml
+  tags: always
+
+- name: Publish the sanitized local G2 plan result
+  ansible.builtin.set_fact:
+    root_of_trust_validate_result:
+      changed: false
+      entrypoint: g2_plan
+      selection_scope: "{{ root_of_trust_validate_selection_scope }}"
+      validated: true
+      local_only: true
+      target_host_count: "{{ root_of_trust_validate_selected_hosts | length }}"
+      fleet_host_count: "{{ root_of_trust_validate_expected_fleet | length }}"
+      prerequisite_host_count: "{{ root_of_trust_validate_prerequisite_hosts | length }}"
+      bootstrap_rule_count: "{{ root_of_trust_validate_bootstrap_input_rules | length }}"
+      hardened_rule_count: "{{ root_of_trust_validate_hardened_input_rules | length }}"
+      tang_source_count: "{{ _root_of_trust_validate_g2_tang_rules | length }}"
+    cacheable: false
+  changed_when: false
+  no_log: true

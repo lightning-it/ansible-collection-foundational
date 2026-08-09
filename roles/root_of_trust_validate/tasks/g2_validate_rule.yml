@@ -1,0 +1,29 @@
+---
+- name: Validate one G2 Robot firewall rule
+  vars:
+    _root_of_trust_validate_g2_rule_values: >-
+      {{ root_of_trust_validate_g2_rule | dict2items | map(attribute='value') | list }}
+  ansible.builtin.assert:
+    that:
+      - root_of_trust_validate_g2_rule is mapping
+      - >-
+        root_of_trust_validate_g2_rule.keys() | list
+        | difference(['action', 'dst_ip', 'dst_port', 'ip_version', 'name',
+                      'protocol', 'src_ip', 'src_port', 'tcp_flags'])
+        | length == 0
+      - root_of_trust_validate_g2_rule.ip_version in ['ipv4', 'ipv6']
+      - root_of_trust_validate_g2_rule.action in ['accept', 'discard']
+      - >-
+        _root_of_trust_validate_g2_rule_values
+        | select('none') | list | length == 0
+      - >-
+        _root_of_trust_validate_g2_rule_values
+        | map('string') | map('trim')
+        | select('equalto', '') | list | length == 0
+      - "'0.0.0.0/0' not in (_root_of_trust_validate_g2_rule_values | map('string') | list)"
+    fail_msg: >-
+      G2 firewall rules may contain only supported, non-null, non-empty scalar
+      fields and must never declare 0.0.0.0/0.
+    quiet: true
+  changed_when: false
+  no_log: true

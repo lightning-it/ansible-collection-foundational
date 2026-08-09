@@ -1,0 +1,222 @@
+---
+- name: Verify generic root-of-trust validation safety
+  hosts: all
+  gather_facts: false
+  vars_files:
+    - resources
+  tasks:
+    - name: Initialize expected G2 rejection observations
+      ansible.builtin.set_fact:
+        root_of_trust_validate_partial_selection_rejected: false
+        root_of_trust_validate_wildcard_source_rejected: false
+        root_of_trust_validate_hardened_tcp22_rejected: false
+        root_of_trust_validate_non32_tang_rejected: false
+        root_of_trust_validate_identity_ambiguity_rejected: false
+      changed_when: false
+
+    - name: Reject a fleet selection for the single-root G2 scope
+      block:
+        - name: Submit more than the exact root-of-trust target
+          ansible.builtin.include_role:
+            name: lit.foundational.root_of_trust_validate
+            tasks_from: g2_plan
+          vars:
+            root_of_trust_validate_selected_hosts:
+              - localhost
+              - molecule-node-b
+
+        - name: Fail when the G2 fleet selection passed
+          ansible.builtin.fail:
+            msg: G2 accepted a fleet selection for single_root_of_trust.
+
+      rescue:
+        - name: Record expected G2 exact-selection rejection
+          ansible.builtin.set_fact:
+            root_of_trust_validate_partial_selection_rejected: true
+          changed_when: false
+
+    - name: Build an explicitly unrestricted bootstrap source fixture
+      ansible.builtin.set_fact:
+        root_of_trust_validate_wildcard_bootstrap_rules: >-
+          {{
+            [
+              root_of_trust_validate_bootstrap_input_rules[0]
+              | combine({'src_ip': '0.0.0.0/0'})
+            ]
+            + root_of_trust_validate_bootstrap_input_rules[1:]
+          }}
+      changed_when: false
+
+    - name: Reject an explicitly unrestricted G2 source
+      block:
+        - name: Submit a bootstrap 0.0.0.0/0 source
+          ansible.builtin.include_role:
+            name: lit.foundational.root_of_trust_validate
+            tasks_from: g2_plan
+          vars:
+            root_of_trust_validate_bootstrap_input_rules: >-
+              {{ root_of_trust_validate_wildcard_bootstrap_rules }}
+
+        - name: Fail when the unrestricted G2 source passed
+          ansible.builtin.fail:
+            msg: G2 accepted an unrestricted bootstrap source.
+
+      rescue:
+        - name: Record expected G2 wildcard-source rejection
+          ansible.builtin.set_fact:
+            root_of_trust_validate_wildcard_source_rejected: true
+          changed_when: false
+
+    - name: Build a hardened TCP 22 fixture with ten rules
+      ansible.builtin.set_fact:
+        root_of_trust_validate_tcp22_hardened_rules: >-
+          {{
+            root_of_trust_validate_hardened_input_rules[0:9]
+            + [
+                root_of_trust_validate_hardened_input_rules[9]
+                | combine({'dst_port': '22'})
+              ]
+          }}
+      changed_when: false
+
+    - name: Reject TCP 22 in the hardened G2 phase
+      block:
+        - name: Submit a hardened TCP 22 rule
+          ansible.builtin.include_role:
+            name: lit.foundational.root_of_trust_validate
+            tasks_from: g2_plan
+          vars:
+            root_of_trust_validate_hardened_input_rules: >-
+              {{ root_of_trust_validate_tcp22_hardened_rules }}
+
+        - name: Fail when hardened TCP 22 passed
+          ansible.builtin.fail:
+            msg: G2 accepted TCP 22 in the hardened phase.
+
+      rescue:
+        - name: Record expected hardened TCP 22 rejection
+          ansible.builtin.set_fact:
+            root_of_trust_validate_hardened_tcp22_rejected: true
+          changed_when: false
+
+    - name: Build a non-/32 Tang source fixture
+      ansible.builtin.set_fact:
+        root_of_trust_validate_non32_tang_rules: >-
+          {{
+            root_of_trust_validate_hardened_input_rules[0:7]
+            + [
+                root_of_trust_validate_hardened_input_rules[7]
+                | combine({'src_ip': '192.0.2.0/24'})
+              ]
+            + root_of_trust_validate_hardened_input_rules[8:]
+          }}
+      changed_when: false
+
+    - name: Reject a non-/32 G2 Tang source
+      block:
+        - name: Submit a Tang source broader than one host
+          ansible.builtin.include_role:
+            name: lit.foundational.root_of_trust_validate
+            tasks_from: g2_plan
+          vars:
+            root_of_trust_validate_hardened_input_rules: >-
+              {{ root_of_trust_validate_non32_tang_rules }}
+
+        - name: Fail when the non-/32 Tang source passed
+          ansible.builtin.fail:
+            msg: G2 accepted a non-/32 Tang source.
+
+      rescue:
+        - name: Record expected non-/32 Tang rejection
+          ansible.builtin.set_fact:
+            root_of_trust_validate_non32_tang_rejected: true
+          changed_when: false
+
+    - name: Reject split Robot IP and numeric identity
+      block:
+        - name: Exercise the production G0 identity ambiguity guard
+          ansible.builtin.include_tasks: >-
+            ../../roles/root_of_trust_validate/tasks/g0_identity_assert.yml
+          vars:
+            root_of_trust_validate_target: "{{ root_of_trust_validate_target_g0 }}"
+            _root_of_trust_validate_g0_servers_by_ip:
+              - server_ip: 192.0.2.10
+                server_number: 1001
+            _root_of_trust_validate_g0_servers_by_number:
+              - server_ip: 192.0.2.11
+                server_number: 1001
+
+        - name: Fail when split G0 identity passed
+          ansible.builtin.fail:
+            msg: G0 accepted split public-IP and numeric Robot identity.
+
+      rescue:
+        - name: Record expected G0 identity-ambiguity rejection
+          ansible.builtin.set_fact:
+            root_of_trust_validate_identity_ambiguity_rejected: true
+          changed_when: false
+
+    - name: Mock unsafe but unambiguous G0 provider drift
+      ansible.builtin.set_fact:
+        _root_of_trust_validate_g0_server:
+          server_ip: 192.0.2.10
+          server_number: 1001
+          server_name: drifted-name
+          status: in process
+          cancelled: true
+        _root_of_trust_validate_g0_firewall_info:
+          firewall:
+            server_ip: 192.0.2.10
+            server_number: 1001
+            status: disabled
+            port: kvm
+            filter_ipv6: false
+            allowlist_hos: false
+        _root_of_trust_validate_g0_expected_input:
+          - action: accept
+        _root_of_trust_validate_g0_actual_input:
+          - action: discard
+        _root_of_trust_validate_g0_expected_output:
+          - action: accept
+        _root_of_trust_validate_g0_actual_output:
+          - action: accept
+        _root_of_trust_validate_g0_vswitch_probe:
+          v_switch:
+            name: molecule-mgmt
+            vlan: 4091
+        _root_of_trust_validate_g0_vswitch_members:
+          - server_ip: 192.0.2.10
+            server_number: 1001
+            status: pending
+        _root_of_trust_validate_g0_vswitch_identity_tokens:
+          - 192.0.2.10
+          - "1001"
+      changed_when: false
+      no_log: true
+
+    - name: Evaluate mocked G0 drift without a compliance failure
+      ansible.builtin.include_tasks: >-
+        ../../roles/root_of_trust_validate/tasks/g0_evaluate.yml
+      vars:
+        root_of_trust_validate_target: "{{ root_of_trust_validate_target_g0 }}"
+
+    - name: Require unsafe G0 drift to remain sanitized findings
+      vars:
+        _root_of_trust_validate_g0_finding_codes: >-
+          {{ _root_of_trust_validate_g0_findings | map(attribute='code') | list }}
+      ansible.builtin.assert:
+        that:
+          - root_of_trust_validate_partial_selection_rejected | bool
+          - root_of_trust_validate_wildcard_source_rejected | bool
+          - root_of_trust_validate_hardened_tcp22_rejected | bool
+          - root_of_trust_validate_non32_tang_rejected | bool
+          - root_of_trust_validate_identity_ambiguity_rejected | bool
+          - "'server_name_drift' in _root_of_trust_validate_g0_finding_codes"
+          - "'server_status_drift' in _root_of_trust_validate_g0_finding_codes"
+          - "'server_cancellation_drift' in _root_of_trust_validate_g0_finding_codes"
+          - "'firewall_rules_drift' in _root_of_trust_validate_g0_finding_codes"
+          - "'vswitch_membership_drift' in _root_of_trust_validate_g0_finding_codes"
+          - "'vswitch_member_state_drift' in _root_of_trust_validate_g0_finding_codes"
+          - _root_of_trust_validate_g0_findings | length >= 6
+        quiet: true
+      changed_when: false
