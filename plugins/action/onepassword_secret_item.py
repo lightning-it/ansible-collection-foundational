@@ -9,12 +9,20 @@ __metaclass__ = type
 
 import json
 import os
-from pathlib import Path
 import re
 import subprocess
 
 from ansible.errors import AnsibleActionFail
 from ansible.plugins.action import ActionBase
+
+from ._onepassword_boundary import (
+    claim_approval,
+    normalize_approval,
+    normalize_object_id_list,
+    normalize_sha256,
+    safe_approval_metadata,
+    trusted_executable,
+)
 
 
 DOCUMENTATION = r"""
@@ -42,6 +50,10 @@ options:
     description: Absolute path to the approved 1Password CLI binary.
     type: path
     required: true
+  cli_sha256:
+    description: Complete lowercase SHA-256 digest of the approved CLI executable.
+    type: str
+    required: true
   cli_version:
     description: Exact approved 1Password CLI version.
     type: str
@@ -53,6 +65,11 @@ options:
   account_sign_in_address:
     description: Exact expected account sign-in address.
     type: str
+    required: true
+  authorized_user_uuids:
+    description: Exact allowlist of 1Password operator user UUIDs.
+    type: list
+    elements: str
     required: true
   vault_id:
     description: Exact 1Password vault ID.
@@ -107,10 +124,10 @@ options:
     description: Explicitly permit creation during C(apply).
     type: bool
     default: false
-  confirmation:
-    description: Fresh non-sensitive C(CREATE-ONEPASSWORD-SECRET:<subject>) confirmation for C(apply).
-    type: str
-    default: ""
+  approval:
+    description: Expiring execution-, commit-, target-, and operation-bound one-time approval for C(apply).
+    type: dict
+    default: {}
 attributes:
   action:
     description: The action executes entirely on the controller.
@@ -140,9 +157,11 @@ EXAMPLES = r"""
   lit.foundational.onepassword_secret_item:
     operation: plan
     cli_path: /usr/local/bin/op
+    cli_sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
     cli_version: 2.38.1
     account_id: aaaaaaaaaaaaaaaaaaaaaaaaaa
     account_sign_in_address: example.1password.com
+    authorized_user_uuids: [uuuuuuuuuuuuuuuuuuuuuuuuuu]
     vault_id: vvvvvvvvvvvvvvvvvvvvvvvvvv
     item_id: ""
     item_title: host01.example.test LUKS recovery
@@ -177,6 +196,10 @@ planned:
   description: Whether creation remains pending after metadata-only planning.
   returned: always
   type: bool
+operator_user_uuid:
+  description: Allowlisted 1Password operator observed during validation.
+  returned: always
+  type: str
 """
 
 
@@ -184,9 +207,11 @@ _EXPECTED_ARGS = frozenset(
     (
         "operation",
         "cli_path",
+        "cli_sha256",
         "cli_version",
         "account_id",
         "account_sign_in_address",
+        "authorized_user_uuids",
         "vault_id",
         "item_id",
         "item_version",
@@ -199,7 +224,7 @@ _EXPECTED_ARGS = frozenset(
         "password_recipe",
         "password_length",
         "allow_create",
-        "confirmation",
+        "approval",
     )
 )
 _OBJECT_ID_PATTERN = re.compile(r"[a-z0-9]{26}\Z", re.ASCII)
@@ -284,6 +309,10 @@ def _normalize_arguments(args):
     cli_version = _plain_text(args.get("cli_version"))
     if not isinstance(cli_version, str) or not _VERSION_PATTERN.fullmatch(cli_version):
         _fail("cli_version must be an exact semantic version.")
+    cli_sha256 = normalize_sha256(args.get("cli_sha256"), "cli_sha256")
+    authorized_user_uuids = normalize_object_id_list(
+        args.get("authorized_user_uuids"), "authorized_user_uuids"
+    )
 
     account_id = _plain_text(args.get("account_id"))
     vault_id = _plain_text(args.get("vault_id"))
@@ -348,9 +377,6 @@ def _normalize_arguments(args):
         _fail("password_recipe must match the approved 1Password internal generator.")
 
     allow_create = _normalize_boolean(args.get("allow_create", False), "allow_create")
-    confirmation = _plain_text(args.get("confirmation", ""))
-    if not isinstance(confirmation, str):
-        _fail("confirmation must be a string.")
     if operation == "plan" and allow_create:
         _fail("plan cannot permit creation.")
     if operation == "apply":
@@ -361,15 +387,14 @@ def _normalize_arguments(args):
             )
         if not allow_create:
             _fail("apply requires allow_create=true.")
-        if confirmation != "CREATE-ONEPASSWORD-SECRET:{0}".format(subject):
-            _fail("apply requires the exact fresh creation confirmation.")
-
-    return {
+    config = {
         "operation": operation,
         "cli_path": normalized_cli_path,
+        "cli_sha256": cli_sha256,
         "cli_version": cli_version,
         "account_id": account_id,
         "account_sign_in_address": sign_in_address,
+        "authorized_user_uuids": authorized_user_uuids,
         "vault_id": vault_id,
         "item_id": item_id,
         "item_version": item_version,
@@ -382,22 +407,47 @@ def _normalize_arguments(args):
         "password_recipe": password_recipe,
         "password_length": password_length,
         "allow_create": allow_create,
-        "confirmation": confirmation,
+    }
+    approval = args.get("approval", {})
+    if operation == "apply":
+        config["approval"] = normalize_approval(
+            approval,
+            operation="create-onepassword-secret",
+            target=subject,
+            binding=_approval_binding(config),
+        )
+    else:
+        if approval not in ({}, None):
+            _fail("approval is accepted only for apply.")
+        config["approval"] = None
+    return config
+
+
+def _approval_binding(config):
+    return {
+        "account_id": config["account_id"],
+        "account_sign_in_address": config["account_sign_in_address"],
+        "authorized_user_uuids": config["authorized_user_uuids"],
+        "category": config["category"],
+        "cli_sha256": config["cli_sha256"],
+        "field_id": config["field_id"],
+        "item_title": config["item_title"],
+        "password_length": config["password_length"],
+        "password_recipe": config["password_recipe"],
+        "schema_version": config["schema_version"],
+        "subject": config["subject"],
+        "tags": config["tags"],
+        "vault_id": config["vault_id"],
     }
 
 
 class _OnePasswordCLI:
     """Minimal 1Password CLI transport with no credential environment."""
 
-    def __init__(self, binary, account_id, process_environment=None):
-        binary_path = Path(binary)
-        try:
-            resolved_binary = binary_path.resolve(strict=True)
-        except OSError:
-            _fail("cli_path does not resolve to an existing controller file.")
-        if not resolved_binary.is_file() or not os.access(str(resolved_binary), os.X_OK):
-            _fail("cli_path must resolve to an executable regular file.")
-        self.binary = str(resolved_binary)
+    def __init__(self, binary, binary_sha256, account_id, process_environment=None):
+        self.requested_binary = binary
+        self.binary_sha256 = binary_sha256
+        self.binary = trusted_executable(binary, binary_sha256, "cli_path")
         self.account_id = account_id
         self.environment = self._minimal_environment(
             os.environ if process_environment is None else process_environment
@@ -428,6 +478,9 @@ class _OnePasswordCLI:
         return environment
 
     def _run(self, arguments, operation, discard_stdout=False):
+        self.binary = trusted_executable(
+            self.requested_binary, self.binary_sha256, "cli_path"
+        )
         try:
             completed = subprocess.run(
                 [self.binary] + list(arguments),
@@ -533,6 +586,13 @@ class _OnePasswordSecretItemStore:
             != config["account_sign_in_address"].lower()
         ):
             _fail("The signed-in 1Password account does not match the sign-in address.")
+        operator_user_uuid = identity.get("user_uuid")
+        if (
+            not isinstance(operator_user_uuid, str)
+            or not _OBJECT_ID_PATTERN.fullmatch(operator_user_uuid)
+            or operator_user_uuid not in config["authorized_user_uuids"]
+        ):
+            _fail("The signed-in 1Password operator is not authorized for this action.")
 
         vault = self.client.metadata(
             [
@@ -575,7 +635,12 @@ class _OnePasswordSecretItemStore:
         if not matches:
             if config["item_id"]:
                 _fail("The pinned item_id is absent from the exact vault.")
-            return {"exists": False, "item_id": None, "item_version": None}
+            return {
+                "exists": False,
+                "item_id": None,
+                "item_version": None,
+                "operator_user_uuid": operator_user_uuid,
+            }
 
         item = matches[0]
         observed_item_id = item.get("id")
@@ -627,6 +692,7 @@ class _OnePasswordSecretItemStore:
             "exists": True,
             "item_id": observed_item_id,
             "item_version": observed_item_version,
+            "operator_user_uuid": operator_user_uuid,
         }
 
     def run(self, config, check_mode=False):
@@ -638,17 +704,22 @@ class _OnePasswordSecretItemStore:
                 "before using a separate plan operation."
             )
         if operation == "plan" or (operation == "apply" and check_mode):
-            return {
+            result = {
                 "changed": not observed["exists"],
                 "created": False,
                 "exists": observed["exists"],
                 "item_id": observed["item_id"],
                 "item_version": observed["item_version"],
+                "operator_user_uuid": observed["operator_user_uuid"],
                 "planned": not observed["exists"],
             }
+            if config["approval"] is not None:
+                result["approval"] = safe_approval_metadata(config["approval"])
+            return result
 
         created = False
         if operation == "apply":
+            claim_approval(config["approval"])
             creation_arguments = [
                 "item",
                 "create",
@@ -682,8 +753,10 @@ class _OnePasswordSecretItemStore:
             "exists": observed["exists"],
             "item_id": observed["item_id"],
             "item_version": observed["item_version"],
+            "operator_user_uuid": observed["operator_user_uuid"],
             "planned": False,
         }
+        result["approval"] = safe_approval_metadata(config["approval"])
         return result
 
 
@@ -698,10 +771,12 @@ class ActionModule(ActionBase):
     def run(self, tmp=None, task_vars=None):
         if task_vars is None:
             task_vars = {}
+        self._task.no_log = True
         super(ActionModule, self).run(tmp, task_vars)
-
         config = _normalize_arguments(dict(self._task.args))
-        client = _OnePasswordCLI(config["cli_path"], config["account_id"])
+        client = _OnePasswordCLI(
+            config["cli_path"], config["cli_sha256"], config["account_id"]
+        )
         return _OnePasswordSecretItemStore(client).run(
             config,
             check_mode=bool(self._task.check_mode),

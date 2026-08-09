@@ -1,8 +1,11 @@
+from datetime import datetime, timedelta, timezone
+
 import pytest
 
 from ansible.errors import AnsibleActionFail
 
 from plugins.action import onepassword_secret_item as plugin
+from plugins.action import _onepassword_boundary as boundary
 
 
 ACCOUNT_ID = "a" * 26
@@ -11,15 +14,18 @@ ITEM_ID = "i" * 26
 ITEM_VERSION = 1
 SUBJECT = "host01.example.test"
 SECRET = "A" * 64
+USER_UUID = "u" * 26
 
 
 def _arguments(**overrides):
     arguments = {
         "operation": "plan",
         "cli_path": "/usr/local/bin/op",
+        "cli_sha256": "0" * 64,
         "cli_version": "2.38.1",
         "account_id": ACCOUNT_ID,
         "account_sign_in_address": "example.1password.com",
+        "authorized_user_uuids": [USER_UUID],
         "vault_id": VAULT_ID,
         "item_id": "",
         "item_version": 0,
@@ -32,10 +38,46 @@ def _arguments(**overrides):
         "password_recipe": "letters,digits,symbols,64",
         "password_length": 64,
         "allow_create": False,
-        "confirmation": "",
+        "approval": {},
     }
     arguments.update(overrides)
     return arguments
+
+
+def _apply_arguments(tmp_path, **overrides):
+    arguments = _arguments(operation="apply", allow_create=True, **overrides)
+    replay = tmp_path / "replay"
+    replay.mkdir(mode=0o700)
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    approval = {
+        "schema_version": 1,
+        "execution_id": "secret-create-001",
+        "commit_shas": {"foundational": "a" * 40},
+        "nonce": "b" * 64,
+        "issued_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "expires_at": (now + timedelta(minutes=5)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "replay_directory": str(replay),
+    }
+    binding = {
+        "account_id": arguments["account_id"],
+        "account_sign_in_address": arguments["account_sign_in_address"],
+        "authorized_user_uuids": arguments["authorized_user_uuids"],
+        "category": arguments["category"],
+        "cli_sha256": arguments["cli_sha256"],
+        "field_id": arguments["field_id"],
+        "item_title": arguments["item_title"],
+        "password_length": arguments["password_length"],
+        "password_recipe": arguments["password_recipe"],
+        "schema_version": arguments["schema_version"],
+        "subject": arguments["subject"],
+        "tags": arguments["tags"],
+        "vault_id": arguments["vault_id"],
+    }
+    approval["confirmation"] = boundary.approval_confirmation(
+        approval, "create-onepassword-secret", SUBJECT, binding
+    )
+    arguments["approval"] = approval
+    return arguments, replay
 
 
 class _FakeClient:
@@ -51,7 +93,11 @@ class _FakeClient:
     def metadata(self, arguments, operation):
         self.calls.append((list(arguments), operation, False))
         if arguments[0] == "whoami":
-            return {"account_uuid": ACCOUNT_ID, "url": "https://example.1password.com"}
+            return {
+                "account_uuid": ACCOUNT_ID,
+                "url": "https://example.1password.com",
+                "user_uuid": USER_UUID,
+            }
         if arguments[:2] == ["vault", "get"]:
             return {"id": VAULT_ID}
         if arguments[:2] == ["item", "list"]:
@@ -81,17 +127,12 @@ class _FakeClient:
         assert SECRET not in repr(arguments)
         self.exists = True
 
-def test_apply_generates_inside_onepassword_and_returns_only_item_metadata():
+def test_apply_generates_inside_onepassword_and_returns_only_item_metadata(tmp_path):
     client = _FakeClient(exists=False)
     store = plugin._OnePasswordSecretItemStore(client)
+    arguments, replay = _apply_arguments(tmp_path)
     result = store.run(
-        plugin._normalize_arguments(
-            _arguments(
-                operation="apply",
-                allow_create=True,
-                confirmation="CREATE-ONEPASSWORD-SECRET:" + SUBJECT,
-            )
-        )
+        plugin._normalize_arguments(arguments)
     )
 
     assert result == {
@@ -100,12 +141,15 @@ def test_apply_generates_inside_onepassword_and_returns_only_item_metadata():
         "exists": True,
         "item_id": ITEM_ID,
         "item_version": ITEM_VERSION,
+        "operator_user_uuid": USER_UUID,
         "planned": False,
+        "approval": result["approval"],
     }
     assert SECRET not in repr(result)
     creation_calls = [call for call in client.calls if call[1] == "item creation"]
     assert len(creation_calls) == 1
     assert creation_calls[0][2] is True
+    assert len(list(replay.glob("*.used"))) == 1
 
 
 def test_plan_validates_only_a_pinned_item_and_returns_no_secret():
@@ -126,35 +170,26 @@ def test_plan_validates_only_a_pinned_item_and_returns_no_secret():
     assert "secret" not in result
 
 
-def test_check_mode_apply_is_metadata_only_and_does_not_create():
+def test_check_mode_apply_is_metadata_only_and_does_not_create(tmp_path):
     client = _FakeClient(exists=False)
+    arguments, replay = _apply_arguments(tmp_path)
     result = plugin._OnePasswordSecretItemStore(client).run(
-        plugin._normalize_arguments(
-            _arguments(
-                operation="apply",
-                allow_create=True,
-                confirmation="CREATE-ONEPASSWORD-SECRET:" + SUBJECT,
-            )
-        ),
+        plugin._normalize_arguments(arguments),
         check_mode=True,
     )
 
     assert result["planned"] is True
     assert result["created"] is False
     assert not [call for call in client.calls if call[1] == "item creation"]
+    assert not list(replay.glob("*.used"))
 
 
-def test_apply_rejects_a_preexisting_unpinned_item():
+def test_apply_rejects_a_preexisting_unpinned_item(tmp_path):
     client = _FakeClient(exists=True)
+    arguments, unused_replay = _apply_arguments(tmp_path)
     with pytest.raises(AnsibleActionFail):
         plugin._OnePasswordSecretItemStore(client).run(
-            plugin._normalize_arguments(
-                _arguments(
-                    operation="apply",
-                    allow_create=True,
-                    confirmation="CREATE-ONEPASSWORD-SECRET:" + SUBJECT,
-                )
-            )
+            plugin._normalize_arguments(arguments)
         )
 
 
@@ -169,7 +204,8 @@ def test_apply_rejects_a_preexisting_unpinned_item():
         {"password_recipe": "letters,digits,64"},
         {"tags": ["recovery", "recovery"]},
         {"allow_create": True},
-        {"operation": "apply", "allow_create": True, "confirmation": "wrong"},
+        {"authorized_user_uuids": []},
+        {"cli_sha256": "wrong"},
     ],
 )
 def test_invalid_contracts_fail_before_cli_use(overrides):
@@ -186,3 +222,17 @@ def test_service_and_session_authentication_environment_is_rejected():
         plugin._OnePasswordCLI._minimal_environment(
             {"HOME": "/tmp/home", "OP_SESSION_test": "test-session"}
         )
+
+
+def test_operator_user_uuid_must_be_allowlisted():
+    client = _FakeClient(exists=True)
+    config = plugin._normalize_arguments(
+        _arguments(
+            operation="plan",
+            item_id=ITEM_ID,
+            item_version=ITEM_VERSION,
+            authorized_user_uuids=["z" * 26],
+        )
+    )
+    with pytest.raises(AnsibleActionFail):
+        plugin._OnePasswordSecretItemStore(client).inspect(config)

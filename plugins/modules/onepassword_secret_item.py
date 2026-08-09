@@ -24,6 +24,9 @@ options:
   cli_path:
     type: path
     required: true
+  cli_sha256:
+    type: str
+    required: true
   cli_version:
     type: str
     required: true
@@ -32,6 +35,10 @@ options:
     required: true
   account_sign_in_address:
     type: str
+    required: true
+  authorized_user_uuids:
+    type: list
+    elements: str
     required: true
   vault_id:
     type: str
@@ -71,9 +78,10 @@ options:
   allow_create:
     type: bool
     default: false
-  confirmation:
-    type: str
-    default: ""
+  approval:
+    type: dict
+    default: {}
+    description: Expiring execution-, commit-, target-, and operation-bound one-time approval for apply.
 author:
   - Lightning IT (@lightning-it)
 """
@@ -84,9 +92,11 @@ EXAMPLES = r"""
   lit.foundational.onepassword_secret_item:
     operation: plan
     cli_path: /usr/local/bin/op
+    cli_sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
     cli_version: 2.38.1
     account_id: aaaaaaaaaaaaaaaaaaaaaaaaaa
     account_sign_in_address: example.1password.com
+    authorized_user_uuids: [uuuuuuuuuuuuuuuuuuuuuuuuuu]
     vault_id: vvvvvvvvvvvvvvvvvvvvvvvvvv
     item_title: host01.example.test recovery
     tags: [breakglass, recovery]
@@ -131,9 +141,15 @@ def main():
                 "choices": ["plan", "apply"],
             },
             "cli_path": {"type": "path", "required": True},
+            "cli_sha256": {"type": "str", "required": True},
             "cli_version": {"type": "str", "required": True},
             "account_id": {"type": "str", "required": True},
             "account_sign_in_address": {"type": "str", "required": True},
+            "authorized_user_uuids": {
+                "type": "list",
+                "elements": "str",
+                "required": True,
+            },
             "vault_id": {"type": "str", "required": True},
             "item_id": {"type": "str", "default": ""},
             "item_version": {"type": "int", "default": 0},
@@ -150,7 +166,20 @@ def main():
             "password_recipe": {"type": "str", "required": True},
             "password_length": {"type": "int", "required": True},
             "allow_create": {"type": "bool", "default": False},
-            "confirmation": {"type": "str", "default": ""},
+            "approval": {
+                "type": "dict",
+                "default": {},
+                "options": {
+                    "schema_version": {"type": "int"},
+                    "execution_id": {"type": "str"},
+                    "commit_shas": {"type": "dict"},
+                    "nonce": {"type": "str", "no_log": True},
+                    "issued_at": {"type": "str"},
+                    "expires_at": {"type": "str"},
+                    "replay_directory": {"type": "path"},
+                    "confirmation": {"type": "str", "no_log": True},
+                },
+            },
         },
         supports_check_mode=True,
     )

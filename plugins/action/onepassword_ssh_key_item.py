@@ -12,15 +12,23 @@ import binascii
 import hashlib
 import json
 import os
-from pathlib import Path
 import re
-import stat
 import struct
 import subprocess
 import tempfile
 
 from ansible.errors import AnsibleActionFail
 from ansible.plugins.action import ActionBase
+
+from ._onepassword_boundary import (
+    claim_approval,
+    normalize_approval,
+    normalize_object_id_list,
+    normalize_sha256,
+    safe_approval_metadata,
+    trusted_agent_socket,
+    trusted_executable,
+)
 
 
 DOCUMENTATION = r"""
@@ -41,6 +49,9 @@ options:
   cli_path:
     type: path
     required: true
+  cli_sha256:
+    type: str
+    required: true
   cli_version:
     type: str
     required: true
@@ -49,6 +60,10 @@ options:
     required: true
   account_sign_in_address:
     type: str
+    required: true
+  authorized_user_uuids:
+    type: list
+    elements: str
     required: true
   vault_id:
     type: str
@@ -90,14 +105,20 @@ options:
   allow_create:
     type: bool
     default: false
-  confirmation:
-    type: str
-    default: ""
+  approval:
+    type: dict
+    default: {}
   ssh_add_path:
     type: path
     default: ""
+  ssh_add_sha256:
+    type: str
+    default: ""
   ssh_keygen_path:
     type: path
+    default: ""
+  ssh_keygen_sha256:
+    type: str
     default: ""
   agent_socket_path:
     type: path
@@ -112,9 +133,9 @@ author:
 
 EXAMPLES = r"""
 ---
-- name: Create an absent externally escrowed Dropbear recovery key
+- name: Plan an absent externally escrowed Dropbear recovery key
   lit.foundational.onepassword_ssh_key_item:
-    operation: apply
+    operation: plan
     cli_path: /usr/local/bin/op
     cli_version: 2.38.1
     account_id: aaaaaaaaaaaaaaaaaaaaaaaaaa
@@ -124,11 +145,8 @@ EXAMPLES = r"""
     tags: [breakglass, recovery]
     subject: host01.example.test
     key_type: ed25519
-    allow_create: true
-    confirmation: CREATE-ONEPASSWORD-SSH-KEY:host01.example.test
-    ssh_add_path: /usr/bin/ssh-add
-    ssh_keygen_path: /usr/bin/ssh-keygen
-    agent_socket_path: /absolute/path/to/1password/agent.sock
+    cli_sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    authorized_user_uuids: [uuuuuuuuuuuuuuuuuuuuuuuuuu]
 """
 
 RETURN = r"""
@@ -166,6 +184,10 @@ agent_verified:
   description:
     - Whether the exact key was uniquely available and completed a fresh signing challenge through the approved SSH
       Agent socket.
+operator_user_uuid:
+  type: str
+  returned: always
+  description: Allowlisted 1Password operator observed during validation.
 """
 
 
@@ -173,9 +195,11 @@ _EXPECTED_ARGS = frozenset(
     (
         "operation",
         "cli_path",
+        "cli_sha256",
         "cli_version",
         "account_id",
         "account_sign_in_address",
+        "authorized_user_uuids",
         "vault_id",
         "item_id",
         "item_version",
@@ -187,9 +211,11 @@ _EXPECTED_ARGS = frozenset(
         "key_type",
         "expected_fingerprint",
         "allow_create",
-        "confirmation",
+        "approval",
         "ssh_add_path",
+        "ssh_add_sha256",
         "ssh_keygen_path",
+        "ssh_keygen_sha256",
         "agent_socket_path",
     )
 )
@@ -267,6 +293,10 @@ def _normalize_arguments(args):
     cli_version = _plain_text(args.get("cli_version"))
     if not isinstance(cli_version, str) or not _VERSION_PATTERN.fullmatch(cli_version):
         _fail("cli_version must be an exact semantic version.")
+    cli_sha256 = normalize_sha256(args.get("cli_sha256"), "cli_sha256")
+    authorized_user_uuids = normalize_object_id_list(
+        args.get("authorized_user_uuids"), "authorized_user_uuids"
+    )
 
     account_id = _plain_text(args.get("account_id"))
     vault_id = _plain_text(args.get("vault_id"))
@@ -326,9 +356,6 @@ def _normalize_arguments(args):
         _fail("expected_fingerprint must be empty or an exact SHA-256 SSH fingerprint.")
 
     allow_create = _normalize_boolean(args.get("allow_create", False), "allow_create")
-    confirmation = _plain_text(args.get("confirmation", ""))
-    if not isinstance(confirmation, str):
-        _fail("confirmation must be a string.")
     if operation == "plan" and allow_create:
         _fail("plan cannot permit creation.")
     if operation == "plan" and item_id and not expected_fingerprint:
@@ -348,11 +375,11 @@ def _normalize_arguments(args):
             )
         if not allow_create:
             _fail("apply requires allow_create=true.")
-        if confirmation != "CREATE-ONEPASSWORD-SSH-KEY:{0}".format(subject):
-            _fail("apply requires the exact fresh SSH-key creation confirmation.")
 
     ssh_add_path = _plain_text(args.get("ssh_add_path", ""))
+    ssh_add_sha256 = _plain_text(args.get("ssh_add_sha256", ""))
     ssh_keygen_path = _plain_text(args.get("ssh_keygen_path", ""))
+    ssh_keygen_sha256 = _plain_text(args.get("ssh_keygen_sha256", ""))
     agent_socket_path = _plain_text(args.get("agent_socket_path", ""))
     for name, value in (
         ("ssh_add_path", ssh_add_path),
@@ -369,18 +396,28 @@ def _normalize_arguments(args):
         ):
             _fail("{0} must be an exact normalized absolute path.".format(name))
     if operation in ("apply", "verify_agent") and (
-        not ssh_add_path or not ssh_keygen_path or not agent_socket_path
+        not ssh_add_path
+        or not ssh_keygen_path
+        or not agent_socket_path
+        or not ssh_add_sha256
+        or not ssh_keygen_sha256
     ):
         _fail(
             "apply and verify_agent require exact ssh-add, ssh-keygen, and SSH "
             "Agent dependency paths."
         )
-    return {
+    if ssh_add_sha256:
+        ssh_add_sha256 = normalize_sha256(ssh_add_sha256, "ssh_add_sha256")
+    if ssh_keygen_sha256:
+        ssh_keygen_sha256 = normalize_sha256(ssh_keygen_sha256, "ssh_keygen_sha256")
+    config = {
         "operation": operation,
         "cli_path": normalized_cli_path,
+        "cli_sha256": cli_sha256,
         "cli_version": cli_version,
         "account_id": account_id,
         "account_sign_in_address": sign_in_address,
+        "authorized_user_uuids": authorized_user_uuids,
         "vault_id": vault_id,
         "item_id": item_id,
         "item_version": item_version,
@@ -392,25 +429,52 @@ def _normalize_arguments(args):
         "key_type": "ed25519",
         "expected_fingerprint": expected_fingerprint,
         "allow_create": allow_create,
-        "confirmation": confirmation,
         "ssh_add_path": ssh_add_path,
+        "ssh_add_sha256": ssh_add_sha256,
         "ssh_keygen_path": ssh_keygen_path,
+        "ssh_keygen_sha256": ssh_keygen_sha256,
         "agent_socket_path": agent_socket_path,
+    }
+    approval = args.get("approval", {})
+    if operation == "apply":
+        config["approval"] = normalize_approval(
+            approval,
+            operation="create-onepassword-ssh-key",
+            target=subject,
+            binding=_approval_binding(config),
+        )
+    else:
+        if approval not in ({}, None):
+            _fail("approval is accepted only for apply.")
+        config["approval"] = None
+    return config
+
+
+def _approval_binding(config):
+    return {
+        "account_id": config["account_id"],
+        "account_sign_in_address": config["account_sign_in_address"],
+        "agent_socket_path": config["agent_socket_path"],
+        "authorized_user_uuids": config["authorized_user_uuids"],
+        "cli_sha256": config["cli_sha256"],
+        "item_title": config["item_title"],
+        "key_type": config["key_type"],
+        "schema_version": config["schema_version"],
+        "ssh_add_sha256": config["ssh_add_sha256"],
+        "ssh_keygen_sha256": config["ssh_keygen_sha256"],
+        "subject": config["subject"],
+        "tags": config["tags"],
+        "vault_id": config["vault_id"],
     }
 
 
 class _OnePasswordCLI:
     """Minimal desktop-integrated 1Password CLI transport."""
 
-    def __init__(self, binary, account_id, process_environment=None):
-        binary_path = Path(binary)
-        try:
-            resolved_binary = binary_path.resolve(strict=True)
-        except OSError:
-            _fail("cli_path does not resolve to an existing controller file.")
-        if not resolved_binary.is_file() or not os.access(str(resolved_binary), os.X_OK):
-            _fail("cli_path must resolve to an executable regular file.")
-        self.binary = str(resolved_binary)
+    def __init__(self, binary, binary_sha256, account_id, process_environment=None):
+        self.requested_binary = binary
+        self.binary_sha256 = binary_sha256
+        self.binary = trusted_executable(binary, binary_sha256, "cli_path")
         self.account_id = account_id
         self.environment = self._minimal_environment(
             os.environ if process_environment is None else process_environment
@@ -441,6 +505,9 @@ class _OnePasswordCLI:
         return environment
 
     def _run(self, arguments, operation, discard_stdout=False):
+        self.binary = trusted_executable(
+            self.requested_binary, self.binary_sha256, "cli_path"
+        )
         try:
             completed = subprocess.run(
                 [self.binary] + list(arguments),
@@ -536,18 +603,6 @@ def _write_controller_file(path, payload):
         os.close(descriptor)
 
 
-def _canonical_executable(path, name):
-    try:
-        resolved = Path(path).resolve(strict=True)
-    except OSError:
-        _fail("{0} does not resolve to an existing controller file.".format(name))
-    if str(resolved) != path:
-        _fail("{0} must be canonical and may not traverse a symbolic link.".format(name))
-    if not resolved.is_file() or not os.access(str(resolved), os.X_OK):
-        _fail("{0} must resolve to an executable regular file.".format(name))
-    return str(resolved)
-
-
 class _OnePasswordSSHKeyItemStore:
     """Validate metadata and create immutable Ed25519 SSH Key items."""
 
@@ -598,6 +653,13 @@ class _OnePasswordSSHKeyItemStore:
             != config["account_sign_in_address"].lower()
         ):
             _fail("The signed-in 1Password account does not match the sign-in address.")
+        operator_user_uuid = identity.get("user_uuid")
+        if (
+            not isinstance(operator_user_uuid, str)
+            or not _OBJECT_ID_PATTERN.fullmatch(operator_user_uuid)
+            or operator_user_uuid not in config["authorized_user_uuids"]
+        ):
+            _fail("The signed-in 1Password operator is not authorized for this action.")
 
         vault = self.client.metadata(
             [
@@ -626,7 +688,12 @@ class _OnePasswordSSHKeyItemStore:
         if not matches:
             if config["item_id"]:
                 _fail("The pinned SSH item_id is absent from the exact vault.")
-            return {"exists": False, "item_id": None, "item_version": None}
+            return {
+                "exists": False,
+                "item_id": None,
+                "item_version": None,
+                "operator_user_uuid": operator_user_uuid,
+            }
         item = matches[0]
         observed_item_id = item.get("id")
         if not isinstance(observed_item_id, str) or not _OBJECT_ID_PATTERN.fullmatch(observed_item_id):
@@ -652,6 +719,7 @@ class _OnePasswordSSHKeyItemStore:
             "exists": True,
             "item_id": observed_item_id,
             "item_version": observed_item_version,
+            "operator_user_uuid": operator_user_uuid,
         }
 
     def public_metadata(self, config, item_id, item_version):
@@ -679,32 +747,11 @@ class _OnePasswordSSHKeyItemStore:
 
     @staticmethod
     def verify_agent(config, public_identity):
-        ssh_add = _canonical_executable(config["ssh_add_path"], "ssh_add_path")
-        ssh_keygen = _canonical_executable(
-            config["ssh_keygen_path"], "ssh_keygen_path"
-        )
         expected_fingerprint = public_identity["fingerprint"]
         expected_public_key = public_identity["public_key"]
-        try:
-            resolved_socket = Path(config["agent_socket_path"]).resolve(strict=True)
-        except OSError:
-            _fail("The approved 1Password SSH Agent socket is unavailable.")
-        if str(resolved_socket) != config["agent_socket_path"]:
-            _fail("agent_socket_path must be canonical and may not traverse a symbolic link.")
-        try:
-            socket_status = os.lstat(config["agent_socket_path"])
-        except OSError:
-            _fail("The approved 1Password SSH Agent socket is unavailable.")
-        if not stat.S_ISSOCK(socket_status.st_mode):
-            _fail("agent_socket_path must be an existing Unix-domain socket.")
-        if socket_status.st_uid != os.getuid() or socket_status.st_mode & 0o022:
-            _fail("agent_socket_path must be owned by the controller identity and not group/world-writable.")
-        if socket_status.st_nlink != 1:
-            _fail("agent_socket_path must have exactly one filesystem link.")
         environment = {
             "HOME": os.environ.get("HOME", ""),
             "PATH": os.environ.get("PATH", ""),
-            "SSH_AUTH_SOCK": config["agent_socket_path"],
         }
         for name in ("LANG", "LC_ALL"):
             if os.environ.get(name):
@@ -712,6 +759,13 @@ class _OnePasswordSSHKeyItemStore:
         if not environment["HOME"]:
             _fail("HOME is required for 1Password SSH Agent verification.")
         try:
+            ssh_add = trusted_executable(
+                config["ssh_add_path"],
+                config["ssh_add_sha256"],
+                "ssh_add_path",
+            )
+            agent_socket = trusted_agent_socket(config["agent_socket_path"])
+            environment["SSH_AUTH_SOCK"] = agent_socket
             completed = subprocess.run(
                 [ssh_add, "-L"],
                 stdin=subprocess.DEVNULL,
@@ -761,6 +815,13 @@ class _OnePasswordSSHKeyItemStore:
                 (principal + " " + expected_public_key + "\n").encode("ascii"),
             )
             try:
+                ssh_keygen = trusted_executable(
+                    config["ssh_keygen_path"],
+                    config["ssh_keygen_sha256"],
+                    "ssh_keygen_path",
+                )
+                agent_socket = trusted_agent_socket(config["agent_socket_path"])
+                environment["SSH_AUTH_SOCK"] = agent_socket
                 signed = subprocess.run(
                     [
                         ssh_keygen,
@@ -791,6 +852,13 @@ class _OnePasswordSSHKeyItemStore:
                 _fail("The approved SSH Agent did not produce a valid signing challenge response.")
             _write_controller_file(signature_path, signed.stdout)
             try:
+                ssh_keygen = trusted_executable(
+                    config["ssh_keygen_path"],
+                    config["ssh_keygen_sha256"],
+                    "ssh_keygen_path",
+                )
+                agent_socket = trusted_agent_socket(config["agent_socket_path"])
+                environment["SSH_AUTH_SOCK"] = agent_socket
                 verified = subprocess.run(
                     [
                         ssh_keygen,
@@ -839,6 +907,7 @@ class _OnePasswordSSHKeyItemStore:
                 "changed": not observed["exists"], "created": False,
                 "exists": observed["exists"], "item_id": observed["item_id"],
                 "item_version": observed["item_version"],
+                "operator_user_uuid": observed["operator_user_uuid"],
                 "planned": not observed["exists"],
             }
             if observed["exists"]:
@@ -847,10 +916,13 @@ class _OnePasswordSSHKeyItemStore:
                         config, observed["item_id"], observed["item_version"]
                     )
                 )
+            if config["approval"] is not None:
+                result["approval"] = safe_approval_metadata(config["approval"])
             return result
 
         created = False
         if operation == "apply":
+            claim_approval(config["approval"])
             creation_arguments = [
                 "item", "create", "--account", config["account_id"], "--vault",
                 config["vault_id"], "--category=ssh", "--title", config["item_title"],
@@ -873,14 +945,18 @@ class _OnePasswordSSHKeyItemStore:
         agent_verified = False
         if operation in ("apply", "verify_agent"):
             agent_verified = self.verify_agent(config, public_identity)
-        return {
+        result = {
             "changed": created, "created": created, "exists": True,
             "item_id": observed["item_id"], "planned": False,
             "item_version": observed["item_version"],
+            "operator_user_uuid": observed["operator_user_uuid"],
             "public_key": public_identity["public_key"],
             "fingerprint": public_identity["fingerprint"],
             "agent_verified": agent_verified,
         }
+        if config["approval"] is not None:
+            result["approval"] = safe_approval_metadata(config["approval"])
+        return result
 
 
 class ActionModule(ActionBase):
@@ -894,9 +970,12 @@ class ActionModule(ActionBase):
     def run(self, tmp=None, task_vars=None):
         if task_vars is None:
             task_vars = {}
+        self._task.no_log = True
         super(ActionModule, self).run(tmp, task_vars)
         config = _normalize_arguments(dict(self._task.args))
-        client = _OnePasswordCLI(config["cli_path"], config["account_id"])
+        client = _OnePasswordCLI(
+            config["cli_path"], config["cli_sha256"], config["account_id"]
+        )
         return _OnePasswordSSHKeyItemStore(client).run(
             config, check_mode=bool(self._task.check_mode)
         )

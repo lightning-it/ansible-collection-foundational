@@ -19,6 +19,9 @@ options:
   cli_path:
     type: path
     required: true
+  cli_sha256:
+    type: str
+    required: true
   cli_version:
     type: str
     required: true
@@ -27,6 +30,10 @@ options:
     required: true
   account_sign_in_address:
     type: str
+    required: true
+  authorized_user_uuids:
+    type: list
+    elements: str
     required: true
   vault_id:
     type: str
@@ -75,11 +82,20 @@ options:
   ssh_path:
     type: path
     required: true
+  ssh_sha256:
+    type: str
+    required: true
   ssh_add_path:
     type: path
     required: true
+  ssh_add_sha256:
+    type: str
+    required: true
   ssh_keygen_path:
     type: path
+    required: true
+  ssh_keygen_sha256:
+    type: str
     required: true
   agent_socket_path:
     type: path
@@ -96,12 +112,15 @@ options:
   destination_port:
     type: int
     required: true
+  destination_host_fingerprint:
+    type: str
+    required: true
   remote_command:
     type: str
     choices: [/bin/cryptroot-unlock]
     required: true
-  confirmation:
-    type: str
+  approval:
+    type: dict
     required: true
 author:
   - Lightning IT (@lightning-it)
@@ -112,9 +131,11 @@ EXAMPLES = r"""
 - name: Validate the exact external recovery boundary in check mode
   lit.foundational.onepassword_ssh_secret_stdin:
     cli_path: /usr/local/bin/op
+    cli_sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
     cli_version: 2.38.1
     account_id: aaaaaaaaaaaaaaaaaaaaaaaaaa
     account_sign_in_address: example.1password.com
+    authorized_user_uuids: [uuuuuuuuuuuuuuuuuuuuuuuuuu]
     vault_id: vvvvvvvvvvvvvvvvvvvvvvvvvv
     password_item_id: pppppppppppppppppppppppppp
     password_item_version: 1
@@ -128,14 +149,26 @@ EXAMPLES = r"""
     ssh_expected_fingerprint: SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
     subject: host01.example.test
     ssh_path: /usr/bin/ssh
+    ssh_sha256: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
     ssh_add_path: /usr/bin/ssh-add
+    ssh_add_sha256: cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
     ssh_keygen_path: /usr/bin/ssh-keygen
+    ssh_keygen_sha256: dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
     agent_socket_path: /absolute/path/to/1password/agent.sock
     known_hosts_path: /absolute/path/to/dropbear-known-hosts
     destination_host: host01.example.test
     destination_port: 2222
+    destination_host_fingerprint: SHA256:BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB
     remote_command: /bin/cryptroot-unlock
-    confirmation: UNLOCK:host01.example.test
+    approval:
+      schema_version: 1
+      execution_id: unlock-20260809-001
+      commit_shas: {foundational: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}
+      nonce: cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+      issued_at: "2026-08-09T10:00:00Z"
+      expires_at: "2026-08-09T10:05:00Z"
+      replay_directory: /absolute/controller-only/approval-replay
+      confirmation: APPROVE:unlock-20260809-001:<calculated-sha256>
   check_mode: true
 """
 
@@ -178,9 +211,15 @@ def main():
     module = AnsibleModule(
         argument_spec={
             "cli_path": {"type": "path", "required": True},
+            "cli_sha256": {"type": "str", "required": True},
             "cli_version": {"type": "str", "required": True},
             "account_id": {"type": "str", "required": True},
             "account_sign_in_address": {"type": "str", "required": True},
+            "authorized_user_uuids": {
+                "type": "list",
+                "elements": "str",
+                "required": True,
+            },
             "vault_id": {"type": "str", "required": True},
             "password_item_id": {"type": "str", "required": True},
             "password_item_version": {"type": "int", "required": True},
@@ -196,19 +235,40 @@ def main():
             "subject": {"type": "str", "required": True},
             "schema_version": {"type": "int", "default": 1},
             "ssh_path": {"type": "path", "required": True},
+            "ssh_sha256": {"type": "str", "required": True},
             "ssh_add_path": {"type": "path", "required": True},
+            "ssh_add_sha256": {"type": "str", "required": True},
             "ssh_keygen_path": {"type": "path", "required": True},
+            "ssh_keygen_sha256": {"type": "str", "required": True},
             "agent_socket_path": {"type": "path", "required": True},
             "known_hosts_path": {"type": "path", "required": True},
             "destination_host": {"type": "str", "required": True},
             "destination_user": {"type": "str", "default": "root"},
             "destination_port": {"type": "int", "required": True},
+            "destination_host_fingerprint": {"type": "str", "required": True},
             "remote_command": {
                 "type": "str",
                 "required": True,
                 "choices": ["/bin/cryptroot-unlock"],
             },
-            "confirmation": {"type": "str", "required": True},
+            "approval": {
+                "type": "dict",
+                "required": True,
+                "options": {
+                    "schema_version": {"type": "int", "required": True},
+                    "execution_id": {"type": "str", "required": True},
+                    "commit_shas": {"type": "dict", "required": True},
+                    "nonce": {"type": "str", "required": True, "no_log": True},
+                    "issued_at": {"type": "str", "required": True},
+                    "expires_at": {"type": "str", "required": True},
+                    "replay_directory": {"type": "path", "required": True},
+                    "confirmation": {
+                        "type": "str",
+                        "required": True,
+                        "no_log": True,
+                    },
+                },
+            },
         },
         supports_check_mode=True,
     )
