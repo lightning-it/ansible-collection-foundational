@@ -62,3 +62,37 @@
           - hetzner_robot_cac_vswitch_drift_rejected | bool
         fail_msg: The Robot audit accepted a vSwitch check-mode drift prediction.
         quiet: true
+
+    - name: Initialize invalid Robot server-number observation
+      ansible.builtin.set_fact:
+        hetzner_robot_cac_invalid_server_number_rejected: false
+      changed_when: false
+
+    - name: Exercise an invalid numeric Robot audit identity
+      block:
+        - name: Submit a non-positive Robot server number
+          ansible.builtin.include_role:
+            name: lit.foundational.hetzner_robot_cac
+            tasks_from: audit
+          vars:
+            hetzner_robot_cac_validate_only: true
+            hetzner_robot_cac_audit_servers:
+              - server_ip: 192.0.2.10
+                server_number: 0
+
+        - name: Fail when the invalid Robot server number passed validation
+          ansible.builtin.fail:
+            msg: A non-positive Robot server number unexpectedly passed validation.
+
+      rescue:
+        - name: Record expected Robot server-number rejection
+          ansible.builtin.set_fact:
+            hetzner_robot_cac_invalid_server_number_rejected: true
+          changed_when: false
+
+    - name: Require invalid Robot server-number rejection
+      ansible.builtin.assert:
+        that:
+          - hetzner_robot_cac_invalid_server_number_rejected | bool
+        fail_msg: The Robot audit accepted a non-positive numeric server identity.
+        quiet: true
