@@ -1,5 +1,6 @@
 from datetime import timedelta
 import hashlib
+import json
 import os
 from pathlib import Path
 import socket
@@ -207,6 +208,62 @@ def test_claim_blocks_resigned_cross_target_and_cross_binding_replay(
         )
 
 
+def test_claim_blocks_resigned_cross_directory_replay(tmp_path):
+    authority, approval, original_binding, replay, now = _approval(tmp_path)
+    normalized = boundary.normalize_approval(
+        approval,
+        authority,
+        "unlock",
+        "host01.example.test",
+        original_binding,
+        now=now,
+    )
+    boundary.claim_approval(normalized, now=now)
+    alternative_replay = tmp_path / "alternative-replay"
+    alternative_replay.mkdir(mode=0o700)
+    changed = dict(approval)
+    changed["replay_directory"] = str(alternative_replay)
+    changed_binding = {"host": "host02.example.test"}
+    resigned = sign_approval(
+        changed,
+        authority,
+        "unlock",
+        "host02.example.test",
+        changed_binding,
+    )
+    replay_identity = {
+        "schema_version": 1,
+        "authority_identity": authority["identity"],
+        "authority_namespace": authority["namespace"],
+        "authority_fingerprint": authority["fingerprint"],
+        "execution_id": resigned["execution_id"],
+        "nonce": resigned["nonce"],
+    }
+    resigned_replay_digest = hashlib.sha256(
+        json.dumps(
+            replay_identity,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=True,
+        ).encode("ascii")
+    ).hexdigest()
+
+    assert resigned_replay_digest == normalized["replay_digest"]
+
+    with pytest.raises(AnsibleActionFail, match="must exactly match"):
+        boundary.normalize_approval(
+            resigned,
+            authority,
+            "unlock",
+            "host02.example.test",
+            changed_binding,
+            now=now,
+        )
+
+    assert (replay / (normalized["replay_digest"] + ".used")).is_file()
+    assert not list(alternative_replay.glob("*.used"))
+
+
 def test_approval_rejects_expiry_and_insecure_replay_directory(tmp_path):
     authority, approval, binding, replay, now = _approval(tmp_path)
     with pytest.raises(AnsibleActionFail):
@@ -238,6 +295,7 @@ def test_approval_rejects_expiry_and_insecure_replay_directory(tmp_path):
         "authority_fingerprint",
         "allowed_signers_digest",
         "verifier_digest",
+        "replay_directory_alias",
     ],
 )
 def test_approval_authority_pins_fail_closed(tmp_path, mutation):
@@ -249,8 +307,12 @@ def test_approval_authority_pins_fail_closed(tmp_path, mutation):
         changed["fingerprint"] = "SHA256:" + "A" * 43
     elif mutation == "allowed_signers_digest":
         changed["allowed_signers_sha256"] = "0" * 64
-    else:
+    elif mutation == "verifier_digest":
         changed["ssh_keygen_sha256"] = "0" * 64
+    else:
+        alias = tmp_path / "replay-alias"
+        alias.symlink_to(authority["replay_directory"])
+        changed["replay_directory"] = str(alias)
 
     with pytest.raises(AnsibleActionFail):
         boundary.normalize_approval_authority(changed)

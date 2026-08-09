@@ -60,6 +60,7 @@ _AUTHORITY_KEYS = frozenset(
         "allowed_signers_sha256",
         "ssh_keygen_path",
         "ssh_keygen_sha256",
+        "replay_directory",
     )
 )
 
@@ -267,6 +268,30 @@ def trusted_pinned_regular_file(path, expected_sha256, name, maximum_size=104857
     return resolved, payload
 
 
+def trusted_replay_directory(path, name):
+    """Return one canonical controller-only replay directory and its identity."""
+    if not isinstance(path, str) or not path or not os.path.isabs(path):
+        _fail("{0} must be a non-empty absolute path.".format(name))
+    if os.path.normpath(path) != path or any(
+        character in path for character in "\x00\r\n"
+    ):
+        _fail("{0} must be an exact normalized path.".format(name))
+    try:
+        resolved = Path(path).resolve(strict=True)
+    except OSError:
+        _fail("{0} does not exist.".format(name))
+    if str(resolved) != path:
+        _fail("{0} must be canonical and may not be a symbolic link.".format(name))
+    status = os.lstat(path)
+    if not stat.S_ISDIR(status.st_mode):
+        _fail("{0} must be a directory.".format(name))
+    _safe_owner(status, name, controller_only=True)
+    if status.st_mode & 0o077:
+        _fail("{0} must be accessible only by the controller identity.".format(name))
+    _validate_parent_chain(resolved.parent, name)
+    return str(resolved), status
+
+
 def _ed25519_fingerprint(public_key):
     fields = public_key.split()
     if len(fields) != 2 or fields[0] != "ssh-ed25519":
@@ -351,6 +376,10 @@ def normalize_approval_authority(authority):
     ssh_keygen_sha256 = normalize_sha256(
         authority.get("ssh_keygen_sha256"), "approval_ssh_keygen_sha256"
     )
+    replay_directory, replay_directory_status = trusted_replay_directory(
+        authority.get("replay_directory"),
+        "approval_authority.replay_directory",
+    )
     allowed_signers_path, allowed_signers_payload = trusted_pinned_regular_file(
         authority.get("allowed_signers_path"),
         allowed_signers_sha256,
@@ -375,9 +404,12 @@ def normalize_approval_authority(authority):
         "allowed_signers_entry_sha256": signer_identity["entry_sha256"],
         "ssh_keygen_path": ssh_keygen_path,
         "ssh_keygen_sha256": ssh_keygen_sha256,
+        "replay_directory": replay_directory,
         "_allowed_signers_payload": allowed_signers_payload,
         "_requested_allowed_signers_path": authority["allowed_signers_path"],
         "_requested_ssh_keygen_path": authority["ssh_keygen_path"],
+        "_replay_directory_device": replay_directory_status.st_dev,
+        "_replay_directory_inode": replay_directory_status.st_ino,
     }
 
 
@@ -451,33 +483,8 @@ def _normalize_approval_fields(approval, require_signature=True):
         _fail(
             "approval lifetime must be greater than zero and no longer than 15 minutes."
         )
-    replay_directory = approval.get("replay_directory")
-    if (
-        not isinstance(replay_directory, str)
-        or not replay_directory
-        or not os.path.isabs(replay_directory)
-    ):
-        _fail("approval.replay_directory must be a non-empty absolute path.")
-    if os.path.normpath(replay_directory) != replay_directory:
-        _fail("approval.replay_directory must be normalized.")
-    try:
-        resolved_replay_directory = Path(replay_directory).resolve(strict=True)
-    except OSError:
-        _fail("approval.replay_directory does not exist.")
-    if str(resolved_replay_directory) != replay_directory:
-        _fail(
-            "approval.replay_directory must be canonical and may not be a symbolic link."
-        )
-    status = os.lstat(replay_directory)
-    if not stat.S_ISDIR(status.st_mode):
-        _fail("approval.replay_directory must be a directory.")
-    _safe_owner(status, "approval.replay_directory", controller_only=True)
-    if status.st_mode & 0o077:
-        _fail(
-            "approval.replay_directory must be accessible only by the controller identity."
-        )
-    _validate_parent_chain(
-        resolved_replay_directory.parent, "approval.replay_directory"
+    replay_directory, replay_directory_status = trusted_replay_directory(
+        approval.get("replay_directory"), "approval.replay_directory"
     )
     signature = approval.get("signature")
     if (
@@ -504,8 +511,8 @@ def _normalize_approval_fields(approval, require_signature=True):
         "expires_at": expires_at,
         "expires_at_text": approval["expires_at"],
         "replay_directory": replay_directory,
-        "replay_directory_device": status.st_dev,
-        "replay_directory_inode": status.st_ino,
+        "replay_directory_device": replay_directory_status.st_dev,
+        "replay_directory_inode": replay_directory_status.st_ino,
         "signature": signature,
     }
 
@@ -521,6 +528,7 @@ def _public_authority(authority):
         "allowed_signers_entry_sha256": authority["allowed_signers_entry_sha256"],
         "ssh_keygen_path": authority["ssh_keygen_path"],
         "ssh_keygen_sha256": authority["ssh_keygen_sha256"],
+        "replay_directory": authority["replay_directory"],
     }
 
 
@@ -592,10 +600,16 @@ def _revalidate_authority(authority):
         "allowed_signers_sha256": authority["allowed_signers_sha256"],
         "ssh_keygen_path": authority["_requested_ssh_keygen_path"],
         "ssh_keygen_sha256": authority["ssh_keygen_sha256"],
+        "replay_directory": authority["replay_directory"],
     }
     observed = normalize_approval_authority(raw)
     if _public_authority(observed) != _public_authority(authority):
         _fail("Approval Authority pins changed during verification.")
+    if (
+        observed["_replay_directory_device"] != authority["_replay_directory_device"]
+        or observed["_replay_directory_inode"] != authority["_replay_directory_inode"]
+    ):
+        _fail("Approval Authority replay-directory identity changed.")
     return observed
 
 
@@ -651,6 +665,18 @@ def normalize_approval(approval, authority, operation, target, binding, now=None
     """Validate an expiring approval and prepare its replay-safe claim."""
     normalized = _normalize_approval_fields(approval)
     normalized_authority = _normalized_authority(authority)
+    if normalized["replay_directory"] != normalized_authority["replay_directory"]:
+        _fail(
+            "approval.replay_directory must exactly match the independently "
+            "pinned Approval Authority replay directory."
+        )
+    if (
+        normalized["replay_directory_device"]
+        != normalized_authority["_replay_directory_device"]
+        or normalized["replay_directory_inode"]
+        != normalized_authority["_replay_directory_inode"]
+    ):
+        _fail("Approval Authority replay-directory identity changed.")
     if not isinstance(operation, str) or not operation:
         _fail("approval operation binding is invalid.")
     if not isinstance(target, str) or not target:
@@ -685,7 +711,9 @@ def normalize_approval(approval, authority, operation, target, binding, now=None
         replay_identity, sort_keys=True, separators=(",", ":"), ensure_ascii=True
     ).encode("ascii")
     replay_digest = hashlib.sha256(replay_payload).hexdigest()
-    marker = os.path.join(normalized["replay_directory"], replay_digest + ".used")
+    marker = os.path.join(
+        normalized_authority["replay_directory"], replay_digest + ".used"
+    )
     if os.path.lexists(marker):
         _fail("approval nonce has already been consumed.")
     return {
@@ -698,9 +726,9 @@ def normalize_approval(approval, authority, operation, target, binding, now=None
         "authority_identity": normalized_authority["identity"],
         "authority_namespace": normalized_authority["namespace"],
         "authority_fingerprint": normalized_authority["fingerprint"],
-        "_replay_directory": normalized["replay_directory"],
-        "_replay_directory_device": normalized["replay_directory_device"],
-        "_replay_directory_inode": normalized["replay_directory_inode"],
+        "_replay_directory": normalized_authority["replay_directory"],
+        "_replay_directory_device": normalized_authority["_replay_directory_device"],
+        "_replay_directory_inode": normalized_authority["_replay_directory_inode"],
     }
 
 

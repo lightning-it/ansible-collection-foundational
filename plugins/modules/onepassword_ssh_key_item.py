@@ -81,6 +81,7 @@ options:
     description:
       - Independently configured Ed25519 Approval Authority for apply.
       - Pins the signer, allowed-signers file, and C(ssh-keygen) verifier.
+      - Pins the one canonical controller-only replay directory that the approval must match exactly.
   approval:
     type: dict
     default: {}
@@ -217,6 +218,7 @@ def main():
                     "allowed_signers_sha256": {"type": "str"},
                     "ssh_keygen_path": {"type": "path"},
                     "ssh_keygen_sha256": {"type": "str"},
+                    "replay_directory": {"type": "path"},
                 },
             },
             "approval": {

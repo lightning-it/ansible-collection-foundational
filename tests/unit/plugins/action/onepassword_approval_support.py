@@ -25,6 +25,9 @@ def _write_executable(path, source):
 
 def build_authority(tmp_path):
     """Create an ephemeral Ed25519 authority and synthetic ssh-keygen facade."""
+    replay_directory = tmp_path / "replay"
+    replay_directory.mkdir(mode=0o700, exist_ok=True)
+    replay_directory.chmod(0o700)
     signing_key = Ed25519PrivateKey.generate()
     public_key_bytes = signing_key.public_key().public_bytes(
         encoding=serialization.Encoding.Raw,
@@ -94,6 +97,7 @@ def build_authority(tmp_path):
         ).hexdigest(),
         "ssh_keygen_path": str(verifier),
         "ssh_keygen_sha256": hashlib.sha256(verifier.read_bytes()).hexdigest(),
+        "replay_directory": str(replay_directory),
     }
 
 

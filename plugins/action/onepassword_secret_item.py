@@ -129,6 +129,7 @@ options:
       - Independently configured Approval Authority for C(apply).
       - Pins one Ed25519 signer, the allowed-signers file, and the C(ssh-keygen) verifier by full SHA-256 digest.
       - The fixed signature namespace is C(lit-onepassword-approval-v1).
+      - Pins one canonical controller-only replay directory that C(approval.replay_directory) must match exactly.
     type: dict
     default: {}
   approval:

@@ -164,6 +164,7 @@ options:
       - Independently configured Ed25519 Approval Authority.
       - Pins the exact signer, allowed-signers file, and C(ssh-keygen) verifier by full SHA-256 digest.
       - The fixed signature namespace is C(lit-onepassword-approval-v1).
+      - Pins one canonical controller-only replay directory that C(approval.replay_directory) must match exactly.
     type: dict
     required: true
   approval:
@@ -235,6 +236,7 @@ EXAMPLES = r"""
       allowed_signers_sha256: ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
       ssh_keygen_path: /usr/bin/ssh-keygen
       ssh_keygen_sha256: dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+      replay_directory: /absolute/controller-only/approval-replay
     approval:
       schema_version: 1
       execution_id: unlock-20260809-001
