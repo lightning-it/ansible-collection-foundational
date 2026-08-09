@@ -59,8 +59,10 @@ If generic guidance conflicts with repository behavior, you MUST prefer reposito
    22. `.github/workflows/security-release-dispatch.yml`
    23. `.lit/push-ready-secret-fixtures.json`
    24. `docs/development/push-ready-secret-fixtures.md`
-5. The Security intake and dispatch files in items 19 through 22 and the temporary fixture-policy files in items
-   23 and 24 are supplementary-only MLX-90 Security assets. Generic collection synchronization MUST exclude them;
+   25. `tests/unit/test_security_release_request_dispatch.py`
+5. The Security intake and dispatch files in items 19 through 22, the temporary fixture-policy files in items
+   23 and 24, and the dispatch contract assertion in item 25 are supplementary-only MLX-90 Security assets.
+   Generic collection synchronization MUST exclude them;
    only the narrow `ansible-collection-supplementary` enterprise sync may
    install them. They MUST NOT remove the human-controlled checkpoint for
    normal `develop` to `main` promotions. The fixture manifest MUST match only
