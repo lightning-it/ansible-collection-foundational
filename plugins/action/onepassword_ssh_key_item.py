@@ -105,7 +105,18 @@ options:
   allow_create:
     type: bool
     default: false
+  approval_authority:
+    description:
+      - Independently configured Approval Authority for C(apply).
+      - Pins one Ed25519 signer, the allowed-signers file, and the C(ssh-keygen) verifier by full SHA-256 digest.
+      - The fixed signature namespace is C(lit-onepassword-approval-v1).
+    type: dict
+    default: {}
   approval:
+    description:
+      - Expiring, signed, one-time approval for C(apply).
+      - The signature covers the authority, execution ID, repository commits, operation, target, and complete
+        normalized non-secret action contract.
     type: dict
     default: {}
   ssh_add_path:
@@ -211,6 +222,7 @@ _EXPECTED_ARGS = frozenset(
         "key_type",
         "expected_fingerprint",
         "allow_create",
+        "approval_authority",
         "approval",
         "ssh_add_path",
         "ssh_add_sha256",
@@ -305,7 +317,9 @@ def _normalize_arguments(args):
     for name, value in (("account_id", account_id), ("vault_id", vault_id)):
         if not isinstance(value, str) or not _OBJECT_ID_PATTERN.fullmatch(value):
             _fail("{0} must be an exact 1Password object ID.".format(name))
-    if not isinstance(item_id, str) or (item_id and not _OBJECT_ID_PATTERN.fullmatch(item_id)):
+    if not isinstance(item_id, str) or (
+        item_id and not _OBJECT_ID_PATTERN.fullmatch(item_id)
+    ):
         _fail("item_id must be empty or an exact 1Password object ID.")
     if item_version < 0:
         _fail("item_version must be zero or a positive integer.")
@@ -313,7 +327,9 @@ def _normalize_arguments(args):
         _fail("item_id and a positive item_version must be pinned together.")
 
     sign_in_address = _plain_text(args.get("account_sign_in_address"))
-    if not isinstance(sign_in_address, str) or not _HOST_PATTERN.fullmatch(sign_in_address):
+    if not isinstance(sign_in_address, str) or not _HOST_PATTERN.fullmatch(
+        sign_in_address
+    ):
         _fail("account_sign_in_address must be an exact host name.")
     item_title = _plain_text(args.get("item_title"))
     if (
@@ -364,7 +380,9 @@ def _normalize_arguments(args):
         if not item_id:
             _fail("read_public and verify_agent require a pinned exact item_id.")
         if not expected_fingerprint:
-            _fail("read_public and verify_agent require an externally pinned fingerprint.")
+            _fail(
+                "read_public and verify_agent require an externally pinned fingerprint."
+            )
         if allow_create:
             _fail("read_public and verify_agent cannot permit creation.")
     if operation == "apply":
@@ -439,11 +457,14 @@ def _normalize_arguments(args):
     if operation == "apply":
         config["approval"] = normalize_approval(
             approval,
+            args.get("approval_authority"),
             operation="create-onepassword-ssh-key",
             target=subject,
             binding=_approval_binding(config),
         )
     else:
+        if args.get("approval_authority") not in ({}, None):
+            _fail("approval_authority is accepted only for apply.")
         if approval not in ({}, None):
             _fail("approval is accepted only for apply.")
         config["approval"] = None
@@ -452,15 +473,25 @@ def _normalize_arguments(args):
 
 def _approval_binding(config):
     return {
+        "operation": config["operation"],
+        "allow_create": config["allow_create"],
         "account_id": config["account_id"],
         "account_sign_in_address": config["account_sign_in_address"],
         "agent_socket_path": config["agent_socket_path"],
         "authorized_user_uuids": config["authorized_user_uuids"],
+        "cli_path": config["cli_path"],
         "cli_sha256": config["cli_sha256"],
+        "cli_version": config["cli_version"],
+        "category": config["category"],
+        "expected_fingerprint": config["expected_fingerprint"],
+        "item_id": config["item_id"],
         "item_title": config["item_title"],
+        "item_version": config["item_version"],
         "key_type": config["key_type"],
         "schema_version": config["schema_version"],
+        "ssh_add_path": config["ssh_add_path"],
         "ssh_add_sha256": config["ssh_add_sha256"],
+        "ssh_keygen_path": config["ssh_keygen_path"],
         "ssh_keygen_sha256": config["ssh_keygen_sha256"],
         "subject": config["subject"],
         "tags": config["tags"],
@@ -533,7 +564,9 @@ class _OnePasswordCLI:
         try:
             return json.loads(payload.decode("utf-8", errors="strict"))
         except (UnicodeDecodeError, ValueError):
-            _fail("1Password returned invalid public metadata for {0}.".format(operation))
+            _fail(
+                "1Password returned invalid public metadata for {0}.".format(operation)
+            )
 
     def discard(self, arguments, operation):
         self._run(arguments, operation, discard_stdout=True)
@@ -578,13 +611,17 @@ def _public_identity(public_key):
         algorithm_length = struct.unpack(">I", blob[0:4])[0]
         algorithm = blob[4 : 4 + algorithm_length]
         key_length_offset = 4 + algorithm_length
-        key_length = struct.unpack(">I", blob[key_length_offset : key_length_offset + 4])[0]
+        key_length = struct.unpack(
+            ">I", blob[key_length_offset : key_length_offset + 4]
+        )[0]
         key = blob[key_length_offset + 4 :]
     except (struct.error, ValueError):
         _fail("1Password returned an invalid Ed25519 public-key blob.")
     if algorithm != b"ssh-ed25519" or key_length != 32 or len(key) != 32:
         _fail("1Password returned an invalid Ed25519 public-key blob.")
-    fingerprint = base64.b64encode(hashlib.sha256(blob).digest()).decode("ascii").rstrip("=")
+    fingerprint = (
+        base64.b64encode(hashlib.sha256(blob).digest()).decode("ascii").rstrip("=")
+    )
     return " ".join(parts), "SHA256:{0}".format(fingerprint)
 
 
@@ -612,15 +649,23 @@ class _OnePasswordSSHKeyItemStore:
     def _assert_current_version(self, config, item_id, item_version):
         items = self.client.metadata(
             [
-                "item", "list", "--vault", config["vault_id"], "--account",
-                config["account_id"], "--long", "--format", "json",
+                "item",
+                "list",
+                "--vault",
+                config["vault_id"],
+                "--account",
+                config["account_id"],
+                "--long",
+                "--format",
+                "json",
             ],
             "SSH item revision revalidation",
         )
         if not isinstance(items, list):
             _fail("1Password returned invalid SSH item revision metadata.")
         matches = [
-            item for item in items
+            item
+            for item in items
             if isinstance(item, dict) and item.get("id") == item_id
         ]
         if (
@@ -628,7 +673,9 @@ class _OnePasswordSSHKeyItemStore:
             or matches[0].get("title") != config["item_title"]
             or matches[0].get("version") != item_version
         ):
-            _fail("The 1Password SSH item changed during immutable contract validation.")
+            _fail(
+                "The 1Password SSH item changed during immutable contract validation."
+            )
 
     def inspect(self, config):
         try:
@@ -646,7 +693,10 @@ class _OnePasswordSSHKeyItemStore:
             ["whoami", "--account", config["account_id"], "--format", "json"],
             "desktop identity verification",
         )
-        if not isinstance(identity, dict) or identity.get("account_uuid") != config["account_id"]:
+        if (
+            not isinstance(identity, dict)
+            or identity.get("account_uuid") != config["account_id"]
+        ):
             _fail("The signed-in 1Password account does not match account_id.")
         if (
             _normalize_sign_in_address(str(identity.get("url", "")))
@@ -663,8 +713,13 @@ class _OnePasswordSSHKeyItemStore:
 
         vault = self.client.metadata(
             [
-                "vault", "get", config["vault_id"], "--account", config["account_id"],
-                "--format", "json",
+                "vault",
+                "get",
+                config["vault_id"],
+                "--account",
+                config["account_id"],
+                "--format",
+                "json",
             ],
             "vault verification",
         )
@@ -672,15 +727,23 @@ class _OnePasswordSSHKeyItemStore:
             _fail("The selected 1Password vault does not match vault_id.")
         items = self.client.metadata(
             [
-                "item", "list", "--vault", config["vault_id"], "--account",
-                config["account_id"], "--long", "--format", "json",
+                "item",
+                "list",
+                "--vault",
+                config["vault_id"],
+                "--account",
+                config["account_id"],
+                "--long",
+                "--format",
+                "json",
             ],
             "SSH item metadata inspection",
         )
         if not isinstance(items, list):
             _fail("1Password returned invalid item-list metadata.")
         matches = [
-            item for item in items
+            item
+            for item in items
             if isinstance(item, dict) and item.get("title") == config["item_title"]
         ]
         if len(matches) > 1:
@@ -696,7 +759,9 @@ class _OnePasswordSSHKeyItemStore:
             }
         item = matches[0]
         observed_item_id = item.get("id")
-        if not isinstance(observed_item_id, str) or not _OBJECT_ID_PATTERN.fullmatch(observed_item_id):
+        if not isinstance(observed_item_id, str) or not _OBJECT_ID_PATTERN.fullmatch(
+            observed_item_id
+        ):
             _fail("The 1Password SSH item has no exact object ID.")
         if config["item_id"] and config["item_id"] != observed_item_id:
             _fail("item_title resolves to a different SSH item_id.")
@@ -713,7 +778,9 @@ class _OnePasswordSSHKeyItemStore:
         if observed_category != "SSH_KEY":
             _fail("The 1Password item category is not SSH Key.")
         observed_tags = item.get("tags", [])
-        if not isinstance(observed_tags, list) or sorted(observed_tags) != sorted(config["tags"]):
+        if not isinstance(observed_tags, list) or sorted(observed_tags) != sorted(
+            config["tags"]
+        ):
             _fail("The 1Password SSH item tags do not match.")
         return {
             "exists": True,
@@ -725,10 +792,17 @@ class _OnePasswordSSHKeyItemStore:
     def public_metadata(self, config, item_id, item_version):
         fields = self.client.metadata(
             [
-                "item", "get", item_id, "--vault", config["vault_id"], "--account",
-                config["account_id"], "--fields",
+                "item",
+                "get",
+                item_id,
+                "--vault",
+                config["vault_id"],
+                "--account",
+                config["account_id"],
+                "--fields",
                 "label=subject,label=schema_version,label=public key,label=fingerprint",
-                "--format", "json",
+                "--format",
+                "json",
             ],
             "selected SSH public-field verification",
         )
@@ -740,8 +814,13 @@ class _OnePasswordSSHKeyItemStore:
         public_key, fingerprint = _public_identity(values.get("public key"))
         if values.get("fingerprint") != fingerprint:
             _fail("The 1Password SSH item fingerprint does not match its public key.")
-        if config["expected_fingerprint"] and fingerprint != config["expected_fingerprint"]:
-            _fail("The 1Password SSH item does not match the externally pinned fingerprint.")
+        if (
+            config["expected_fingerprint"]
+            and fingerprint != config["expected_fingerprint"]
+        ):
+            _fail(
+                "The 1Password SSH item does not match the externally pinned fingerprint."
+            )
         self._assert_current_version(config, item_id, item_version)
         return {"public_key": public_key, "fingerprint": fingerprint}
 
@@ -780,7 +859,9 @@ class _OnePasswordSSHKeyItemStore:
         if completed.returncode != 0:
             _fail("The approved 1Password SSH Agent is unavailable or locked.")
         if len(completed.stdout) > 65536:
-            _fail("The approved 1Password SSH Agent returned excessive public metadata.")
+            _fail(
+                "The approved 1Password SSH Agent returned excessive public metadata."
+            )
         try:
             public_rows = completed.stdout.decode("utf-8", errors="strict").splitlines()
         except UnicodeDecodeError:
@@ -796,7 +877,9 @@ class _OnePasswordSSHKeyItemStore:
             if fingerprint == expected_fingerprint:
                 matched_fingerprints.append(fingerprint)
         if len(matched_fingerprints) != 1:
-            _fail("The exact pinned SSH key is not uniquely available from the approved SSH Agent socket.")
+            _fail(
+                "The exact pinned SSH key is not uniquely available from the approved SSH Agent socket."
+            )
 
         challenge = bytearray(os.urandom(32))
         namespace = "agent-proof@l-it.io"
@@ -842,14 +925,18 @@ class _OnePasswordSSHKeyItemStore:
                     timeout=_PROCESS_TIMEOUT_SECONDS,
                 )
             except (OSError, subprocess.SubprocessError):
-                _fail("The approved SSH Agent signing challenge could not be executed safely.")
+                _fail(
+                    "The approved SSH Agent signing challenge could not be executed safely."
+                )
             if (
                 signed.returncode != 0
                 or not signed.stdout.startswith(b"-----BEGIN SSH SIGNATURE-----\n")
                 or not signed.stdout.endswith(b"-----END SSH SIGNATURE-----\n")
                 or len(signed.stdout) > 65536
             ):
-                _fail("The approved SSH Agent did not produce a valid signing challenge response.")
+                _fail(
+                    "The approved SSH Agent did not produce a valid signing challenge response."
+                )
             _write_controller_file(signature_path, signed.stdout)
             try:
                 ssh_keygen = trusted_executable(
@@ -881,7 +968,9 @@ class _OnePasswordSSHKeyItemStore:
                     timeout=_PROCESS_TIMEOUT_SECONDS,
                 )
             except (OSError, subprocess.SubprocessError):
-                _fail("The approved SSH Agent signing challenge could not be verified safely.")
+                _fail(
+                    "The approved SSH Agent signing challenge could not be verified safely."
+                )
             if verified.returncode != 0:
                 _fail("The approved SSH Agent failed the exact-key signing challenge.")
         finally:
@@ -904,8 +993,10 @@ class _OnePasswordSSHKeyItemStore:
             )
         if operation == "plan" or (operation == "apply" and check_mode):
             result = {
-                "changed": not observed["exists"], "created": False,
-                "exists": observed["exists"], "item_id": observed["item_id"],
+                "changed": not observed["exists"],
+                "created": False,
+                "exists": observed["exists"],
+                "item_id": observed["item_id"],
                 "item_version": observed["item_version"],
                 "operator_user_uuid": observed["operator_user_uuid"],
                 "planned": not observed["exists"],
@@ -924,8 +1015,15 @@ class _OnePasswordSSHKeyItemStore:
         if operation == "apply":
             claim_approval(config["approval"])
             creation_arguments = [
-                "item", "create", "--account", config["account_id"], "--vault",
-                config["vault_id"], "--category=ssh", "--title", config["item_title"],
+                "item",
+                "create",
+                "--account",
+                config["account_id"],
+                "--vault",
+                config["vault_id"],
+                "--category=ssh",
+                "--title",
+                config["item_title"],
                 "--ssh-generate-key=ed25519",
                 "subject[text]={0}".format(config["subject"]),
                 "schema_version[text]={0}".format(config["schema_version"]),
@@ -946,8 +1044,11 @@ class _OnePasswordSSHKeyItemStore:
         if operation in ("apply", "verify_agent"):
             agent_verified = self.verify_agent(config, public_identity)
         result = {
-            "changed": created, "created": created, "exists": True,
-            "item_id": observed["item_id"], "planned": False,
+            "changed": created,
+            "created": created,
+            "exists": True,
+            "item_id": observed["item_id"],
+            "planned": False,
             "item_version": observed["item_version"],
             "operator_user_uuid": observed["operator_user_uuid"],
             "public_key": public_identity["public_key"],

@@ -78,10 +78,16 @@ options:
   allow_create:
     type: bool
     default: false
+  approval_authority:
+    type: dict
+    default: {}
+    description:
+      - Independently configured Ed25519 Approval Authority for apply.
+      - Pins the signer, allowed-signers file, and C(ssh-keygen) verifier.
   approval:
     type: dict
     default: {}
-    description: Expiring execution-, commit-, target-, and operation-bound one-time approval for apply.
+    description: Expiring asymmetric signature over the full apply contract.
 author:
   - Lightning IT (@lightning-it)
 """
@@ -166,6 +172,20 @@ def main():
             "password_recipe": {"type": "str", "required": True},
             "password_length": {"type": "int", "required": True},
             "allow_create": {"type": "bool", "default": False},
+            "approval_authority": {
+                "type": "dict",
+                "default": {},
+                "options": {
+                    "schema_version": {"type": "int"},
+                    "identity": {"type": "str"},
+                    "namespace": {"type": "str"},
+                    "fingerprint": {"type": "str"},
+                    "allowed_signers_path": {"type": "path"},
+                    "allowed_signers_sha256": {"type": "str"},
+                    "ssh_keygen_path": {"type": "path"},
+                    "ssh_keygen_sha256": {"type": "str"},
+                },
+            },
             "approval": {
                 "type": "dict",
                 "default": {},
@@ -177,7 +197,7 @@ def main():
                     "issued_at": {"type": "str"},
                     "expires_at": {"type": "str"},
                     "replay_directory": {"type": "path"},
-                    "confirmation": {"type": "str", "no_log": True},
+                    "signature": {"type": "str"},
                 },
             },
         },

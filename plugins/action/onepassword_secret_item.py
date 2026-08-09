@@ -124,8 +124,18 @@ options:
     description: Explicitly permit creation during C(apply).
     type: bool
     default: false
+  approval_authority:
+    description:
+      - Independently configured Approval Authority for C(apply).
+      - Pins one Ed25519 signer, the allowed-signers file, and the C(ssh-keygen) verifier by full SHA-256 digest.
+      - The fixed signature namespace is C(lit-onepassword-approval-v1).
+    type: dict
+    default: {}
   approval:
-    description: Expiring execution-, commit-, target-, and operation-bound one-time approval for C(apply).
+    description:
+      - Expiring, signed, one-time approval for C(apply).
+      - The signature covers the authority, execution ID, repository commits, operation, target, and complete
+        normalized non-secret action contract.
     type: dict
     default: {}
 attributes:
@@ -224,6 +234,7 @@ _EXPECTED_ARGS = frozenset(
         "password_recipe",
         "password_length",
         "allow_create",
+        "approval_authority",
         "approval",
     )
 )
@@ -321,7 +332,9 @@ def _normalize_arguments(args):
     for name, value in (("account_id", account_id), ("vault_id", vault_id)):
         if not isinstance(value, str) or not _OBJECT_ID_PATTERN.fullmatch(value):
             _fail("{0} must be an exact 1Password object ID.".format(name))
-    if not isinstance(item_id, str) or (item_id and not _OBJECT_ID_PATTERN.fullmatch(item_id)):
+    if not isinstance(item_id, str) or (
+        item_id and not _OBJECT_ID_PATTERN.fullmatch(item_id)
+    ):
         _fail("item_id must be empty or an exact 1Password object ID.")
     if item_version < 0:
         _fail("item_version must be zero or a positive integer.")
@@ -329,7 +342,9 @@ def _normalize_arguments(args):
         _fail("item_id and a positive item_version must be pinned together.")
 
     sign_in_address = _plain_text(args.get("account_sign_in_address"))
-    if not isinstance(sign_in_address, str) or not _HOST_PATTERN.fullmatch(sign_in_address):
+    if not isinstance(sign_in_address, str) or not _HOST_PATTERN.fullmatch(
+        sign_in_address
+    ):
         _fail("account_sign_in_address must be an exact host name.")
 
     item_title = _plain_text(args.get("item_title"))
@@ -412,11 +427,14 @@ def _normalize_arguments(args):
     if operation == "apply":
         config["approval"] = normalize_approval(
             approval,
+            args.get("approval_authority"),
             operation="create-onepassword-secret",
             target=subject,
             binding=_approval_binding(config),
         )
     else:
+        if args.get("approval_authority") not in ({}, None):
+            _fail("approval_authority is accepted only for apply.")
         if approval not in ({}, None):
             _fail("approval is accepted only for apply.")
         config["approval"] = None
@@ -425,13 +443,19 @@ def _normalize_arguments(args):
 
 def _approval_binding(config):
     return {
+        "operation": config["operation"],
+        "allow_create": config["allow_create"],
         "account_id": config["account_id"],
         "account_sign_in_address": config["account_sign_in_address"],
         "authorized_user_uuids": config["authorized_user_uuids"],
         "category": config["category"],
+        "cli_path": config["cli_path"],
         "cli_sha256": config["cli_sha256"],
+        "cli_version": config["cli_version"],
         "field_id": config["field_id"],
+        "item_id": config["item_id"],
         "item_title": config["item_title"],
+        "item_version": config["item_version"],
         "password_length": config["password_length"],
         "password_recipe": config["password_recipe"],
         "schema_version": config["schema_version"],
@@ -507,10 +531,15 @@ class _OnePasswordCLI:
         try:
             return json.loads(payload.decode("utf-8", errors="strict"))
         except (UnicodeDecodeError, ValueError):
-            _fail("1Password returned invalid non-sensitive metadata for {0}.".format(operation))
+            _fail(
+                "1Password returned invalid non-sensitive metadata for {0}.".format(
+                    operation
+                )
+            )
 
     def discard(self, arguments, operation):
         self._run(arguments, operation, discard_stdout=True)
+
 
 def _field_values(payload):
     rows = payload if isinstance(payload, list) else [payload]
@@ -579,7 +608,10 @@ class _OnePasswordSecretItemStore:
             ["whoami", "--account", config["account_id"], "--format", "json"],
             "desktop identity verification",
         )
-        if not isinstance(identity, dict) or identity.get("account_uuid") != config["account_id"]:
+        if (
+            not isinstance(identity, dict)
+            or identity.get("account_uuid") != config["account_id"]
+        ):
             _fail("The signed-in 1Password account does not match account_id.")
         if (
             _normalize_sign_in_address(str(identity.get("url", "")))
@@ -644,7 +676,9 @@ class _OnePasswordSecretItemStore:
 
         item = matches[0]
         observed_item_id = item.get("id")
-        if not isinstance(observed_item_id, str) or not _OBJECT_ID_PATTERN.fullmatch(observed_item_id):
+        if not isinstance(observed_item_id, str) or not _OBJECT_ID_PATTERN.fullmatch(
+            observed_item_id
+        ):
             _fail("The 1Password item has no exact object ID.")
         if config["item_id"] and config["item_id"] != observed_item_id:
             _fail("item_title resolves to a different item_id.")
@@ -660,7 +694,9 @@ class _OnePasswordSecretItemStore:
         if str(item.get("category", "")).lower() != config["category"].lower():
             _fail("The 1Password item category does not match.")
         observed_tags = item.get("tags", [])
-        if not isinstance(observed_tags, list) or sorted(observed_tags) != sorted(config["tags"]):
+        if not isinstance(observed_tags, list) or sorted(observed_tags) != sorted(
+            config["tags"]
+        ):
             _fail("The 1Password item tags do not match.")
 
         fields = self.client.metadata(
@@ -685,9 +721,7 @@ class _OnePasswordSecretItemStore:
             "subject": config["subject"],
         }:
             _fail("The 1Password item subject or schema metadata does not match.")
-        self._assert_current_version(
-            config, observed_item_id, observed_item_version
-        )
+        self._assert_current_version(config, observed_item_id, observed_item_version)
         return {
             "exists": True,
             "item_id": observed_item_id,

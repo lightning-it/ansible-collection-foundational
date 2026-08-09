@@ -1,5 +1,4 @@
 import base64
-from datetime import datetime, timedelta, timezone
 import hashlib
 import socket
 import struct
@@ -10,7 +9,10 @@ import pytest
 from ansible.errors import AnsibleActionFail
 
 from plugins.action import onepassword_ssh_key_item as plugin
-from plugins.action import _onepassword_boundary as boundary
+from tests.unit.plugins.action.onepassword_approval_support import (
+    build_approval,
+    build_authority,
+)
 
 
 ACCOUNT_ID = "a" * 26
@@ -53,6 +55,7 @@ def _arguments(**overrides):
         "key_type": "ed25519",
         "expected_fingerprint": "",
         "allow_create": False,
+        "approval_authority": {},
         "approval": {},
         "ssh_add_path": "/usr/bin/ssh-add",
         "ssh_add_sha256": "1" * 64,
@@ -66,36 +69,43 @@ def _arguments(**overrides):
 
 def _apply_arguments(tmp_path, **overrides):
     arguments = _arguments(operation="apply", allow_create=True, **overrides)
-    replay = tmp_path / "replay"
-    replay.mkdir(mode=0o700)
-    now = datetime.now(timezone.utc).replace(microsecond=0)
-    approval = {
-        "schema_version": 1,
-        "execution_id": "ssh-key-create-001",
-        "commit_shas": {"foundational": "a" * 40},
-        "nonce": "c" * 64,
-        "issued_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "expires_at": (now + timedelta(minutes=5)).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "replay_directory": str(replay),
-    }
+    authority = build_authority(tmp_path)
     binding = {
+        "operation": arguments["operation"],
+        "allow_create": arguments["allow_create"],
         "account_id": arguments["account_id"],
         "account_sign_in_address": arguments["account_sign_in_address"],
         "agent_socket_path": arguments["agent_socket_path"],
         "authorized_user_uuids": arguments["authorized_user_uuids"],
+        "cli_path": arguments["cli_path"],
         "cli_sha256": arguments["cli_sha256"],
+        "cli_version": arguments["cli_version"],
+        "category": arguments["category"],
+        "expected_fingerprint": arguments["expected_fingerprint"],
+        "item_id": arguments["item_id"],
         "item_title": arguments["item_title"],
+        "item_version": arguments["item_version"],
         "key_type": arguments["key_type"],
         "schema_version": arguments["schema_version"],
+        "ssh_add_path": arguments["ssh_add_path"],
         "ssh_add_sha256": arguments["ssh_add_sha256"],
+        "ssh_keygen_path": arguments["ssh_keygen_path"],
         "ssh_keygen_sha256": arguments["ssh_keygen_sha256"],
         "subject": arguments["subject"],
         "tags": arguments["tags"],
         "vault_id": arguments["vault_id"],
     }
-    approval["confirmation"] = boundary.approval_confirmation(
-        approval, "create-onepassword-ssh-key", SUBJECT, binding
+    approval, replay, _unused_now = build_approval(
+        tmp_path,
+        authority,
+        "create-onepassword-ssh-key",
+        SUBJECT,
+        binding,
+        execution_id="ssh-key-create-001",
+        nonce="c" * 64,
+        replay_name="replay",
     )
+    arguments["approval_authority"] = authority
     arguments["approval"] = approval
     return arguments, replay
 
@@ -158,9 +168,7 @@ def test_apply_generates_key_inside_onepassword_and_returns_only_public_identity
     monkeypatch.setattr(
         plugin._OnePasswordSSHKeyItemStore,
         "verify_agent",
-        staticmethod(
-            lambda config, identity: identity["fingerprint"] == FINGERPRINT
-        ),
+        staticmethod(lambda config, identity: identity["fingerprint"] == FINGERPRINT),
     )
     arguments, replay = _apply_arguments(tmp_path)
     result = plugin._OnePasswordSSHKeyItemStore(client).run(
@@ -224,6 +232,22 @@ def test_apply_rejects_a_preexisting_unpinned_key(tmp_path):
         plugin._OnePasswordSSHKeyItemStore(client).run(
             plugin._normalize_arguments(arguments)
         )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("account_sign_in_address", "changed.1password.com"),
+        ("agent_socket_path", "/tmp/changed-agent.sock"),
+        ("item_title", "changed recovery key"),
+        ("ssh_add_path", "/opt/changed/ssh-add"),
+    ],
+)
+def test_apply_signature_rejects_normalized_contract_mutation(tmp_path, field, value):
+    arguments, _unused_replay = _apply_arguments(tmp_path)
+    arguments[field] = value
+    with pytest.raises(AnsibleActionFail):
+        plugin._normalize_arguments(arguments)
 
 
 def test_agent_verification_requires_exact_socket_and_public_identity(tmp_path):

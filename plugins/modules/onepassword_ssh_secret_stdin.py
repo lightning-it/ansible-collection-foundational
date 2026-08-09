@@ -103,6 +103,10 @@ options:
   known_hosts_path:
     type: path
     required: true
+  known_hosts_sha256:
+    description: Complete lowercase SHA-256 digest of the exact known-hosts file.
+    type: str
+    required: true
   destination_host:
     type: str
     required: true
@@ -119,7 +123,16 @@ options:
     type: str
     choices: [/bin/cryptroot-unlock]
     required: true
+  approval_authority:
+    description:
+      - Independently configured Ed25519 Approval Authority with exact signer, file, verifier, and digest pins.
+      - The fixed signature namespace is C(lit-onepassword-approval-v1).
+    type: dict
+    required: true
   approval:
+    description:
+      - Expiring asymmetric signature over the complete normalized unlock contract.
+      - Replay is global to the Authority, execution ID, and nonce, independent of target and payload.
     type: dict
     required: true
 author:
@@ -156,10 +169,20 @@ EXAMPLES = r"""
     ssh_keygen_sha256: dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
     agent_socket_path: /absolute/path/to/1password/agent.sock
     known_hosts_path: /absolute/path/to/dropbear-known-hosts
+    known_hosts_sha256: eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
     destination_host: host01.example.test
     destination_port: 2222
     destination_host_fingerprint: SHA256:BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB
     remote_command: /bin/cryptroot-unlock
+    approval_authority:
+      schema_version: 1
+      identity: approval-authority@example.test
+      namespace: lit-onepassword-approval-v1
+      fingerprint: SHA256:CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+      allowed_signers_path: /absolute/controller-only/approval_allowed_signers
+      allowed_signers_sha256: ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+      ssh_keygen_path: /usr/bin/ssh-keygen
+      ssh_keygen_sha256: dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
     approval:
       schema_version: 1
       execution_id: unlock-20260809-001
@@ -168,7 +191,10 @@ EXAMPLES = r"""
       issued_at: "2026-08-09T10:00:00Z"
       expires_at: "2026-08-09T10:05:00Z"
       replay_directory: /absolute/controller-only/approval-replay
-      confirmation: APPROVE:unlock-20260809-001:<calculated-sha256>
+      signature: |
+        -----BEGIN SSH SIGNATURE-----
+        <base64-signature>
+        -----END SSH SIGNATURE-----
   check_mode: true
 """
 
@@ -242,6 +268,7 @@ def main():
             "ssh_keygen_sha256": {"type": "str", "required": True},
             "agent_socket_path": {"type": "path", "required": True},
             "known_hosts_path": {"type": "path", "required": True},
+            "known_hosts_sha256": {"type": "str", "required": True},
             "destination_host": {"type": "str", "required": True},
             "destination_user": {"type": "str", "default": "root"},
             "destination_port": {"type": "int", "required": True},
@@ -250,6 +277,20 @@ def main():
                 "type": "str",
                 "required": True,
                 "choices": ["/bin/cryptroot-unlock"],
+            },
+            "approval_authority": {
+                "type": "dict",
+                "required": True,
+                "options": {
+                    "schema_version": {"type": "int", "required": True},
+                    "identity": {"type": "str", "required": True},
+                    "namespace": {"type": "str", "required": True},
+                    "fingerprint": {"type": "str", "required": True},
+                    "allowed_signers_path": {"type": "path", "required": True},
+                    "allowed_signers_sha256": {"type": "str", "required": True},
+                    "ssh_keygen_path": {"type": "path", "required": True},
+                    "ssh_keygen_sha256": {"type": "str", "required": True},
+                },
             },
             "approval": {
                 "type": "dict",
@@ -262,11 +303,7 @@ def main():
                     "issued_at": {"type": "str", "required": True},
                     "expires_at": {"type": "str", "required": True},
                     "replay_directory": {"type": "path", "required": True},
-                    "confirmation": {
-                        "type": "str",
-                        "required": True,
-                        "no_log": True,
-                    },
+                    "signature": {"type": "str", "required": True},
                 },
             },
         },

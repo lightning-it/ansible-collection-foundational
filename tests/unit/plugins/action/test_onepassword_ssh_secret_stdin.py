@@ -1,7 +1,7 @@
-from datetime import datetime, timedelta, timezone
 import hashlib
 import inspect
 import os
+from pathlib import Path
 import socket
 import stat
 import sys
@@ -11,8 +11,11 @@ import pytest
 
 from ansible.errors import AnsibleActionFail
 
-from plugins.action import _onepassword_boundary as boundary
 from plugins.action import onepassword_ssh_secret_stdin as plugin
+from tests.unit.plugins.action.onepassword_approval_support import (
+    build_approval,
+    build_authority,
+)
 
 
 ACCOUNT_ID = "a" * 26
@@ -37,47 +40,91 @@ def _digest(path, fallback):
     return hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else fallback
 
 
-def _approval(arguments, replay):
-    replay.mkdir(mode=0o700, exist_ok=True)
-    replay.chmod(0o700)
-    now = datetime.now(timezone.utc).replace(microsecond=0)
-    approval = {
-        "schema_version": 1,
-        "execution_id": "luks-unlock-001",
-        "commit_shas": {
-            "foundational": "a" * 40,
-            "automation": "b" * 40,
-        },
-        "nonce": "c" * 64,
-        "issued_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "expires_at": (now + timedelta(minutes=5)).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "replay_directory": str(replay),
+def _known_hosts_identity(arguments):
+    path = os.path.realpath(arguments["known_hosts_path"])
+    selected_line = Path(path).read_text(encoding="ascii").strip()
+    _host_token, key_type, encoded_key = selected_line.split()[:3]
+    fingerprint = plugin._public_identity("{0} {1}".format(key_type, encoded_key))[1]
+    return {
+        "path": path,
+        "sha256": arguments["known_hosts_sha256"],
+        "host_token": selected_line.split()[0],
+        "key_type": key_type,
+        "fingerprint": fingerprint,
+        "selected_line_sha256": hashlib.sha256(
+            (selected_line + "\n").encode("ascii")
+        ).hexdigest(),
+        "selected_line": selected_line,
     }
+
+
+def _approval(tmp_path, arguments, authority):
     binding = {
-        "account_id": arguments["account_id"],
-        "authorized_user_uuids": arguments["authorized_user_uuids"],
-        "cli_sha256": arguments["cli_sha256"],
-        "destination_host": arguments["destination_host"],
-        "destination_host_fingerprint": arguments["destination_host_fingerprint"],
-        "destination_port": arguments["destination_port"],
-        "destination_user": arguments["destination_user"],
-        "password_item_id": arguments["password_item_id"],
-        "password_item_version": arguments["password_item_version"],
-        "remote_command": arguments["remote_command"],
-        "ssh_add_sha256": arguments["ssh_add_sha256"],
-        "ssh_expected_fingerprint": arguments["ssh_expected_fingerprint"],
-        "ssh_item_id": arguments["ssh_item_id"],
-        "ssh_item_version": arguments["ssh_item_version"],
-        "ssh_keygen_sha256": arguments["ssh_keygen_sha256"],
-        "ssh_sha256": arguments["ssh_sha256"],
-        "subject": arguments["subject"],
-        "vault_id": arguments["vault_id"],
+        "onepassword": {
+            "cli_path": arguments["cli_path"],
+            "cli_sha256": arguments["cli_sha256"],
+            "cli_version": arguments["cli_version"],
+            "account_id": arguments["account_id"],
+            "account_sign_in_address": arguments["account_sign_in_address"],
+            "authorized_user_uuids": arguments["authorized_user_uuids"],
+            "vault_id": arguments["vault_id"],
+        },
+        "password_item": {
+            "operation": "plan",
+            "allow_create": False,
+            "item_id": arguments["password_item_id"],
+            "item_version": arguments["password_item_version"],
+            "item_title": arguments["password_item_title"],
+            "field_id": arguments["password_field_id"],
+            "category": "Password",
+            "tags": arguments["password_tags"],
+            "subject": arguments["subject"],
+            "schema_version": arguments["schema_version"],
+            "password_recipe": "letters,digits,symbols,{0}".format(
+                arguments["password_length"]
+            ),
+            "password_length": arguments["password_length"],
+        },
+        "ssh_item": {
+            "operation": "verify_agent",
+            "allow_create": False,
+            "item_id": arguments["ssh_item_id"],
+            "item_version": arguments["ssh_item_version"],
+            "item_title": arguments["ssh_item_title"],
+            "category": "SSH Key",
+            "tags": arguments["ssh_tags"],
+            "subject": arguments["subject"],
+            "schema_version": arguments["schema_version"],
+            "key_type": "ed25519",
+            "expected_fingerprint": arguments["ssh_expected_fingerprint"],
+            "ssh_add_path": arguments["ssh_add_path"],
+            "ssh_add_sha256": arguments["ssh_add_sha256"],
+            "ssh_keygen_path": arguments["ssh_keygen_path"],
+            "ssh_keygen_sha256": arguments["ssh_keygen_sha256"],
+            "agent_socket_path": arguments["agent_socket_path"],
+        },
+        "controller_ssh": {
+            "ssh_path": arguments["ssh_path"],
+            "ssh_sha256": arguments["ssh_sha256"],
+            "known_hosts_identity": _known_hosts_identity(arguments),
+        },
+        "destination": {
+            "host": arguments["destination_host"],
+            "user": arguments["destination_user"],
+            "port": arguments["destination_port"],
+            "host_fingerprint": arguments["destination_host_fingerprint"],
+            "remote_command": arguments["remote_command"],
+        },
     }
-    approval["confirmation"] = boundary.approval_confirmation(
-        approval,
+    approval, _unused_replay, _unused_now = build_approval(
+        tmp_path,
+        authority,
         "unlock-luks-over-ssh-stdin",
         arguments["destination_host"],
         binding,
+        execution_id="luks-unlock-001",
+        nonce="c" * 64,
+        replay_name="replay",
     )
     return approval
 
@@ -116,6 +163,7 @@ def _arguments(tmp_path, **overrides):
         "ssh_keygen_sha256": _digest(ssh_keygen_path, "3" * 64),
         "agent_socket_path": str(tmp_path / "agent.sock"),
         "known_hosts_path": str(tmp_path / "known_hosts"),
+        "known_hosts_sha256": _digest(tmp_path / "known_hosts", "4" * 64),
         "destination_host": SUBJECT,
         "destination_user": "root",
         "destination_port": 2222,
@@ -123,9 +171,14 @@ def _arguments(tmp_path, **overrides):
         "remote_command": "/bin/cryptroot-unlock",
     }
     explicit_approval = overrides.pop("approval", None)
+    explicit_authority = overrides.pop("approval_authority", None)
     arguments.update(overrides)
+    authority = (
+        build_authority(tmp_path) if explicit_authority is None else explicit_authority
+    )
+    arguments["approval_authority"] = authority
     arguments["approval"] = (
-        _approval(arguments, tmp_path / "replay")
+        _approval(tmp_path, arguments, authority)
         if explicit_approval is None
         else explicit_approval
     )
@@ -146,7 +199,9 @@ def _write_valid_known_hosts(tmp_path):
     return path
 
 
-def test_consumer_keeps_secret_out_of_result_and_process_arguments(tmp_path, monkeypatch):
+def test_consumer_keeps_secret_out_of_result_and_process_arguments(
+    tmp_path, monkeypatch
+):
     marker = tmp_path / "ssh-success"
     op_path = tmp_path / "op"
     ssh_path = tmp_path / "ssh"
@@ -292,11 +347,13 @@ def test_known_hosts_wrong_fingerprint_and_hard_link_fail_closed(tmp_path):
     ssh_path = tmp_path / "ssh"
     _write_executable(ssh_path, "raise SystemExit(99)\n")
     known_hosts = _write_valid_known_hosts(tmp_path)
-    config = plugin._normalize_arguments(
-        _arguments(tmp_path, destination_host_fingerprint="SHA256:" + "A" * 43)
-    )
     with pytest.raises(AnsibleActionFail):
-        plugin._validate_controller_paths(config)
+        plugin._normalize_arguments(
+            _arguments(
+                tmp_path,
+                destination_host_fingerprint="SHA256:" + "A" * 43,
+            )
+        )
 
     config = plugin._normalize_arguments(_arguments(tmp_path))
     os.link(known_hosts, tmp_path / "known_hosts.link")
@@ -304,8 +361,25 @@ def test_known_hosts_wrong_fingerprint_and_hard_link_fail_closed(tmp_path):
         plugin._validate_controller_paths(config)
 
 
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("account_sign_in_address", "changed.1password.com"),
+        ("agent_socket_path", "/tmp/changed-agent.sock"),
+        ("password_item_title", "changed LUKS recovery"),
+        ("ssh_tags", ["breakglass", "changed"]),
+    ],
+)
+def test_unlock_signature_rejects_normalized_contract_mutation(tmp_path, field, value):
+    _write_valid_known_hosts(tmp_path)
+    arguments = _arguments(tmp_path)
+    arguments[field] = value
+    with pytest.raises(AnsibleActionFail):
+        plugin._normalize_arguments(arguments)
+
+
 def test_secret_reader_uses_mutable_readv_and_rejects_short_or_oversized_values(
-    tmp_path
+    tmp_path,
 ):
     source = inspect.getsource(plugin._read_secret_bytes)
     assert "os.readv(" in source
@@ -339,15 +413,23 @@ def test_secret_reader_uses_mutable_readv_and_rejects_short_or_oversized_values(
 
 def test_core_dump_boundary_sets_and_verifies_zero(monkeypatch):
     calls = []
-    monkeypatch.setattr(plugin.resource, "getrlimit", lambda unused: (1024, 4096) if not calls else (0, 4096))
-    monkeypatch.setattr(plugin.resource, "setrlimit", lambda unused, value: calls.append(value))
+    monkeypatch.setattr(
+        plugin.resource,
+        "getrlimit",
+        lambda unused: (1024, 4096) if not calls else (0, 4096),
+    )
+    monkeypatch.setattr(
+        plugin.resource, "setrlimit", lambda unused, value: calls.append(value)
+    )
 
     assert plugin._disable_core_dumps() is True
     assert calls == [(0, 4096)]
 
 
 def test_macos_agent_socket_path_is_quoted_without_shell_interpolation():
-    path = "/Users/operator/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock"
+    path = (
+        "/Users/operator/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock"
+    )
     assert plugin._ssh_option_path(path) == '"{0}"'.format(path)
 
 
@@ -396,5 +478,6 @@ def test_ssh_identity_is_revalidated_after_secret_transport(monkeypatch):
     ],
 )
 def test_invalid_contracts_fail_before_any_secret_read(tmp_path, overrides):
+    _write_valid_known_hosts(tmp_path)
     with pytest.raises(AnsibleActionFail):
         plugin._normalize_arguments(_arguments(tmp_path, **overrides))

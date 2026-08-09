@@ -7,6 +7,7 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
+import hashlib
 import os
 import re
 import resource
@@ -36,7 +37,7 @@ from ._onepassword_boundary import (
     safe_approval_metadata,
     trusted_agent_socket,
     trusted_executable,
-    trusted_regular_file,
+    trusted_pinned_regular_file,
 )
 
 
@@ -138,6 +139,10 @@ options:
   known_hosts_path:
     type: path
     required: true
+  known_hosts_sha256:
+    description: Complete lowercase SHA-256 digest of the exact known-hosts file.
+    type: str
+    required: true
   destination_host:
     type: str
     required: true
@@ -154,7 +159,18 @@ options:
     type: str
     choices: [/bin/cryptroot-unlock]
     required: true
+  approval_authority:
+    description:
+      - Independently configured Ed25519 Approval Authority.
+      - Pins the exact signer, allowed-signers file, and C(ssh-keygen) verifier by full SHA-256 digest.
+      - The fixed signature namespace is C(lit-onepassword-approval-v1).
+    type: dict
+    required: true
   approval:
+    description:
+      - Expiring asymmetric signature over the authority, execution ID, repository commits, operation, target, and
+        complete normalized non-secret unlock contract.
+      - Replay is claimed globally for the Authority, execution ID, and nonce, independent of target and payload.
     type: dict
     required: true
 notes:
@@ -205,10 +221,20 @@ EXAMPLES = r"""
     ssh_keygen_sha256: dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
     agent_socket_path: /absolute/path/to/1password/agent.sock
     known_hosts_path: /absolute/path/to/dropbear-known-hosts
+    known_hosts_sha256: eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
     destination_host: host01.example.test
     destination_port: 2222
     destination_host_fingerprint: SHA256:BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB
     remote_command: /bin/cryptroot-unlock
+    approval_authority:
+      schema_version: 1
+      identity: approval-authority@example.test
+      namespace: lit-onepassword-approval-v1
+      fingerprint: SHA256:CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+      allowed_signers_path: /absolute/controller-only/approval_allowed_signers
+      allowed_signers_sha256: ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+      ssh_keygen_path: /usr/bin/ssh-keygen
+      ssh_keygen_sha256: dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
     approval:
       schema_version: 1
       execution_id: unlock-20260809-001
@@ -218,7 +244,10 @@ EXAMPLES = r"""
       issued_at: "2026-08-09T10:00:00Z"
       expires_at: "2026-08-09T10:05:00Z"
       replay_directory: /absolute/controller-only/approval-replay
-      confirmation: APPROVE:unlock-20260809-001:<calculated-sha256>
+      signature: |
+        -----BEGIN SSH SIGNATURE-----
+        <base64-signature>
+        -----END SSH SIGNATURE-----
 """
 
 RETURN = r"""
@@ -291,11 +320,13 @@ _EXPECTED_ARGS = frozenset(
         "ssh_keygen_sha256",
         "agent_socket_path",
         "known_hosts_path",
+        "known_hosts_sha256",
         "destination_host",
         "destination_user",
         "destination_port",
         "destination_host_fingerprint",
         "remote_command",
+        "approval_authority",
         "approval",
     )
 )
@@ -334,9 +365,13 @@ def _normalize_arguments(args):
     destination_host = args.get("destination_host")
     destination_user = args.get("destination_user", "root")
     remote_command = args.get("remote_command")
-    if not isinstance(destination_host, str) or not _HOST_PATTERN.fullmatch(destination_host):
+    if not isinstance(destination_host, str) or not _HOST_PATTERN.fullmatch(
+        destination_host
+    ):
         _fail("destination_host must be one exact host identity.")
-    if not isinstance(destination_user, str) or not _USER_PATTERN.fullmatch(destination_user):
+    if not isinstance(destination_user, str) or not _USER_PATTERN.fullmatch(
+        destination_user
+    ):
         _fail("destination_user must be one exact safe SSH user.")
     if destination_user != "root":
         _fail("destination_user must be exactly root.")
@@ -346,19 +381,19 @@ def _normalize_arguments(args):
     if subject != destination_host:
         _fail("subject and destination_host must be the same exact target identity.")
     destination_host_fingerprint = args.get("destination_host_fingerprint")
-    if (
-        not isinstance(destination_host_fingerprint, str)
-        or not _FINGERPRINT_PATTERN.fullmatch(destination_host_fingerprint)
-    ):
+    if not isinstance(
+        destination_host_fingerprint, str
+    ) or not _FINGERPRINT_PATTERN.fullmatch(destination_host_fingerprint):
         _fail("destination_host_fingerprint must be one exact SHA-256 SSH fingerprint.")
 
     cli_sha256 = normalize_sha256(args.get("cli_sha256"), "cli_sha256")
     ssh_sha256 = normalize_sha256(args.get("ssh_sha256"), "ssh_sha256")
-    ssh_add_sha256 = normalize_sha256(
-        args.get("ssh_add_sha256"), "ssh_add_sha256"
-    )
+    ssh_add_sha256 = normalize_sha256(args.get("ssh_add_sha256"), "ssh_add_sha256")
     ssh_keygen_sha256 = normalize_sha256(
         args.get("ssh_keygen_sha256"), "ssh_keygen_sha256"
+    )
+    known_hosts_sha256 = normalize_sha256(
+        args.get("known_hosts_sha256"), "known_hosts_sha256"
     )
 
     common = {
@@ -414,14 +449,17 @@ def _normalize_arguments(args):
         "ssh_path": args.get("ssh_path"),
         "ssh_sha256": ssh_sha256,
         "known_hosts_path": args.get("known_hosts_path"),
+        "known_hosts_sha256": known_hosts_sha256,
         "destination_host": destination_host,
         "destination_user": destination_user,
         "destination_port": destination_port,
         "destination_host_fingerprint": destination_host_fingerprint,
         "remote_command": remote_command,
     }
+    config["known_hosts_identity"] = _read_known_hosts_identity(config)
     config["approval"] = normalize_approval(
         args.get("approval"),
+        args.get("approval_authority"),
         operation="unlock-luks-over-ssh-stdin",
         target=destination_host,
         binding=_approval_binding(config),
@@ -433,42 +471,74 @@ def _approval_binding(config):
     password = config["password"]
     ssh_key = config["ssh_key"]
     return {
-        "account_id": password["account_id"],
-        "authorized_user_uuids": password["authorized_user_uuids"],
-        "cli_sha256": password["cli_sha256"],
-        "destination_host": config["destination_host"],
-        "destination_host_fingerprint": config["destination_host_fingerprint"],
-        "destination_port": config["destination_port"],
-        "destination_user": config["destination_user"],
-        "password_item_id": password["item_id"],
-        "password_item_version": password["item_version"],
-        "remote_command": config["remote_command"],
-        "ssh_add_sha256": ssh_key["ssh_add_sha256"],
-        "ssh_expected_fingerprint": ssh_key["expected_fingerprint"],
-        "ssh_item_id": ssh_key["item_id"],
-        "ssh_item_version": ssh_key["item_version"],
-        "ssh_keygen_sha256": ssh_key["ssh_keygen_sha256"],
-        "ssh_sha256": config["ssh_sha256"],
-        "subject": password["subject"],
-        "vault_id": password["vault_id"],
+        "onepassword": {
+            "cli_path": password["cli_path"],
+            "cli_sha256": password["cli_sha256"],
+            "cli_version": password["cli_version"],
+            "account_id": password["account_id"],
+            "account_sign_in_address": password["account_sign_in_address"],
+            "authorized_user_uuids": password["authorized_user_uuids"],
+            "vault_id": password["vault_id"],
+        },
+        "password_item": {
+            "operation": password["operation"],
+            "allow_create": password["allow_create"],
+            "item_id": password["item_id"],
+            "item_version": password["item_version"],
+            "item_title": password["item_title"],
+            "field_id": password["field_id"],
+            "category": password["category"],
+            "tags": password["tags"],
+            "subject": password["subject"],
+            "schema_version": password["schema_version"],
+            "password_recipe": password["password_recipe"],
+            "password_length": password["password_length"],
+        },
+        "ssh_item": {
+            "operation": ssh_key["operation"],
+            "allow_create": ssh_key["allow_create"],
+            "item_id": ssh_key["item_id"],
+            "item_version": ssh_key["item_version"],
+            "item_title": ssh_key["item_title"],
+            "category": ssh_key["category"],
+            "tags": ssh_key["tags"],
+            "subject": ssh_key["subject"],
+            "schema_version": ssh_key["schema_version"],
+            "key_type": ssh_key["key_type"],
+            "expected_fingerprint": ssh_key["expected_fingerprint"],
+            "ssh_add_path": ssh_key["ssh_add_path"],
+            "ssh_add_sha256": ssh_key["ssh_add_sha256"],
+            "ssh_keygen_path": ssh_key["ssh_keygen_path"],
+            "ssh_keygen_sha256": ssh_key["ssh_keygen_sha256"],
+            "agent_socket_path": ssh_key["agent_socket_path"],
+        },
+        "controller_ssh": {
+            "ssh_path": config["ssh_path"],
+            "ssh_sha256": config["ssh_sha256"],
+            "known_hosts_identity": config["known_hosts_identity"],
+        },
+        "destination": {
+            "host": config["destination_host"],
+            "user": config["destination_user"],
+            "port": config["destination_port"],
+            "host_fingerprint": config["destination_host_fingerprint"],
+            "remote_command": config["remote_command"],
+        },
     }
 
 
-def _validate_controller_paths(config):
-    ssh_path = trusted_executable(
-        config["ssh_path"], config["ssh_sha256"], "ssh_path"
-    )
-    _unused_path, payload = trusted_regular_file(
-        config["known_hosts_path"], "known_hosts_path"
+def _read_known_hosts_identity(config):
+    known_hosts_path, payload = trusted_pinned_regular_file(
+        config["known_hosts_path"],
+        config["known_hosts_sha256"],
+        "known_hosts_path",
     )
     try:
         rows = payload.decode("ascii", errors="strict").splitlines()
     except UnicodeDecodeError:
         _fail("known_hosts_path must contain ASCII OpenSSH host-key data.")
     entries = [
-        row.strip()
-        for row in rows
-        if row.strip() and not row.lstrip().startswith("#")
+        row.strip() for row in rows if row.strip() and not row.lstrip().startswith("#")
     ]
     if len(entries) != 1:
         _fail("known_hosts_path must contain exactly one non-comment host-key entry.")
@@ -476,17 +546,14 @@ def _validate_controller_paths(config):
     if len(fields) not in (3, 4):
         _fail("known_hosts_path contains an invalid host-key entry.")
     host_token, key_type, encoded_key = fields[:3]
-    if (
-        host_token.startswith(("|", "@", "!"))
-        or any(character in host_token for character in ("*", "?", ","))
+    if host_token.startswith(("|", "@", "!")) or any(
+        character in host_token for character in ("*", "?", ",")
     ):
         _fail("known_hosts_path may not use markers, hashes, patterns, or aliases.")
     expected_host_token = (
         config["destination_host"]
         if config["destination_port"] == 22
-        else "[{0}]:{1}".format(
-            config["destination_host"], config["destination_port"]
-        )
+        else "[{0}]:{1}".format(config["destination_host"], config["destination_port"])
     )
     if host_token != expected_host_token:
         _fail("known_hosts_path does not bind the exact destination host and port.")
@@ -497,7 +564,26 @@ def _validate_controller_paths(config):
     )
     if fingerprint != config["destination_host_fingerprint"]:
         _fail("known_hosts_path does not match destination_host_fingerprint.")
-    return ssh_path, "{0} {1} {2}\n".format(host_token, key_type, encoded_key)
+    selected_line = "{0} {1} {2}\n".format(host_token, key_type, encoded_key)
+    return {
+        "path": known_hosts_path,
+        "sha256": config["known_hosts_sha256"],
+        "host_token": host_token,
+        "key_type": key_type,
+        "fingerprint": fingerprint,
+        "selected_line_sha256": hashlib.sha256(
+            selected_line.encode("ascii")
+        ).hexdigest(),
+        "selected_line": selected_line.rstrip("\n"),
+    }
+
+
+def _validate_controller_paths(config):
+    ssh_path = trusted_executable(config["ssh_path"], config["ssh_sha256"], "ssh_path")
+    known_hosts_identity = _read_known_hosts_identity(config)
+    if known_hosts_identity != config["known_hosts_identity"]:
+        _fail("known_hosts_path identity changed after approval verification.")
+    return ssh_path, known_hosts_identity["selected_line"] + "\n"
 
 
 def _inspect_boundaries(config):
@@ -532,7 +618,9 @@ def _inspect_boundaries(config):
 
 def _read_secret_bytes(client, password_config):
     if not os.path.exists("/dev/fd"):
-        _fail("The controller cannot provide the required inherited descriptor boundary.")
+        _fail(
+            "The controller cannot provide the required inherited descriptor boundary."
+        )
     read_descriptor, write_descriptor = os.pipe()
     secret = bytearray(password_config["password_length"])
     overflow = bytearray(1)
@@ -635,16 +723,16 @@ def _revalidate_password_item(client, password_config, operator_user_uuid=None):
         _fail("The 1Password operator changed while the secret was transported.")
 
 
-def _revalidate_ssh_item(
-    client, ssh_config, public_identity, operator_user_uuid=None
-):
+def _revalidate_ssh_item(client, ssh_config, public_identity, operator_user_uuid=None):
     store = _OnePasswordSSHKeyItemStore(client)
     observed = store.inspect(ssh_config)
     if (
         observed["item_id"] != ssh_config["item_id"]
         or observed["item_version"] != ssh_config["item_version"]
     ):
-        _fail("The pinned SSH Key item changed while the recovery secret was transported.")
+        _fail(
+            "The pinned SSH Key item changed while the recovery secret was transported."
+        )
     if (
         operator_user_uuid is not None
         and observed["operator_user_uuid"] != operator_user_uuid
@@ -678,9 +766,7 @@ def _disable_core_dumps():
 
 
 def _run_ssh(config, known_host_line, public_identity, secret):
-    ssh_path = trusted_executable(
-        config["ssh_path"], config["ssh_sha256"], "ssh_path"
-    )
+    ssh_path = trusted_executable(config["ssh_path"], config["ssh_sha256"], "ssh_path")
     agent_socket = trusted_agent_socket(config["ssh_key"]["agent_socket_path"])
     environment = {
         "HOME": os.environ.get("HOME", ""),
@@ -848,9 +934,7 @@ def _consume(config, check_mode=False):
     result["core_dumps_disabled"] = _disable_core_dumps()
     secret = _read_secret_bytes(client, config["password"])
     try:
-        _revalidate_password_item(
-            client, config["password"], operator_user_uuid
-        )
+        _revalidate_password_item(client, config["password"], operator_user_uuid)
         _revalidate_ssh_item(
             client, config["ssh_key"], public_identity, operator_user_uuid
         )
