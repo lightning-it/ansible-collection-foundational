@@ -55,11 +55,17 @@ If generic guidance conflicts with repository behavior, you MUST prefer reposito
    18. `.github/workflows/shared-assets-guarded-automerge.yml`
    19. `scripts/security-release-intake.py`
    20. `.github/workflows/security-release-intake.yml`
-5. The Security intake files in items 19 and 20 are supplementary-only MLX-90
-   Security assets. Generic collection synchronization MUST exclude them;
+   21. `scripts/security-release-dispatch.py`
+   22. `.github/workflows/security-release-dispatch.yml`
+   23. `.lit/push-ready-secret-fixtures.json`
+   24. `docs/development/push-ready-secret-fixtures.md`
+5. The Security intake and dispatch files in items 19 through 22 and the temporary fixture-policy files in items
+   23 and 24 are supplementary-only MLX-90 Security assets. Generic collection synchronization MUST exclude them;
    only the narrow `ansible-collection-supplementary` enterprise sync may
    install them. They MUST NOT remove the human-controlled checkpoint for
-   normal `develop` to `main` promotions.
+   normal `develop` to `main` promotions. The fixture manifest MUST match only
+   unchanged synthetic lines at exact target positions, MUST NOT weaken a
+   scanner, and MUST be retired through the same guarded sync after cleanup.
 6. Repo-local exceptions MUST be explicit in the sync workflow and documented in the repository.
 
 ## 2. Repository Baseline (This Repo)
