@@ -24,5 +24,5 @@ root_of_trust_validate_prerequisite_hosts: []
 root_of_trust_validate_root_host: ""
 root_of_trust_validate_tang_host: ""
 root_of_trust_validate_vault_host: ""
-root_of_trust_validate_bootstrap_input_rules: []
-root_of_trust_validate_hardened_input_rules: []
+root_of_trust_validate_controller_ipv4_cidr: ""
+root_of_trust_validate_firewall: {}

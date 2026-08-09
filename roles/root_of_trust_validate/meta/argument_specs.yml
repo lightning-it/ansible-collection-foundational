@@ -157,6 +157,13 @@ argument_specs:
           public_ipv4:
             type: str
             required: true
+          status:
+            type: str
+            choices: [ready]
+            required: true
+          cancelled:
+            type: bool
+            required: true
       root_of_trust_validate_selected_hosts:
         description: Hosts rendered by the current exact limit.
         type: list
@@ -189,9 +196,29 @@ argument_specs:
         description: Inventory hostname providing Vault during the installation workflow.
         type: str
         required: true
-      root_of_trust_validate_bootstrap_input_rules:
-        <<: *root_of_trust_firewall_rule_list
-        description: Exact eight-rule Robot bootstrap input policy.
-      root_of_trust_validate_hardened_input_rules:
-        <<: *root_of_trust_firewall_rule_list
-        description: Exact ten-rule Robot hardened input policy including Tang consumers.
+      root_of_trust_validate_controller_ipv4_cidr:
+        description: Exact approved controller source as one canonical IPv4 /32.
+        type: str
+        required: true
+      root_of_trust_validate_firewall:
+        description: Complete active bootstrap and hardened Robot firewall policy.
+        type: dict
+        required: true
+        options:
+          enabled: {type: bool, required: true}
+          port:
+            type: str
+            choices: [main]
+            required: true
+          filter_ipv6: {type: bool, required: true}
+          allowlist_hos: {type: bool, required: true}
+          bootstrap: &root_of_trust_firewall_phase
+            type: dict
+            required: true
+            options:
+              input:
+                <<: *root_of_trust_firewall_rule_list
+              output:
+                <<: *root_of_trust_firewall_rule_list
+          hardened:
+            <<: *root_of_trust_firewall_phase

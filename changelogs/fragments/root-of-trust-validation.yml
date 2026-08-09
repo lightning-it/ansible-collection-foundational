@@ -3,4 +3,5 @@ minor_changes:
   - >-
     root_of_trust_validate - add generic G0 read-only Robot observation and
     controller-local G2 plan entrypoints with exact single-root selection,
-    fleet ordering, and bootstrap/hardened firewall safety contracts.
+    fleet ordering, ready/non-cancelled lifecycle enforcement, and strict
+    active IPv4 bootstrap/hardened firewall safety contracts.

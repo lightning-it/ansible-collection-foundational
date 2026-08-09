@@ -27,7 +27,10 @@
           - root_of_trust_validate_result.fleet_host_count | int == 2
           - root_of_trust_validate_result.bootstrap_rule_count | int == 8
           - root_of_trust_validate_result.hardened_rule_count | int == 10
+          - root_of_trust_validate_result.output_rule_count | int == 1
           - root_of_trust_validate_result.tang_source_count | int == 3
+          - root_of_trust_validate_result.provider_firewall_enabled | bool
+          - root_of_trust_validate_result.ipv6_filter_enabled | bool
         quiet: true
       changed_when: false
 

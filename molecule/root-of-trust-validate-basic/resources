@@ -4,6 +4,8 @@ root_of_trust_validate_target:
   inventory_hostname: localhost
   server_number: 1001
   public_ipv4: 192.0.2.10
+  status: ready
+  cancelled: false
 root_of_trust_validate_selected_hosts:
   - localhost
 root_of_trust_validate_expected_fleet:
@@ -17,138 +19,145 @@ root_of_trust_validate_prerequisite_hosts:
 root_of_trust_validate_root_host: localhost
 root_of_trust_validate_tang_host: localhost
 root_of_trust_validate_vault_host: localhost
+root_of_trust_validate_controller_ipv4_cidr: 198.51.100.7/32
 
-root_of_trust_validate_bootstrap_input_rules:
-  - ip_version: ipv4
-    protocol: tcp
-    src_ip: 198.51.100.7/32
-    dst_ip: 192.0.2.10
-    dst_port: "22"
-    name: Bootstrap SSH
-    action: accept
-  - ip_version: ipv4
-    protocol: tcp
-    src_ip: 198.51.100.7/32
-    dst_ip: 192.0.2.10
-    dst_port: "1905"
-    name: Hardened OpenSSH
-    action: accept
-  - ip_version: ipv4
-    protocol: tcp
-    src_ip: 198.51.100.7/32
-    dst_ip: 192.0.2.10
-    dst_port: "2222"
-    name: Dropbear recovery
-    action: accept
-  - ip_version: ipv4
-    protocol: tcp
-    tcp_flags: ack
-    dst_ip: 192.0.2.10
-    dst_port: 32768-65535
-    name: TCP responses
-    action: accept
-  - ip_version: ipv4
-    protocol: udp
-    src_ip: 192.0.2.53/32
-    src_port: "53"
-    dst_ip: 192.0.2.10
-    dst_port: 32768-65535
-    name: Primary DNS responses
-    action: accept
-  - ip_version: ipv4
-    protocol: udp
-    src_ip: 198.51.100.53/32
-    src_port: "53"
-    dst_ip: 192.0.2.10
-    dst_port: 32768-65535
-    name: Secondary DNS responses
-    action: accept
-  - ip_version: ipv4
-    protocol: udp
-    src_ip: 192.0.2.123/32
-    src_port: "123"
-    dst_ip: 192.0.2.10
-    dst_port: 32768-65535
-    name: NTP responses
-    action: accept
-  - ip_version: ipv4
-    protocol: icmp
-    src_ip: 198.51.100.7/32
-    name: Controller ICMP
-    action: accept
-
-root_of_trust_validate_hardened_input_rules:
-  - ip_version: ipv4
-    protocol: tcp
-    src_ip: 198.51.100.7/32
-    dst_ip: 192.0.2.10
-    dst_port: "1905"
-    name: Hardened OpenSSH
-    action: accept
-  - ip_version: ipv4
-    protocol: tcp
-    src_ip: 198.51.100.7/32
-    dst_ip: 192.0.2.10
-    dst_port: "2222"
-    name: Dropbear recovery
-    action: accept
-  - ip_version: ipv4
-    protocol: tcp
-    tcp_flags: ack
-    dst_ip: 192.0.2.10
-    dst_port: 32768-65535
-    name: TCP responses
-    action: accept
-  - ip_version: ipv4
-    protocol: udp
-    src_ip: 192.0.2.53/32
-    src_port: "53"
-    dst_ip: 192.0.2.10
-    dst_port: 32768-65535
-    name: Primary DNS responses
-    action: accept
-  - ip_version: ipv4
-    protocol: udp
-    src_ip: 198.51.100.53/32
-    src_port: "53"
-    dst_ip: 192.0.2.10
-    dst_port: 32768-65535
-    name: Secondary DNS responses
-    action: accept
-  - ip_version: ipv4
-    protocol: udp
-    src_ip: 192.0.2.123/32
-    src_port: "123"
-    dst_ip: 192.0.2.10
-    dst_port: 32768-65535
-    name: NTP responses
-    action: accept
-  - ip_version: ipv4
-    protocol: icmp
-    src_ip: 198.51.100.7/32
-    name: Controller ICMP
-    action: accept
-  - ip_version: ipv4
-    protocol: tcp
-    src_ip: 192.0.2.21/32
-    dst_ip: 192.0.2.10
-    dst_port: "80"
-    name: Tang client one
-    action: accept
-  - ip_version: ipv4
-    protocol: tcp
-    src_ip: 192.0.2.22/32
-    dst_ip: 192.0.2.10
-    dst_port: "80"
-    name: Tang client two
-    action: accept
-  - ip_version: ipv4
-    protocol: tcp
-    src_ip: 192.0.2.23/32
-    dst_ip: 192.0.2.10
-    dst_port: "80"
-    name: Tang client three
-    action: accept
+root_of_trust_validate_firewall:
+  enabled: true
+  port: main
+  filter_ipv6: true
+  allowlist_hos: true
+  bootstrap:
+    input:
+      - ip_version: ipv4
+        protocol: tcp
+        src_ip: 198.51.100.7/32
+        dst_ip: 192.0.2.10
+        dst_port: "22"
+        name: Bootstrap SSH
+        action: accept
+      - ip_version: ipv4
+        protocol: tcp
+        src_ip: 198.51.100.7/32
+        dst_ip: 192.0.2.10
+        dst_port: "1905"
+        name: Hardened OpenSSH
+        action: accept
+      - ip_version: ipv4
+        protocol: tcp
+        src_ip: 198.51.100.7/32
+        dst_ip: 192.0.2.10
+        dst_port: "2222"
+        name: Dropbear recovery
+        action: accept
+      - ip_version: ipv4
+        protocol: tcp
+        tcp_flags: ack
+        dst_ip: 192.0.2.10
+        dst_port: 32768-65535
+        name: TCP responses
+        action: accept
+      - ip_version: ipv4
+        protocol: udp
+        src_ip: 192.0.2.53
+        src_port: "53"
+        dst_ip: 192.0.2.10
+        dst_port: 32768-65535
+        name: Primary DNS responses
+        action: accept
+      - ip_version: ipv4
+        protocol: udp
+        src_ip: 198.51.100.53
+        src_port: "53"
+        dst_ip: 192.0.2.10
+        dst_port: 32768-65535
+        name: Secondary DNS responses
+        action: accept
+      - ip_version: ipv4
+        protocol: udp
+        src_port: "123"
+        dst_ip: 192.0.2.10
+        dst_port: 32768-65535
+        name: NTP responses
+        action: accept
+      - ip_version: ipv4
+        protocol: icmp
+        name: ICMP
+        action: accept
+    output: &root_of_trust_validate_output_rules
+      - name: Allow all
+        action: accept
+  hardened:
+    input:
+      - ip_version: ipv4
+        protocol: tcp
+        src_ip: 198.51.100.7/32
+        dst_ip: 192.0.2.10
+        dst_port: "1905"
+        name: Hardened OpenSSH
+        action: accept
+      - ip_version: ipv4
+        protocol: tcp
+        src_ip: 198.51.100.7/32
+        dst_ip: 192.0.2.10
+        dst_port: "2222"
+        name: Dropbear recovery
+        action: accept
+      - ip_version: ipv4
+        protocol: tcp
+        tcp_flags: ack
+        dst_ip: 192.0.2.10
+        dst_port: 32768-65535
+        name: TCP responses
+        action: accept
+      - ip_version: ipv4
+        protocol: udp
+        src_ip: 192.0.2.53
+        src_port: "53"
+        dst_ip: 192.0.2.10
+        dst_port: 32768-65535
+        name: Primary DNS responses
+        action: accept
+      - ip_version: ipv4
+        protocol: udp
+        src_ip: 198.51.100.53
+        src_port: "53"
+        dst_ip: 192.0.2.10
+        dst_port: 32768-65535
+        name: Secondary DNS responses
+        action: accept
+      - ip_version: ipv4
+        protocol: udp
+        src_port: "123"
+        dst_ip: 192.0.2.10
+        dst_port: 32768-65535
+        name: NTP responses
+        action: accept
+      - ip_version: ipv4
+        protocol: icmp
+        name: ICMP
+        action: accept
+      - ip_version: ipv4
+        protocol: tcp
+        src_ip: 192.0.2.21/32
+        dst_ip: 192.0.2.10
+        dst_port: "80"
+        name: Tang client one
+        action: accept
+      - ip_version: ipv4
+        protocol: tcp
+        src_ip: 192.0.2.22/32
+        dst_ip: 192.0.2.10
+        dst_port: "80"
+        name: Tang client two
+        action: accept
+      - ip_version: ipv4
+        protocol: tcp
+        src_ip: 192.0.2.23/32
+        dst_ip: 192.0.2.10
+        dst_port: "80"
+        name: Tang client three
+        action: accept
+    output: *root_of_trust_validate_output_rules
 
 root_of_trust_validate_g0_validate_only: true
 root_of_trust_validate_target_g0:
@@ -164,7 +173,7 @@ root_of_trust_validate_expected_firewall:
   filter_ipv6: true
   allowlist_hos: true
   rules:
-    input: "{{ root_of_trust_validate_hardened_input_rules }}"
+    input: "{{ root_of_trust_validate_firewall.hardened.input }}"
     output:
       - name: Allow all
         action: accept

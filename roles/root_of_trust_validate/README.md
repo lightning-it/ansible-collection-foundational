@@ -10,13 +10,16 @@ entrypoints for a single infrastructure root of trust:
 - `g2_plan` performs controller-local validation only. It requires
   `selection_scope: single_root_of_trust`, one exact selected target, the full
   unique fleet and install order, root-first prerequisite/Tang/Vault placement,
-  and exact eight-rule bootstrap and ten-rule hardened firewall plans.
+  a `ready` and non-cancelled provider lifecycle, and exact active eight-rule
+  bootstrap and ten-rule hardened firewall plans.
 
-The G2 firewall contract requires source-restricted TCP 22, 1905, and 2222 in
-bootstrap; source-restricted TCP 1905 and 2222 with no TCP 22 in hardened mode;
-and exactly three unique Tang IPv4 `/32` sources. Explicit null, empty, and
-`0.0.0.0/0` rule values are rejected. Omitted optional Robot rule fields remain
-valid where the provider schema uses omission rather than a scalar value.
+The G2 firewall contract requires one exact controller IPv4 `/32` on TCP 22,
+1905, and 2222 in bootstrap; that same source on TCP 1905 and 2222 with no TCP
+22 in hardened mode; exactly three unique Tang IPv4 `/32` sources; and only the
+reviewed stateless response-rule shapes. The provider firewall, main-interface
+filter, IPv6 filter, Hetzner-services allowlist, and explicit output policy must
+all be enabled. IPv6 input, arbitrary wildcard rules, broad controller/Tang
+networks, nulls, empty values, and unrecognized rule fields fail closed.
 
 ## Requirements
 
@@ -36,7 +39,7 @@ All defaults are documented in `defaults/main.yml`; entrypoint schemas are in
 | Variable | Purpose |
 |---|---|
 | `root_of_trust_validate_selection_scope` | Must be `single_root_of_trust` |
-| `root_of_trust_validate_target` | Exact inventory and provider identity |
+| `root_of_trust_validate_target` | Exact inventory identity plus ready, non-cancelled provider lifecycle |
 | `root_of_trust_validate_g0_validate_only` | Validate G0 inputs without API calls |
 | `root_of_trust_validate_robot_user` / `root_of_trust_validate_robot_password` | Resolved live G0 Robot credentials |
 | `root_of_trust_validate_expected_firewall` | Expected firewall used for G0 findings |
@@ -47,8 +50,8 @@ All defaults are documented in `defaults/main.yml`; entrypoint schemas are in
 | `root_of_trust_validate_prerequisite_hosts` | Ordered prerequisite prefix |
 | `root_of_trust_validate_root_host` | Single root-of-trust inventory hostname |
 | `root_of_trust_validate_tang_host` / `root_of_trust_validate_vault_host` | Service-placement identities |
-| `root_of_trust_validate_bootstrap_input_rules` | Exact eight-rule bootstrap policy |
-| `root_of_trust_validate_hardened_input_rules` | Exact ten-rule hardened policy |
+| `root_of_trust_validate_controller_ipv4_cidr` | Approved controller as one canonical IPv4 `/32` |
+| `root_of_trust_validate_firewall` | Complete active bootstrap, hardened, IPv6, and output policy |
 
 Both entrypoints publish `root_of_trust_validate_result`. G0 exposes only
 sanitized finding codes, resource classes, and severities; raw Robot responses
@@ -78,6 +81,8 @@ role dependencies and does not resolve credentials itself.
           inventory_hostname: root01.example.invalid
           server_number: 100001
           public_ipv4: 192.0.2.10
+          status: ready
+          cancelled: false
         root_of_trust_validate_selected_hosts: [root01.example.invalid]
         root_of_trust_validate_expected_fleet:
           - root01.example.invalid
@@ -89,8 +94,8 @@ role dependencies and does not resolve credentials itself.
         root_of_trust_validate_root_host: root01.example.invalid
         root_of_trust_validate_tang_host: root01.example.invalid
         root_of_trust_validate_vault_host: root01.example.invalid
-        root_of_trust_validate_bootstrap_input_rules: "{{ bootstrap_rules }}"
-        root_of_trust_validate_hardened_input_rules: "{{ hardened_rules }}"
+        root_of_trust_validate_controller_ipv4_cidr: 198.51.100.7/32
+        root_of_trust_validate_firewall: "{{ complete_firewall_contract }}"
 ```
 
 ## License

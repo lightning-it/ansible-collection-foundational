@@ -89,7 +89,8 @@ The current collection compatibility baseline is `ansible-core` 2.18.0 or newer.
   - fails live observation only for provider API errors or ambiguous server
     identity,
   - validates an exact single-target, complete-fleet G2 installation and
-    eight-/ten-rule firewall plan entirely on the controller.
+    ready/non-cancelled lifecycle plus a strict active eight-/ten-rule
+    IPv4-only firewall plan entirely on the controller.
 
 - `lit.foundational.secret_resolver`
   Resolves controller-side secret requests into provider-independent values:
