@@ -124,12 +124,14 @@ class _FakeClient:
         self.calls.append((list(arguments), operation, False))
         assert "private" not in " ".join(arguments).lower()
         assert "--reveal" not in arguments
-        if arguments[0] == "whoami":
-            return {
-                "account_uuid": ACCOUNT_ID,
-                "url": "example.1password.com",
-                "user_uuid": USER_UUID,
-            }
+        if arguments[:2] == ["account", "list"]:
+            return [
+                {
+                    "account_uuid": ACCOUNT_ID,
+                    "url": "example.1password.com",
+                    "user_uuid": USER_UUID,
+                }
+            ]
         if arguments[:2] == ["vault", "get"]:
             return {"id": VAULT_ID}
         if arguments[:2] == ["item", "list"]:
@@ -335,3 +337,23 @@ def test_agent_verification_requires_exact_socket_and_public_identity(tmp_path):
 def test_invalid_ssh_key_contracts_fail_before_cli_use(overrides):
     with pytest.raises(AnsibleActionFail):
         plugin._normalize_arguments(_arguments(**overrides))
+
+
+def test_tag_state_accepts_only_duplicate_instances_of_the_exact_tag_set():
+    expected = ["approval-authority", "automation", "lit-pis", "ssh"]
+    duplicate_only = plugin._tag_state(expected + expected, expected)
+    assert duplicate_only == {
+        "exact": False,
+        "equivalent": True,
+        "duplicate_only": True,
+    }
+    assert plugin._tag_state(expected, expected) == {
+        "exact": True,
+        "equivalent": True,
+        "duplicate_only": False,
+    }
+    assert plugin._tag_state(expected + ["unexpected"], expected) == {
+        "exact": False,
+        "equivalent": False,
+        "duplicate_only": False,
+    }

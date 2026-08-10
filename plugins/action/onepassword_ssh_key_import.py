@@ -137,8 +137,6 @@ def _normalize_import_arguments(args):
         }
     )
     config = _normalize_arguments(base)
-    if config["item_id"] or config["item_version"]:
-        _fail("Initial import requires an unpinned item ID and version.")
     config.update(
         {
             "action": action,
@@ -243,6 +241,17 @@ def _require_same_public_key(observed, expected):
         _fail("The imported SSH item does not match the exact source public key.")
 
 
+def _native_public_identity(store, config, observed, source_public_key):
+    """Bind a desktop-imported item to the local public key without reading it."""
+    public_key, fingerprint = _public_identity(source_public_key)
+    if fingerprint != config["expected_fingerprint"]:
+        _fail("The source key does not match expected_fingerprint.")
+    store._assert_current_version(
+        config, observed["item_id"], observed["item_version"]
+    )
+    return {"public_key": public_key, "fingerprint": fingerprint}
+
+
 class ActionModule(ActionBase):
     """Controller-only existing-key importer."""
 
@@ -263,46 +272,32 @@ class ActionModule(ActionBase):
         store = _OnePasswordSSHKeyItemStore(client)
         observed = store.inspect(config, allow_tag_mismatch=True)
         private_payload, source_public_key = _source_key(config)
-        metadata_repaired = False
-        if observed["exists"] and not observed["tags_match"]:
+        if observed["exists"] and not observed["tags_equivalent"]:
             if config["action"] == "plan" or self._task.check_mode:
                 return {
                     "changed": True,
                     "created": False,
                     "exists": True,
                     "planned": True,
-                    "metadata_repair_required": True,
+                    "replacement_required": True,
                     "item_id": observed["item_id"],
                     "item_version": observed["item_version"],
                     "fingerprint": config["expected_fingerprint"],
                 }
-            client.discard(
-                [
-                    "item",
-                    "edit",
-                    observed["item_id"],
-                    "--account",
-                    config["account_id"],
-                    "--vault",
-                    config["vault_id"],
-                    "--tags",
-                    ",".join(config["tags"]),
-                ],
-                "SSH item metadata repair",
-                stdin_is_tty=True,
+            _fail(
+                "1Password SSH Key metadata is immutable in the approved CLI; "
+                "a controlled item rotation is required for non-equivalent tags."
             )
-            observed = store.inspect(config)
-            metadata_repaired = True
         if observed["exists"]:
-            public_identity = store.public_metadata(
-                config, observed["item_id"], observed["item_version"]
+            public_identity = _native_public_identity(
+                store, config, observed, source_public_key
             )
             _require_same_public_key(public_identity["public_key"], source_public_key)
             agent_verified = False
             if config["action"] == "apply" and not self._task.check_mode:
                 agent_verified = store.verify_agent(config, public_identity)
             return {
-                "changed": metadata_repaired,
+                "changed": False,
                 "created": False,
                 "exists": True,
                 "item_id": observed["item_id"],
@@ -311,7 +306,10 @@ class ActionModule(ActionBase):
                 "public_key": public_identity["public_key"],
                 "agent_verified": agent_verified,
                 "source_public_key_matches": True,
-                "metadata_repaired": metadata_repaired,
+                "metadata_repaired": False,
+                "metadata_duplicate_tags_accepted": observed[
+                    "duplicate_tags_only"
+                ],
             }
         if config["action"] == "plan" or self._task.check_mode:
             return {
@@ -341,5 +339,6 @@ class ActionModule(ActionBase):
             "public_key": public_identity["public_key"],
             "agent_verified": agent_verified,
             "source_public_key_matches": True,
-            "metadata_repaired": metadata_repaired,
+            "metadata_repaired": False,
+            "metadata_duplicate_tags_accepted": False,
         }

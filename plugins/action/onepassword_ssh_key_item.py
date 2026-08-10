@@ -540,30 +540,15 @@ class _OnePasswordCLI:
             _fail("HOME is required for the 1Password desktop CLI integration.")
         return environment
 
-    def _run(
-        self,
-        arguments,
-        operation,
-        discard_stdout=False,
-        stdin_payload=None,
-        stdin_is_tty=False,
-    ):
+    def _run(self, arguments, operation, discard_stdout=False, stdin_payload=None):
         self.binary = trusted_executable(
             self.requested_binary, self.binary_sha256, "cli_path"
         )
-        if stdin_payload is not None and stdin_is_tty:
-            _fail("1Password input cannot combine a byte payload and a TTY.")
-        tty_descriptors = []
         try:
-            stdin_stream = subprocess.DEVNULL if stdin_payload is None else None
-            if stdin_is_tty:
-                master_fd, slave_fd = os.openpty()
-                tty_descriptors.extend([master_fd, slave_fd])
-                stdin_stream = slave_fd
             completed = subprocess.run(
                 [self.binary] + list(arguments),
                 input=stdin_payload,
-                stdin=stdin_stream,
+                stdin=subprocess.DEVNULL if stdin_payload is None else None,
                 stdout=subprocess.DEVNULL if discard_stdout else subprocess.PIPE,
                 stderr=subprocess.DEVNULL if discard_stdout else subprocess.PIPE,
                 env=self.environment,
@@ -572,12 +557,6 @@ class _OnePasswordCLI:
             )
         except (OSError, subprocess.SubprocessError):
             _fail("1Password {0} could not be executed safely.".format(operation))
-        finally:
-            for descriptor in reversed(tty_descriptors):
-                try:
-                    os.close(descriptor)
-                except OSError:
-                    pass
         if completed.returncode != 0:
             _fail(
                 "1Password {0} failed closed with exit code {1}.".format(
@@ -595,15 +574,12 @@ class _OnePasswordCLI:
                 "1Password returned invalid public metadata for {0}.".format(operation)
             )
 
-    def discard(
-        self, arguments, operation, stdin_payload=None, stdin_is_tty=False
-    ):
+    def discard(self, arguments, operation, stdin_payload=None):
         self._run(
             arguments,
             operation,
             discard_stdout=True,
             stdin_payload=stdin_payload,
-            stdin_is_tty=stdin_is_tty,
         )
 
 
@@ -622,6 +598,26 @@ def _field_values(payload):
             _fail("1Password returned duplicate selected-field metadata.")
         values[normalized_label] = str(value)
     return values
+
+
+def _tag_state(observed, expected):
+    if (
+        not isinstance(observed, list)
+        or any(not isinstance(value, str) for value in observed)
+        or not isinstance(expected, list)
+    ):
+        return {
+            "exact": False,
+            "equivalent": False,
+            "duplicate_only": False,
+        }
+    exact = sorted(observed) == sorted(expected)
+    equivalent = sorted(set(observed)) == sorted(expected)
+    return {
+        "exact": exact,
+        "equivalent": equivalent,
+        "duplicate_only": equivalent and not exact,
+    }
 
 
 def _public_identity(public_key):
@@ -724,15 +720,21 @@ class _OnePasswordSSHKeyItemStore:
         if version != config["cli_version"]:
             _fail("The controller 1Password CLI version does not match cli_version.")
 
-        identity = self.client.metadata(
-            ["whoami", "--account", config["account_id"], "--format", "json"],
-            "desktop identity verification",
+        identities = self.client.metadata(
+            ["account", "list", "--format", "json"],
+            "desktop account identity verification",
         )
-        if (
-            not isinstance(identity, dict)
-            or identity.get("account_uuid") != config["account_id"]
-        ):
+        if not isinstance(identities, list):
+            _fail("1Password returned invalid desktop account metadata.")
+        matching_identities = [
+            identity
+            for identity in identities
+            if isinstance(identity, dict)
+            and identity.get("account_uuid") == config["account_id"]
+        ]
+        if len(matching_identities) != 1:
             _fail("The signed-in 1Password account does not match account_id.")
+        identity = matching_identities[0]
         if (
             _normalize_sign_in_address(str(identity.get("url", "")))
             != config["account_sign_in_address"].lower()
@@ -813,10 +815,8 @@ class _OnePasswordSSHKeyItemStore:
         if observed_category != "SSH_KEY":
             _fail("The 1Password item category is not SSH Key.")
         observed_tags = item.get("tags", [])
-        tags_match = isinstance(observed_tags, list) and sorted(
-            observed_tags
-        ) == sorted(config["tags"])
-        if not tags_match and not allow_tag_mismatch:
+        tags = _tag_state(observed_tags, config["tags"])
+        if not tags["equivalent"] and not allow_tag_mismatch:
             _fail("The 1Password SSH item tags do not match.")
         return {
             "exists": True,
@@ -824,7 +824,9 @@ class _OnePasswordSSHKeyItemStore:
             "item_version": observed_item_version,
             "operator_user_uuid": operator_user_uuid,
             "observed_tags": observed_tags,
-            "tags_match": tags_match,
+            "tags_match": tags["exact"],
+            "tags_equivalent": tags["equivalent"],
+            "duplicate_tags_only": tags["duplicate_only"],
         }
 
     def public_metadata(self, config, item_id, item_version):

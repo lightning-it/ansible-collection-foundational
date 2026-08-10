@@ -5,10 +5,10 @@ import pytest
 from ansible.errors import AnsibleActionFail
 
 from plugins.action import onepassword_ssh_key_import as plugin
-from plugins.action import onepassword_ssh_key_item as ssh_item_plugin
 from tests.unit.plugins.action.test_onepassword_ssh_key_item import (
     ACCOUNT_ID,
     FINGERPRINT,
+    PUBLIC_KEY,
     SUBJECT,
     USER_UUID,
     VAULT_ID,
@@ -125,12 +125,10 @@ def test_import_template_keeps_private_key_out_of_arguments():
             arguments,
             operation,
             stdin_payload=None,
-            stdin_is_tty=False,
         ):
             self.arguments = list(arguments)
             self.payload = stdin_payload
             assert operation == "SSH private-key import"
-            assert stdin_is_tty is False
 
     client = Client()
     config = {
@@ -163,33 +161,46 @@ def test_public_key_comparison_ignores_only_the_comment():
         )
 
 
-def test_cli_metadata_edit_can_use_a_tty_without_a_payload(monkeypatch):
-    client = object.__new__(plugin._OnePasswordCLI)
-    client.requested_binary = "/approved/op"
-    client.binary = "/approved/op"
-    client.binary_sha256 = "0" * 64
-    client.account_id = ACCOUNT_ID
-    client.environment = {"HOME": "/controller"}
-    closed = []
-    observed = {}
+def test_normalize_accepts_a_pinned_native_item_for_verification(tmp_path, monkeypatch):
+    key_path = tmp_path / "source.key"
+    key_path.write_text("not-read-by-normalization", encoding="ascii")
+    key_path.chmod(0o600)
+    monkeypatch.setattr(plugin, "_private_key_path", lambda value: value)
 
-    monkeypatch.setattr(
-        ssh_item_plugin, "trusted_executable", lambda *args: "/approved/op"
-    )
-    monkeypatch.setattr(ssh_item_plugin.os, "openpty", lambda: (101, 102))
-    monkeypatch.setattr(ssh_item_plugin.os, "close", closed.append)
-
-    def _run(*args, **kwargs):
-        observed.update(kwargs)
-        return ssh_item_plugin.subprocess.CompletedProcess(args[0], 0, b"", b"")
-
-    monkeypatch.setattr(ssh_item_plugin.subprocess, "run", _run)
-    client.discard(
-        ["item", "edit", "item-id", "--tags", "automation,ssh"],
-        "SSH item metadata repair",
-        stdin_is_tty=True,
+    config = plugin._normalize_import_arguments(
+        _arguments(
+            tmp_path,
+            item_id="a" * 26,
+            item_version=1,
+            private_key_path=str(key_path),
+        )
     )
 
-    assert observed["stdin"] == 102
-    assert observed["input"] is None
-    assert closed == [102, 101]
+    assert config["item_id"] == "a" * 26
+    assert config["item_version"] == 1
+
+
+def test_native_public_identity_revalidates_version_without_item_secret_fields():
+    class Store:
+        def __init__(self):
+            self.revalidated = None
+
+        def _assert_current_version(self, config, item_id, item_version):
+            self.revalidated = (config, item_id, item_version)
+
+    store = Store()
+    config = {"expected_fingerprint": FINGERPRINT}
+    observed = {"item_id": "a" * 26, "item_version": 1}
+
+    identity = plugin._native_public_identity(
+        store,
+        config,
+        observed,
+        PUBLIC_KEY,
+    )
+
+    assert identity == {
+        "public_key": PUBLIC_KEY,
+        "fingerprint": FINGERPRINT,
+    }
+    assert store.revalidated == (config, "a" * 26, 1)
