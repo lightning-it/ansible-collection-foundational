@@ -688,7 +688,7 @@ class _OnePasswordSSHKeyItemStore:
                 "The 1Password SSH item changed during immutable contract validation."
             )
 
-    def inspect(self, config):
+    def inspect(self, config, allow_tag_mismatch=False):
         try:
             version = (
                 self.client._run(["--version"], "version")
@@ -789,15 +789,18 @@ class _OnePasswordSSHKeyItemStore:
         if observed_category != "SSH_KEY":
             _fail("The 1Password item category is not SSH Key.")
         observed_tags = item.get("tags", [])
-        if not isinstance(observed_tags, list) or sorted(observed_tags) != sorted(
-            config["tags"]
-        ):
+        tags_match = isinstance(observed_tags, list) and sorted(
+            observed_tags
+        ) == sorted(config["tags"])
+        if not tags_match and not allow_tag_mismatch:
             _fail("The 1Password SSH item tags do not match.")
         return {
             "exists": True,
             "item_id": observed_item_id,
             "item_version": observed_item_version,
             "operator_user_uuid": operator_user_uuid,
+            "observed_tags": observed_tags,
+            "tags_match": tags_match,
         }
 
     def public_metadata(self, config, item_id, item_version):

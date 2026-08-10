@@ -216,7 +216,7 @@ def _import_template(client, config, private_payload):
     except UnicodeError:
         _fail("The source private key must be strict ASCII OpenSSH data.")
     template["title"] = config["item_title"]
-    template["tags"] = config["tags"]
+    template.pop("tags", None)
     encoded = json.dumps(
         template, sort_keys=True, separators=(",", ":"), ensure_ascii=True
     ).encode("ascii")
@@ -261,16 +261,47 @@ class ActionModule(ActionBase):
             config["cli_path"], config["cli_sha256"], config["account_id"]
         )
         store = _OnePasswordSSHKeyItemStore(client)
-        observed = store.inspect(config)
+        observed = store.inspect(config, allow_tag_mismatch=True)
         private_payload, source_public_key = _source_key(config)
+        metadata_repaired = False
+        if observed["exists"] and not observed["tags_match"]:
+            if config["action"] == "plan" or self._task.check_mode:
+                return {
+                    "changed": True,
+                    "created": False,
+                    "exists": True,
+                    "planned": True,
+                    "metadata_repair_required": True,
+                    "item_id": observed["item_id"],
+                    "item_version": observed["item_version"],
+                    "fingerprint": config["expected_fingerprint"],
+                }
+            client.discard(
+                [
+                    "item",
+                    "edit",
+                    observed["item_id"],
+                    "--account",
+                    config["account_id"],
+                    "--vault",
+                    config["vault_id"],
+                    "--tags",
+                    ",".join(config["tags"]),
+                ],
+                "SSH item metadata repair",
+            )
+            observed = store.inspect(config)
+            metadata_repaired = True
         if observed["exists"]:
             public_identity = store.public_metadata(
                 config, observed["item_id"], observed["item_version"]
             )
             _require_same_public_key(public_identity["public_key"], source_public_key)
-            agent_verified = store.verify_agent(config, public_identity)
+            agent_verified = False
+            if config["action"] == "apply" and not self._task.check_mode:
+                agent_verified = store.verify_agent(config, public_identity)
             return {
-                "changed": False,
+                "changed": metadata_repaired,
                 "created": False,
                 "exists": True,
                 "item_id": observed["item_id"],
@@ -279,6 +310,7 @@ class ActionModule(ActionBase):
                 "public_key": public_identity["public_key"],
                 "agent_verified": agent_verified,
                 "source_public_key_matches": True,
+                "metadata_repaired": metadata_repaired,
             }
         if config["action"] == "plan" or self._task.check_mode:
             return {
@@ -308,4 +340,5 @@ class ActionModule(ActionBase):
             "public_key": public_identity["public_key"],
             "agent_verified": agent_verified,
             "source_public_key_matches": True,
+            "metadata_repaired": metadata_repaired,
         }

@@ -140,3 +140,16 @@ def test_import_template_keeps_private_key_out_of_arguments():
     assert "private" not in " ".join(client.arguments)
     parsed = json.loads(client.payload.decode("ascii"))
     assert parsed["fields"][0]["value"] == private_key.decode("ascii")
+    assert "tags" not in parsed
+
+
+def test_public_key_comparison_ignores_only_the_comment():
+    plugin._require_same_public_key(
+        "ssh-ed25519 AAAATEST imported-comment",
+        "ssh-ed25519 AAAATEST source-comment",
+    )
+    with pytest.raises(AnsibleActionFail):
+        plugin._require_same_public_key(
+            "ssh-ed25519 AAAAOTHER",
+            "ssh-ed25519 AAAATEST",
+        )
