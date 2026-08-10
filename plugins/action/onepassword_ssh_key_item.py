@@ -540,14 +540,15 @@ class _OnePasswordCLI:
             _fail("HOME is required for the 1Password desktop CLI integration.")
         return environment
 
-    def _run(self, arguments, operation, discard_stdout=False):
+    def _run(self, arguments, operation, discard_stdout=False, stdin_payload=None):
         self.binary = trusted_executable(
             self.requested_binary, self.binary_sha256, "cli_path"
         )
         try:
             completed = subprocess.run(
                 [self.binary] + list(arguments),
-                stdin=subprocess.DEVNULL,
+                input=stdin_payload,
+                stdin=subprocess.DEVNULL if stdin_payload is None else None,
                 stdout=subprocess.DEVNULL if discard_stdout else subprocess.PIPE,
                 stderr=subprocess.DEVNULL if discard_stdout else subprocess.PIPE,
                 env=self.environment,
@@ -573,8 +574,13 @@ class _OnePasswordCLI:
                 "1Password returned invalid public metadata for {0}.".format(operation)
             )
 
-    def discard(self, arguments, operation):
-        self._run(arguments, operation, discard_stdout=True)
+    def discard(self, arguments, operation, stdin_payload=None):
+        self._run(
+            arguments,
+            operation,
+            discard_stdout=True,
+            stdin_payload=stdin_payload,
+        )
 
 
 def _field_values(payload):
