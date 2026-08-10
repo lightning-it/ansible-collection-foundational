@@ -540,15 +540,30 @@ class _OnePasswordCLI:
             _fail("HOME is required for the 1Password desktop CLI integration.")
         return environment
 
-    def _run(self, arguments, operation, discard_stdout=False, stdin_payload=None):
+    def _run(
+        self,
+        arguments,
+        operation,
+        discard_stdout=False,
+        stdin_payload=None,
+        stdin_is_tty=False,
+    ):
         self.binary = trusted_executable(
             self.requested_binary, self.binary_sha256, "cli_path"
         )
+        if stdin_payload is not None and stdin_is_tty:
+            _fail("1Password input cannot combine a byte payload and a TTY.")
+        tty_descriptors = []
         try:
+            stdin_stream = subprocess.DEVNULL if stdin_payload is None else None
+            if stdin_is_tty:
+                master_fd, slave_fd = os.openpty()
+                tty_descriptors.extend([master_fd, slave_fd])
+                stdin_stream = slave_fd
             completed = subprocess.run(
                 [self.binary] + list(arguments),
                 input=stdin_payload,
-                stdin=subprocess.DEVNULL if stdin_payload is None else None,
+                stdin=stdin_stream,
                 stdout=subprocess.DEVNULL if discard_stdout else subprocess.PIPE,
                 stderr=subprocess.DEVNULL if discard_stdout else subprocess.PIPE,
                 env=self.environment,
@@ -557,6 +572,12 @@ class _OnePasswordCLI:
             )
         except (OSError, subprocess.SubprocessError):
             _fail("1Password {0} could not be executed safely.".format(operation))
+        finally:
+            for descriptor in reversed(tty_descriptors):
+                try:
+                    os.close(descriptor)
+                except OSError:
+                    pass
         if completed.returncode != 0:
             _fail(
                 "1Password {0} failed closed with exit code {1}.".format(
@@ -574,12 +595,15 @@ class _OnePasswordCLI:
                 "1Password returned invalid public metadata for {0}.".format(operation)
             )
 
-    def discard(self, arguments, operation, stdin_payload=None):
+    def discard(
+        self, arguments, operation, stdin_payload=None, stdin_is_tty=False
+    ):
         self._run(
             arguments,
             operation,
             discard_stdout=True,
             stdin_payload=stdin_payload,
+            stdin_is_tty=stdin_is_tty,
         )
 
 

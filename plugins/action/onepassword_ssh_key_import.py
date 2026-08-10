@@ -289,6 +289,7 @@ class ActionModule(ActionBase):
                     ",".join(config["tags"]),
                 ],
                 "SSH item metadata repair",
+                stdin_is_tty=True,
             )
             observed = store.inspect(config)
             metadata_repaired = True
