@@ -60,9 +60,13 @@ If generic guidance conflicts with repository behavior, you MUST prefer reposito
    `.github/workflows/security-release-intake.yml`,
    `scripts/security-release-dispatch.py`,
    `.github/workflows/security-release-dispatch.yml`, and
-   `tests/unit/test_security_release_request_dispatch.py`. Generic and narrow
+   `tests/unit/test_security_release_request_dispatch.py`,
+   `scripts/main-promotion-authorization.py`, and
+   `.github/workflows/main-promotion-authorization.yml`. Generic and narrow
    collection synchronization MUST preserve those incubating files and MUST
-   NOT install or overwrite them. After acceptance, their proven versions are
+   NOT install or overwrite them; the two main-promotion files are
+   repository-owned and remain human-approved for normal promotions. After
+   acceptance, their proven versions are
    canonicalized once in `shared-assets-lit` before versioned rollout resumes.
    They MUST NOT remove the human-controlled checkpoint for normal `develop`
    to `main` promotions. The retired temporary paths
