@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  issues: read
   pull-requests: read
 
 jobs:
@@ -15,6 +16,88 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Classify the guarded Renovate changelog exception
+        id: renovate-exception
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          PR_BASE: ${{ github.event.pull_request.base.ref }}
+          PR_DRAFT: ${{ github.event.pull_request.draft }}
+          PR_HEAD: ${{ github.event.pull_request.head.ref }}
+          PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          TRIGGER_ACTOR: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+
+          renovate_owns_head() {
+            local author commits committer expected_head last_sha reason sha verified
+            expected_head="$1"
+            commits="$(
+              gh api --paginate \
+                "repos/${REPO}/pulls/${PR_NUMBER}/commits?per_page=100" \
+                --jq '.[] | [.sha, (.author.login // ""), (.committer.login // ""), (.commit.verification.verified | tostring), (.commit.verification.reason // "")] | @tsv'
+            )" || return 1
+            [ -n "$commits" ] || return 1
+            last_sha=""
+            while IFS=$'\t' read -r sha author committer verified reason; do
+              [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || return 1
+              [ "$author" = "renovate[bot]" ] || return 1
+              [ "$committer" = "web-flow" ] || return 1
+              [ "$verified" = "true" ] || return 1
+              [ "$reason" = "valid" ] || return 1
+              last_sha="$sha"
+            done <<<"$commits"
+            [ "$last_sha" = "$expected_head" ]
+          }
+
+          fragment_policy=true
+          live_pr="{}"
+          if [ "$PR_AUTHOR" = "renovate[bot]" ] \
+            && [ "$TRIGGER_ACTOR" = "renovate[bot]" ] \
+            && [ "$PR_BASE" = "develop" ] \
+            && [ "$PR_DRAFT" = "false" ] \
+            && [ "$PR_HEAD_REPO" = "$REPO" ] \
+            && [[ "$PR_HEAD" == renovate/* ]] \
+            && live_pr="$(gh api "repos/${REPO}/pulls/${PR_NUMBER}")" \
+            && jq -e \
+              --arg head_sha "$PR_HEAD_SHA" \
+              --arg repo "$REPO" \
+              '(.state == "open") and (.draft == false)
+               and (.user.login == "renovate[bot]")
+               and (.base.ref == "develop")
+               and (.head.ref | startswith("renovate/"))
+               and (.head.sha == $head_sha)
+               and (.head.repo.full_name == $repo)
+               and ([.labels[].name] | index("renovate") != null)
+               and ([.labels[].name] | index("dependencies") != null)
+               and ([.labels[].name] | index("safe-automerge") != null)
+               and ([.labels[].name] | index("breaking-update") == null)' \
+              >/dev/null <<<"$live_pr" \
+            && renovate_owns_head "$PR_HEAD_SHA"; then
+            label_events=""
+            if label_events="$(
+              gh api --paginate \
+                "repos/${REPO}/issues/${PR_NUMBER}/events?per_page=100" \
+                --jq '.[] | [.event, (.label.name // ""), (.actor.login // "")] | @tsv'
+            )"; then
+              safe_event="$(
+                awk -F '\t' \
+                  '$2 == "safe-automerge" && ($1 == "labeled" || $1 == "unlabeled") { latest=$0 } END { print latest }' \
+                  <<<"$label_events"
+              )"
+              expected_safe_event=$'labeled\tsafe-automerge\trenovate[bot]'
+              breaking_event_pattern=$'labeled\tbreaking-update\t'
+              if [ "$safe_event" = "$expected_safe_event" ] \
+                && ! grep -Fq "$breaking_event_pattern" <<<"$label_events"; then
+                fragment_policy=renovate-galaxy-metadata
+              fi
+            fi
+          fi
+          echo "fragment-policy=$fragment_policy" >>"$GITHUB_OUTPUT"
+
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
         with:
@@ -26,6 +109,6 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           LABELS_JSON: ${{ toJson(github.event.pull_request.labels.*.name) }}
-          REQUIRE_FRAGMENT: "true"
+          REQUIRE_FRAGMENT: ${{ steps.renovate-exception.outputs.fragment-policy }}
         run: |
           bash scripts/devtools-changelog-check.sh
