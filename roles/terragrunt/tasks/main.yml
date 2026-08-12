@@ -70,6 +70,7 @@
         url: "{{ terragrunt_vault_addr | trim }}/v1/auth/token/lookup-self"
         method: GET
         validate_certs: "{{ terragrunt_vault_validate_certs | bool }}"
+        ca_path: "{{ terragrunt_vault_ca_path | default(omit, true) }}"
         headers:
           X-Vault-Token: "{{ terragrunt_vault_token }}"
       register: terragrunt_vault_token_lookup
@@ -114,6 +115,7 @@
         url: "{{ terragrunt_vault_addr | trim }}/v1/auth/token/renew-self"
         method: POST
         validate_certs: "{{ terragrunt_vault_validate_certs | bool }}"
+        ca_path: "{{ terragrunt_vault_ca_path | default(omit, true) }}"
         headers:
           X-Vault-Token: "{{ terragrunt_vault_token }}"
         body_format: json
@@ -137,6 +139,7 @@
         url: "{{ terragrunt_vault_addr | trim }}/v1/auth/token/lookup-self"
         method: GET
         validate_certs: "{{ terragrunt_vault_validate_certs | bool }}"
+        ca_path: "{{ terragrunt_vault_ca_path | default(omit, true) }}"
         headers:
           X-Vault-Token: "{{ terragrunt_vault_token }}"
       register: terragrunt_vault_token_lookup_after_renew
@@ -187,7 +190,13 @@
     TF_HTTP_PASSWORD: "{{ terragrunt_http_password }}"
     VAULT_TOKEN: "{{ terragrunt_vault_token | default(omit, true) }}"
     VAULT_ADDR: "{{ terragrunt_vault_addr | default(omit, true) }}"
-  ansible.builtin.command: terragrunt init --source-update
+    VAULT_CACERT: "{{ terragrunt_vault_ca_path | default(omit, true) }}"
+  ansible.builtin.command:
+    argv: >-
+      {{
+        ['terragrunt', 'init', '--source-update']
+        + (['-upgrade'] if terragrunt_init_upgrade | bool else [])
+      }}
   args:
     chdir: "{{ terragrunt_env_dir }}"
   delegate_to: "{{ terragrunt_delegate_to }}"
@@ -204,6 +213,8 @@
       - item.address | trim | length > 0
       - item.id is defined
       - (item.id | string) | trim | length > 0
+      - item.extra_args | default([]) is sequence
+      - item.extra_args | default([]) is not string
     quiet: true
   loop: "{{ terragrunt_imports | default([], true) }}"
   loop_control:
@@ -214,12 +225,192 @@
   when: terragrunt_imports | default([], true) | length > 0
   tags: terragrunt_plan
 
+- name: Validate terragrunt state move definitions
+  ansible.builtin.assert:
+    that:
+      - item.from is defined
+      - item.from | trim | length > 0
+      - item.to is defined
+      - item.to | trim | length > 0
+      - item.from != item.to
+    quiet: true
+  loop: "{{ terragrunt_state_moves | default([], true) }}"
+  loop_control:
+    label: "{{ item.from | default('') }} -> {{ item.to | default('') }}"
+  delegate_to: "{{ terragrunt_delegate_to }}"
+  run_once: true
+  become: false
+  when: terragrunt_state_moves | default([], true) | length > 0
+  tags: terragrunt_plan
+
+- name: Inspect terragrunt state move sources
+  environment:
+    TF_HTTP_USERNAME: "{{ terragrunt_http_username }}"
+    TF_HTTP_PASSWORD: "{{ terragrunt_http_password }}"
+    VAULT_TOKEN: "{{ terragrunt_vault_token | default(omit, true) }}"
+    VAULT_ADDR: "{{ terragrunt_vault_addr | default(omit, true) }}"
+    VAULT_CACERT: "{{ terragrunt_vault_ca_path | default(omit, true) }}"
+  ansible.builtin.command:
+    argv: [terragrunt, state, show, "{{ item.from }}"]
+  args:
+    chdir: "{{ terragrunt_env_dir }}"
+  delegate_to: "{{ terragrunt_delegate_to }}"
+  register: terragrunt_state_move_sources
+  failed_when: false
+  changed_when: false
+  run_once: true
+  become: false
+  no_log: true
+  when: terragrunt_state_moves | default([], true) | length > 0
+  loop: "{{ terragrunt_state_moves | default([], true) }}"
+  tags: terragrunt_plan
+
+- name: Inspect terragrunt state move destinations
+  environment:
+    TF_HTTP_USERNAME: "{{ terragrunt_http_username }}"
+    TF_HTTP_PASSWORD: "{{ terragrunt_http_password }}"
+    VAULT_TOKEN: "{{ terragrunt_vault_token | default(omit, true) }}"
+    VAULT_ADDR: "{{ terragrunt_vault_addr | default(omit, true) }}"
+    VAULT_CACERT: "{{ terragrunt_vault_ca_path | default(omit, true) }}"
+  ansible.builtin.command:
+    argv: [terragrunt, state, show, "{{ item.to }}"]
+  args:
+    chdir: "{{ terragrunt_env_dir }}"
+  delegate_to: "{{ terragrunt_delegate_to }}"
+  register: terragrunt_state_move_destinations
+  failed_when: false
+  changed_when: false
+  run_once: true
+  become: false
+  no_log: true
+  when: terragrunt_state_moves | default([], true) | length > 0
+  loop: "{{ terragrunt_state_moves | default([], true) }}"
+  tags: terragrunt_plan
+
+- name: Reject terragrunt state move collisions
+  ansible.builtin.assert:
+    that:
+      - >-
+        not (
+          terragrunt_state_move_sources.results[terragrunt_state_move_index].rc == 0
+          and terragrunt_state_move_destinations.results[terragrunt_state_move_index].rc == 0
+        )
+    fail_msg: "Both state addresses exist for {{ item.from }} -> {{ item.to }}."
+    quiet: true
+  loop: "{{ terragrunt_state_moves | default([], true) }}"
+  loop_control:
+    index_var: terragrunt_state_move_index
+    label: "{{ item.from }} -> {{ item.to }}"
+  delegate_to: "{{ terragrunt_delegate_to }}"
+  run_once: true
+  become: false
+  when: terragrunt_state_moves | default([], true) | length > 0
+  tags: terragrunt_plan
+
+- name: Move existing terragrunt state addresses
+  environment:
+    TF_HTTP_USERNAME: "{{ terragrunt_http_username }}"
+    TF_HTTP_PASSWORD: "{{ terragrunt_http_password }}"
+    VAULT_TOKEN: "{{ terragrunt_vault_token | default(omit, true) }}"
+    VAULT_ADDR: "{{ terragrunt_vault_addr | default(omit, true) }}"
+    VAULT_CACERT: "{{ terragrunt_vault_ca_path | default(omit, true) }}"
+  ansible.builtin.command:
+    argv: [terragrunt, state, mv, "{{ item.from }}", "{{ item.to }}"]
+  args:
+    chdir: "{{ terragrunt_env_dir }}"
+  delegate_to: "{{ terragrunt_delegate_to }}"
+  register: _terragrunt_state_move_result
+  failed_when: >-
+    terragrunt_state_migration_strict | bool
+    and _terragrunt_state_move_result.rc != 0
+  changed_when: _terragrunt_state_move_result.rc == 0
+  run_once: true
+  become: false
+  no_log: true
+  when:
+    - terragrunt_state_moves | default([], true) | length > 0
+    - terragrunt_state_move_sources.results[terragrunt_state_move_index].rc == 0
+    - terragrunt_state_move_destinations.results[terragrunt_state_move_index].rc != 0
+  loop: "{{ terragrunt_state_moves | default([], true) }}"
+  loop_control:
+    index_var: terragrunt_state_move_index
+    label: "{{ item.from }} -> {{ item.to }}"
+  tags: terragrunt_plan
+
+- name: Validate terragrunt state removal definitions
+  ansible.builtin.assert:
+    that:
+      - item.address is defined
+      - item.address | trim | length > 0
+      - item.remote_resource_preserved | default(false) | bool
+    quiet: true
+  loop: "{{ terragrunt_state_removals | default([], true) }}"
+  loop_control:
+    label: "{{ item.address | default('') }}"
+  delegate_to: "{{ terragrunt_delegate_to }}"
+  run_once: true
+  become: false
+  when: terragrunt_state_removals | default([], true) | length > 0
+  tags: terragrunt_plan
+
+- name: Inspect terragrunt state removal addresses
+  environment:
+    TF_HTTP_USERNAME: "{{ terragrunt_http_username }}"
+    TF_HTTP_PASSWORD: "{{ terragrunt_http_password }}"
+    VAULT_TOKEN: "{{ terragrunt_vault_token | default(omit, true) }}"
+    VAULT_ADDR: "{{ terragrunt_vault_addr | default(omit, true) }}"
+    VAULT_CACERT: "{{ terragrunt_vault_ca_path | default(omit, true) }}"
+  ansible.builtin.command:
+    argv: [terragrunt, state, show, "{{ item.address }}"]
+  args:
+    chdir: "{{ terragrunt_env_dir }}"
+  delegate_to: "{{ terragrunt_delegate_to }}"
+  register: terragrunt_state_removal_sources
+  failed_when: false
+  changed_when: false
+  run_once: true
+  become: false
+  no_log: true
+  when: terragrunt_state_removals | default([], true) | length > 0
+  loop: "{{ terragrunt_state_removals | default([], true) }}"
+  tags: terragrunt_plan
+
+- name: Remove obsolete terragrunt state addresses without remote deletion
+  environment:
+    TF_HTTP_USERNAME: "{{ terragrunt_http_username }}"
+    TF_HTTP_PASSWORD: "{{ terragrunt_http_password }}"
+    VAULT_TOKEN: "{{ terragrunt_vault_token | default(omit, true) }}"
+    VAULT_ADDR: "{{ terragrunt_vault_addr | default(omit, true) }}"
+    VAULT_CACERT: "{{ terragrunt_vault_ca_path | default(omit, true) }}"
+  ansible.builtin.command:
+    argv: [terragrunt, state, rm, "{{ item.address }}"]
+  args:
+    chdir: "{{ terragrunt_env_dir }}"
+  delegate_to: "{{ terragrunt_delegate_to }}"
+  register: _terragrunt_state_removal_result
+  failed_when: >-
+    terragrunt_state_migration_strict | bool
+    and _terragrunt_state_removal_result.rc != 0
+  changed_when: _terragrunt_state_removal_result.rc == 0
+  run_once: true
+  become: false
+  no_log: true
+  when:
+    - terragrunt_state_removals | default([], true) | length > 0
+    - terragrunt_state_removal_sources.results[terragrunt_state_removal_index].rc == 0
+  loop: "{{ terragrunt_state_removals | default([], true) }}"
+  loop_control:
+    index_var: terragrunt_state_removal_index
+    label: "{{ item.address }}"
+  tags: terragrunt_plan
+
 - name: Terragrunt state show (pre-import check)
   environment:
     TF_HTTP_USERNAME: "{{ terragrunt_http_username }}"
     TF_HTTP_PASSWORD: "{{ terragrunt_http_password }}"
     VAULT_TOKEN: "{{ terragrunt_vault_token | default(omit, true) }}"
     VAULT_ADDR: "{{ terragrunt_vault_addr | default(omit, true) }}"
+    VAULT_CACERT: "{{ terragrunt_vault_ca_path | default(omit, true) }}"
   ansible.builtin.command:
     argv:
       - terragrunt
@@ -234,6 +425,7 @@
   changed_when: false
   run_once: true
   become: false
+  no_log: true
   when: terragrunt_imports | default([], true) | length > 0
   loop: "{{ terragrunt_imports | default([], true) }}"
   loop_control:
@@ -246,21 +438,25 @@
     TF_HTTP_PASSWORD: "{{ terragrunt_http_password }}"
     VAULT_TOKEN: "{{ terragrunt_vault_token | default(omit, true) }}"
     VAULT_ADDR: "{{ terragrunt_vault_addr | default(omit, true) }}"
+    VAULT_CACERT: "{{ terragrunt_vault_ca_path | default(omit, true) }}"
   ansible.builtin.command:
-    argv:
-      - terragrunt
-      - import
-      - -input=false
-      - "{{ item.address }}"
-      - "{{ item.id }}"
+    argv: >-
+      {{
+        ['terragrunt', 'import', '-input=false']
+        + (item.extra_args | default([]))
+        + [item.address, item.id | string]
+      }}
   args:
     chdir: "{{ terragrunt_env_dir }}"
   delegate_to: "{{ terragrunt_delegate_to }}"
-  register: terragrunt_import
-  failed_when: terragrunt_import_strict | bool and terragrunt_import.rc != 0
+  register: _terragrunt_import_result
+  failed_when: >-
+    terragrunt_import_strict | bool
+    and _terragrunt_import_result.rc != 0
   changed_when: false
   run_once: true
   become: false
+  no_log: true
   when:
     - terragrunt_imports | default([], true) | length > 0
     - terragrunt_state_show is defined
@@ -277,6 +473,7 @@
     TF_HTTP_PASSWORD: "{{ terragrunt_http_password }}"
     VAULT_TOKEN: "{{ terragrunt_vault_token | default(omit, true) }}"
     VAULT_ADDR: "{{ terragrunt_vault_addr | default(omit, true) }}"
+    VAULT_CACERT: "{{ terragrunt_vault_ca_path | default(omit, true) }}"
   ansible.builtin.command: "terragrunt validate"
   args:
     chdir: "{{ terragrunt_env_dir }}"
@@ -293,6 +490,7 @@
     TF_HTTP_PASSWORD: "{{ terragrunt_http_password }}"
     VAULT_TOKEN: "{{ terragrunt_vault_token | default(omit, true) }}"
     VAULT_ADDR: "{{ terragrunt_vault_addr | default(omit, true) }}"
+    VAULT_CACERT: "{{ terragrunt_vault_ca_path | default(omit, true) }}"
   ansible.builtin.command: >-
     terragrunt run -- fmt -list=true -write=false -diff=true
     -check=true -recursive
@@ -311,6 +509,7 @@
     TF_HTTP_PASSWORD: "{{ terragrunt_http_password }}"
     VAULT_TOKEN: "{{ terragrunt_vault_token | default(omit, true) }}"
     VAULT_ADDR: "{{ terragrunt_vault_addr | default(omit, true) }}"
+    VAULT_CACERT: "{{ terragrunt_vault_ca_path | default(omit, true) }}"
   ansible.builtin.command: >-
     terragrunt plan {{ terragrunt_action }}
     {{ terragrunt_args }}
@@ -371,6 +570,7 @@
     TF_HTTP_PASSWORD: "{{ terragrunt_http_password }}"
     VAULT_TOKEN: "{{ terragrunt_vault_token | default(omit, true) }}"
     VAULT_ADDR: "{{ terragrunt_vault_addr | default(omit, true) }}"
+    VAULT_CACERT: "{{ terragrunt_vault_ca_path | default(omit, true) }}"
   ansible.builtin.command: >-
     terragrunt apply -input=false -auto-approve
     {{ terragrunt_action }} {{ terragrunt_plan_file | default('/tmp/tf_plan', true) }}
