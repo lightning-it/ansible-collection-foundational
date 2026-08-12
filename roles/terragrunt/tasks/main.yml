@@ -319,9 +319,11 @@
   args:
     chdir: "{{ terragrunt_env_dir }}"
   delegate_to: "{{ terragrunt_delegate_to }}"
-  register: terragrunt_state_move
-  failed_when: terragrunt_state_migration_strict | bool and terragrunt_state_move.rc != 0
-  changed_when: terragrunt_state_move.rc == 0
+  register: _terragrunt_state_move_result
+  failed_when: >-
+    terragrunt_state_migration_strict | bool
+    and _terragrunt_state_move_result.rc != 0
+  changed_when: _terragrunt_state_move_result.rc == 0
   run_once: true
   become: false
   no_log: true
@@ -385,9 +387,11 @@
   args:
     chdir: "{{ terragrunt_env_dir }}"
   delegate_to: "{{ terragrunt_delegate_to }}"
-  register: terragrunt_state_removal
-  failed_when: terragrunt_state_migration_strict | bool and terragrunt_state_removal.rc != 0
-  changed_when: terragrunt_state_removal.rc == 0
+  register: _terragrunt_state_removal_result
+  failed_when: >-
+    terragrunt_state_migration_strict | bool
+    and _terragrunt_state_removal_result.rc != 0
+  changed_when: _terragrunt_state_removal_result.rc == 0
   run_once: true
   become: false
   no_log: true
@@ -421,6 +425,7 @@
   changed_when: false
   run_once: true
   become: false
+  no_log: true
   when: terragrunt_imports | default([], true) | length > 0
   loop: "{{ terragrunt_imports | default([], true) }}"
   loop_control:
@@ -444,11 +449,14 @@
   args:
     chdir: "{{ terragrunt_env_dir }}"
   delegate_to: "{{ terragrunt_delegate_to }}"
-  register: terragrunt_import
-  failed_when: terragrunt_import_strict | bool and terragrunt_import.rc != 0
+  register: _terragrunt_import_result
+  failed_when: >-
+    terragrunt_import_strict | bool
+    and _terragrunt_import_result.rc != 0
   changed_when: false
   run_once: true
   become: false
+  no_log: true
   when:
     - terragrunt_imports | default([], true) | length > 0
     - terragrunt_state_show is defined

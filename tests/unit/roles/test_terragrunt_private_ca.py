@@ -23,6 +23,8 @@ def test_terragrunt_import_accepts_guarded_extra_arguments():
     assert "item.extra_args | default([]) is sequence" in tasks
     assert "item.extra_args | default([]) is not string" in tasks
     assert "+ (item.extra_args | default([]))" in tasks
+    assert "register: _terragrunt_import_result" in tasks
+    assert "and _terragrunt_import_result.rc != 0" in tasks
 
 
 def test_terragrunt_state_migrations_are_explicit_and_non_destructive():
@@ -36,8 +38,12 @@ def test_terragrunt_state_migrations_are_explicit_and_non_destructive():
     assert defaults["terragrunt_state_migration_strict"] is False
     assert "argv: [terragrunt, state, mv" in tasks
     assert "argv: [terragrunt, state, rm" in tasks
+    assert "register: _terragrunt_state_move_result" in tasks
+    assert "and _terragrunt_state_move_result.rc != 0" in tasks
+    assert "register: _terragrunt_state_removal_result" in tasks
+    assert "and _terragrunt_state_removal_result.rc != 0" in tasks
     assert "item.remote_resource_preserved | default(false) | bool" in tasks
-    assert "no_log: true" in tasks
+    assert tasks.count("no_log: true") >= 6
 
 
 def test_terragrunt_provider_lock_upgrade_is_explicitly_opt_in():
