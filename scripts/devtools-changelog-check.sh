@@ -100,9 +100,15 @@ bash scripts/wunder-devtools-ee.sh bash -lc '
     exit 0
   fi
 
-  if [ "${REQUIRE_FRAGMENT:-true}" != "true" ]; then
-    exit 0
-  fi
+  fragment_policy="${REQUIRE_FRAGMENT:-true}"
+  case "$fragment_policy" in
+    true | renovate-galaxy-metadata) ;;
+    false) exit 0 ;;
+    *)
+      echo "::error::Unsupported REQUIRE_FRAGMENT policy: ${fragment_policy}"
+      exit 1
+      ;;
+  esac
 
   non_user_visible_re="^(\\.github/|\\.releaserc|\\.pre-commit-config\\.yaml|\\.ansible-lint|"
   non_user_visible_re+="\\.yamllint|renovate|README\\.md|docs/|molecule/|tests/|scripts/|"
@@ -136,6 +142,14 @@ bash scripts/wunder-devtools-ee.sh bash -lc '
   if [ -z "$user_visible" ]; then
     echo "Only documentation, CI, tests, metadata, or changelog files changed."
     exit 0
+  fi
+
+  if [ "$fragment_policy" = "renovate-galaxy-metadata" ]; then
+    unexpected_user_visible="$(grep -Fxv "galaxy.yml" <<<"$user_visible" || true)"
+    if [ -z "$unexpected_user_visible" ]; then
+      echo "Trusted non-major Renovate galaxy.yml metadata updates do not require a changelog fragment."
+      exit 0
+    fi
   fi
 
   if ! grep -Eq "^changelogs/fragments/[^/]+\\.ya?ml$" <<<"$changed"; then
