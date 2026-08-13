@@ -53,21 +53,28 @@ If generic guidance conflicts with repository behavior, you MUST prefer reposito
    16. `scripts/devtools-molecule.sh`
    17. `scripts/wunder-devtools-ee.sh`
    18. `.github/workflows/shared-assets-guarded-automerge.yml`
-   19. `scripts/security-release-intake.py`
-   20. `.github/workflows/security-release-intake.yml`
-   21. `scripts/security-release-dispatch.py`
-   22. `.github/workflows/security-release-dispatch.yml`
-   23. `.lit/push-ready-secret-fixtures.json`
-   24. `docs/development/push-ready-secret-fixtures.md`
-   25. `tests/unit/test_security_release_request_dispatch.py`
-5. The Security intake and dispatch files in items 19 through 22, the temporary fixture-policy files in items
-   23 and 24, and the dispatch contract assertion in item 25 are supplementary-only MLX-90 Security assets.
-   Generic collection synchronization MUST exclude them;
-   only the narrow `ansible-collection-supplementary` enterprise sync may
-   install them. They MUST NOT remove the human-controlled checkpoint for
-   normal `develop` to `main` promotions. The fixture manifest MUST match only
-   unchanged synthetic lines at exact target positions, MUST NOT weaken a
-   scanner, and MUST be retired through the same guarded sync after cleanup.
+   19. `.github/workflows/release-bot-exact-head-review.yml`
+5. Until a fresh real Security release proves the Supplementary golden path
+   with `humanActions=0`, `ansible-collection-supplementary` owns exactly
+   `.github/workflows/copilot-review.yml`,
+   `scripts/security-release-intake.py`,
+   `.github/workflows/security-release-intake.yml`,
+   `scripts/security-release-dispatch.py`,
+   `.github/workflows/security-release-dispatch.yml`, and
+   `tests/unit/test_security_release_request_dispatch.py`,
+   `scripts/main-promotion-authorization.py`, and
+   `.github/workflows/main-promotion-authorization.yml`. Generic and narrow
+   collection synchronization MUST preserve those incubating files and MUST
+   NOT install or overwrite them; the two main-promotion files are
+   repository-owned and remain human-approved for normal promotions. After
+   acceptance, their proven versions are
+   canonicalized once in `shared-assets-lit` before versioned rollout resumes.
+   They MUST NOT remove the human-controlled checkpoint for normal `develop`
+   to `main` promotions. The supplementary repository's
+   `.lit/push-ready-secret-fixtures.json` is a repository-owned historical
+   synthetic-fixture inventory and MUST be preserved byte-for-byte. The retired
+   temporary path `docs/development/push-ready-secret-fixtures.md` MUST remain
+   absent after the guarded cleanup sync and MUST NOT be recreated.
 6. Repo-local exceptions MUST be explicit in the sync workflow and documented in the repository.
 
 ## 2. Repository Baseline (This Repo)
@@ -285,12 +292,16 @@ The standard branch and release model is:
 Automation safety requirements:
 
 - Protected branches must require pull request review.
-- Only trusted Renovate PRs may be auto-approved by collection automation.
+- Only trusted Renovate PRs may be auto-merged by collection automation.
 - A trusted Renovate PR must have `renovate[bot]` as both trigger actor and PR author, a `renovate/*` source
   branch, `develop` as the base branch, and the `renovate`, `dependencies`, and package-rule-controlled
-  `safe-automerge` labels. The latest `safe-automerge` label event must come from Renovate.
+  `safe-automerge` labels. The latest `safe-automerge` label event must come from Renovate. Every commit in the
+  current PR head must be attributed to `renovate[bot]`, committed by GitHub `web-flow`, carry a valid verified
+  signature, and culminate in the exact live head SHA.
 - Major updates receive `breaking-update`, never receive `safe-automerge`, and must remain manual. Removing or
   spoofing labels does not make a PR eligible because the guarded workflow checks label-event history.
+- The guarded Renovate workflow must not submit a synthetic approving review;
+  protected-branch required checks are the merge boundary.
 - Human, external contributor, and develop-to-main promotion PRs must not be auto-approved or auto-merged by
   collection automation.
 - Do not use `pull_request_target` for Renovate approval or merge automation.
