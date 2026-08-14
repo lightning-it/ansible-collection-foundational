@@ -1,0 +1,87 @@
+---
+- name: Validate the G2 exact target, fleet, and service placement contract
+  ansible.builtin.assert:
+    that:
+      - root_of_trust_validate_selection_scope == 'single_root_of_trust'
+      - >-
+        root_of_trust_validate_target.keys() | list | sort
+        == ['cancelled', 'inventory_hostname', 'public_ipv4',
+            'server_number', 'status']
+      - root_of_trust_validate_target.inventory_hostname == inventory_hostname
+      - >-
+        root_of_trust_validate_target.inventory_hostname
+        == root_of_trust_validate_root_host
+      - root_of_trust_validate_target.server_number is integer
+      - root_of_trust_validate_target.server_number | int > 0
+      - >-
+        root_of_trust_validate_target.public_ipv4
+        is match('^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$')
+      - >-
+        root_of_trust_validate_target.public_ipv4.split('.')
+        | map('int') | select('gt', 255) | list | length == 0
+      - root_of_trust_validate_target.status == 'ready'
+      - root_of_trust_validate_target.cancelled is boolean
+      - not (root_of_trust_validate_target.cancelled | bool)
+      - >-
+        root_of_trust_validate_selected_hosts
+        == [root_of_trust_validate_root_host]
+      - root_of_trust_validate_expected_fleet | length > 0
+      - >-
+        root_of_trust_validate_expected_fleet | unique | length
+        == root_of_trust_validate_expected_fleet | length
+      - >-
+        root_of_trust_validate_expected_fleet
+        | map('trim') | select('equalto', '') | list | length == 0
+      - >-
+        root_of_trust_validate_install_order | unique | length
+        == root_of_trust_validate_install_order | length
+      - >-
+        root_of_trust_validate_install_order | sort
+        == root_of_trust_validate_expected_fleet | sort
+      - root_of_trust_validate_install_order[0] == root_of_trust_validate_root_host
+      - root_of_trust_validate_prerequisite_hosts | length > 0
+      - >-
+        root_of_trust_validate_prerequisite_hosts | unique | length
+        == root_of_trust_validate_prerequisite_hosts | length
+      - >-
+        root_of_trust_validate_prerequisite_hosts
+        | difference(root_of_trust_validate_expected_fleet) | length == 0
+      - >-
+        root_of_trust_validate_install_order[
+          0:root_of_trust_validate_prerequisite_hosts | length
+        ] == root_of_trust_validate_prerequisite_hosts
+      - >-
+        root_of_trust_validate_prerequisite_hosts[0]
+        == root_of_trust_validate_root_host
+      - root_of_trust_validate_tang_host == root_of_trust_validate_root_host
+      - root_of_trust_validate_vault_host == root_of_trust_validate_root_host
+      - root_of_trust_validate_root_host in root_of_trust_validate_expected_fleet
+      - root_of_trust_validate_root_host | trim | length > 0
+      - root_of_trust_validate_tang_host | trim | length > 0
+      - root_of_trust_validate_vault_host | trim | length > 0
+      - "'0.0.0.0/0' not in root_of_trust_validate_expected_fleet"
+      - "'0.0.0.0/0' not in root_of_trust_validate_install_order"
+      - "'0.0.0.0/0' not in root_of_trust_validate_prerequisite_hosts"
+    fail_msg: >-
+      G2 requires one exact root-of-trust target, the complete unique fleet
+      and install order, a ready and non-cancelled lifecycle, and that same
+      root first, prerequisite, Tang, and Vault host.
+    quiet: true
+  changed_when: false
+  no_log: true
+  tags: always
+
+- name: Validate the complete fail-closed G2 firewall policy
+  ansible.builtin.set_fact:
+    _root_of_trust_validate_g2_firewall_summary: >-
+      {{
+        root_of_trust_validate_firewall
+        | lit.foundational.root_of_trust_firewall_validate(
+            root_of_trust_validate_target.public_ipv4,
+            root_of_trust_validate_controller_ipv4_cidr
+          )
+      }}
+    cacheable: false
+  changed_when: false
+  no_log: true
+  tags: always

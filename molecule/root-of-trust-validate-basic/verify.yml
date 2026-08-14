@@ -1,0 +1,272 @@
+---
+- name: Verify generic root-of-trust validation safety
+  hosts: all
+  gather_facts: false
+  vars_files:
+    - resources
+  tasks:
+    - name: Initialize expected rejection observations
+      ansible.builtin.set_fact:
+        root_of_trust_validate_partial_selection_rejected: false
+        root_of_trust_validate_wildcard_source_rejected: false
+        root_of_trust_validate_ipv6_source_rejected: false
+        root_of_trust_validate_disabled_firewall_rejected: false
+        root_of_trust_validate_in_process_rejected: false
+        root_of_trust_validate_cancelled_rejected: false
+        root_of_trust_validate_identity_ambiguity_rejected: false
+      changed_when: false
+
+    - name: Exercise exact-selection rejection
+      block:
+        - name: Submit more than the exact root-of-trust target
+          ansible.builtin.include_role:
+            name: lit.foundational.root_of_trust_validate
+            tasks_from: g2_plan
+          vars:
+            root_of_trust_validate_selected_hosts:
+              - localhost
+              - molecule-node-b
+      rescue:
+        - name: Record exact-selection rejection
+          ansible.builtin.set_fact:
+            root_of_trust_validate_partial_selection_rejected: true
+          changed_when: false
+
+    # This assertion is deliberately outside the rescued block. A role that
+    # incorrectly accepts the fixture cannot turn the test into a false pass.
+    - name: Require exact-selection rejection
+      ansible.builtin.assert:
+        that: root_of_trust_validate_partial_selection_rejected | bool
+        fail_msg: G2 accepted a fleet selection for single_root_of_trust.
+        quiet: true
+      changed_when: false
+
+    - name: Exercise unrestricted-controller rejection
+      block:
+        - name: Submit a bootstrap 0.0.0.0/0 controller source
+          ansible.builtin.include_role:
+            name: lit.foundational.root_of_trust_validate
+            tasks_from: g2_plan
+          vars:
+            root_of_trust_validate_controller_ipv4_cidr: 0.0.0.0/0
+      rescue:
+        - name: Record unrestricted-controller rejection
+          ansible.builtin.set_fact:
+            root_of_trust_validate_wildcard_source_rejected: true
+          changed_when: false
+
+    - name: Require unrestricted-controller rejection
+      ansible.builtin.assert:
+        that: root_of_trust_validate_wildcard_source_rejected | bool
+        fail_msg: G2 accepted an unrestricted bootstrap controller source.
+        quiet: true
+      changed_when: false
+
+    - name: Build an IPv6 input fixture
+      ansible.builtin.set_fact:
+        root_of_trust_validate_ipv6_firewall: >-
+          {{
+            root_of_trust_validate_firewall
+            | combine(
+                {
+                  'bootstrap': root_of_trust_validate_firewall.bootstrap
+                  | combine(
+                      {
+                        'input': [
+                          root_of_trust_validate_firewall.bootstrap.input[0]
+                          | combine(
+                              {
+                                'ip_version': 'ipv6',
+                                'src_ip': '::/0'
+                              }
+                            )
+                        ] + root_of_trust_validate_firewall.bootstrap.input[1:]
+                      }
+                    )
+                }
+              )
+          }}
+      changed_when: false
+
+    - name: Exercise IPv6 wildcard rejection
+      block:
+        - name: Submit an IPv6 wildcard input
+          ansible.builtin.include_role:
+            name: lit.foundational.root_of_trust_validate
+            tasks_from: g2_plan
+          vars:
+            root_of_trust_validate_firewall: >-
+              {{ root_of_trust_validate_ipv6_firewall }}
+      rescue:
+        - name: Record IPv6 wildcard rejection
+          ansible.builtin.set_fact:
+            root_of_trust_validate_ipv6_source_rejected: true
+          changed_when: false
+
+    - name: Require IPv6 wildcard rejection
+      ansible.builtin.assert:
+        that: root_of_trust_validate_ipv6_source_rejected | bool
+        fail_msg: G2 accepted IPv6 input or an IPv6 wildcard.
+        quiet: true
+      changed_when: false
+
+    - name: Exercise disabled-provider-firewall rejection
+      vars:
+        root_of_trust_validate_disabled_firewall: >-
+          {{ root_of_trust_validate_firewall | combine({'enabled': false}) }}
+      block:
+        - name: Submit a disabled provider firewall
+          ansible.builtin.include_role:
+            name: lit.foundational.root_of_trust_validate
+            tasks_from: g2_plan
+          vars:
+            root_of_trust_validate_firewall: >-
+              {{ root_of_trust_validate_disabled_firewall }}
+      rescue:
+        - name: Record disabled-provider-firewall rejection
+          ansible.builtin.set_fact:
+            root_of_trust_validate_disabled_firewall_rejected: true
+          changed_when: false
+
+    - name: Require disabled-provider-firewall rejection
+      ansible.builtin.assert:
+        that: root_of_trust_validate_disabled_firewall_rejected | bool
+        fail_msg: G2 accepted a disabled provider firewall.
+        quiet: true
+      changed_when: false
+
+    - name: Exercise non-ready lifecycle rejection
+      vars:
+        root_of_trust_validate_in_process_target: >-
+          {{ root_of_trust_validate_target | combine({'status': 'in process'}) }}
+      block:
+        - name: Submit an in-process server lifecycle
+          ansible.builtin.include_role:
+            name: lit.foundational.root_of_trust_validate
+            tasks_from: g2_plan
+          vars:
+            root_of_trust_validate_target: >-
+              {{ root_of_trust_validate_in_process_target }}
+      rescue:
+        - name: Record non-ready lifecycle rejection
+          ansible.builtin.set_fact:
+            root_of_trust_validate_in_process_rejected: true
+          changed_when: false
+
+    - name: Require non-ready lifecycle rejection
+      ansible.builtin.assert:
+        that: root_of_trust_validate_in_process_rejected | bool
+        fail_msg: G2 accepted a server whose status is not ready.
+        quiet: true
+      changed_when: false
+
+    - name: Exercise cancelled lifecycle rejection
+      vars:
+        root_of_trust_validate_cancelled_target: >-
+          {{ root_of_trust_validate_target | combine({'cancelled': true}) }}
+      block:
+        - name: Submit a cancelled server lifecycle
+          ansible.builtin.include_role:
+            name: lit.foundational.root_of_trust_validate
+            tasks_from: g2_plan
+          vars:
+            root_of_trust_validate_target: >-
+              {{ root_of_trust_validate_cancelled_target }}
+      rescue:
+        - name: Record cancelled lifecycle rejection
+          ansible.builtin.set_fact:
+            root_of_trust_validate_cancelled_rejected: true
+          changed_when: false
+
+    - name: Require cancelled lifecycle rejection
+      ansible.builtin.assert:
+        that: root_of_trust_validate_cancelled_rejected | bool
+        fail_msg: G2 accepted a cancelled server.
+        quiet: true
+      changed_when: false
+
+    - name: Exercise split Robot identity rejection
+      block:
+        - name: Submit split public-IP and numeric Robot identity
+          ansible.builtin.include_tasks: >-
+            ../../roles/root_of_trust_validate/tasks/g0_identity_assert.yml
+          vars:
+            root_of_trust_validate_target: "{{ root_of_trust_validate_target_g0 }}"
+            _root_of_trust_validate_g0_servers_by_ip:
+              - server_ip: 192.0.2.10
+                server_number: 1001
+            _root_of_trust_validate_g0_servers_by_number:
+              - server_ip: 192.0.2.11
+                server_number: 1001
+      rescue:
+        - name: Record split Robot identity rejection
+          ansible.builtin.set_fact:
+            root_of_trust_validate_identity_ambiguity_rejected: true
+          changed_when: false
+
+    - name: Require split Robot identity rejection
+      ansible.builtin.assert:
+        that: root_of_trust_validate_identity_ambiguity_rejected | bool
+        fail_msg: G0 accepted split public-IP and numeric Robot identity.
+        quiet: true
+      changed_when: false
+
+    - name: Mock unsafe but unambiguous G0 provider drift
+      ansible.builtin.set_fact:
+        _root_of_trust_validate_g0_server:
+          server_ip: 192.0.2.10
+          server_number: 1001
+          server_name: drifted-name
+          status: in process
+          cancelled: true
+        _root_of_trust_validate_g0_firewall_info:
+          firewall:
+            server_ip: 192.0.2.10
+            server_number: 1001
+            status: disabled
+            port: kvm
+            filter_ipv6: false
+            allowlist_hos: false
+        _root_of_trust_validate_g0_expected_input:
+          - action: accept
+        _root_of_trust_validate_g0_actual_input:
+          - action: discard
+        _root_of_trust_validate_g0_expected_output:
+          - action: accept
+        _root_of_trust_validate_g0_actual_output:
+          - action: accept
+        _root_of_trust_validate_g0_vswitch_probe:
+          v_switch:
+            name: molecule-mgmt
+            vlan: 4091
+        _root_of_trust_validate_g0_vswitch_members:
+          - server_ip: 192.0.2.10
+            server_number: 1001
+            status: pending
+        _root_of_trust_validate_g0_vswitch_identity_tokens:
+          - 192.0.2.10
+          - "1001"
+      changed_when: false
+      no_log: true
+
+    - name: Evaluate mocked G0 drift without a compliance failure
+      ansible.builtin.include_tasks: >-
+        ../../roles/root_of_trust_validate/tasks/g0_evaluate.yml
+      vars:
+        root_of_trust_validate_target: "{{ root_of_trust_validate_target_g0 }}"
+
+    - name: Require unsafe G0 drift to remain sanitized findings
+      vars:
+        _root_of_trust_validate_g0_finding_codes: >-
+          {{ _root_of_trust_validate_g0_findings | map(attribute='code') | list }}
+      ansible.builtin.assert:
+        that:
+          - "'server_name_drift' in _root_of_trust_validate_g0_finding_codes"
+          - "'server_status_drift' in _root_of_trust_validate_g0_finding_codes"
+          - "'server_cancellation_drift' in _root_of_trust_validate_g0_finding_codes"
+          - "'firewall_rules_drift' in _root_of_trust_validate_g0_finding_codes"
+          - "'vswitch_membership_drift' in _root_of_trust_validate_g0_finding_codes"
+          - "'vswitch_member_state_drift' in _root_of_trust_validate_g0_finding_codes"
+          - _root_of_trust_validate_g0_findings | length >= 6
+        quiet: true
+      changed_when: false

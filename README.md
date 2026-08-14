@@ -82,6 +82,16 @@ The current collection compatibility baseline is `ansible-core` 2.18.0 or newer.
     configuration reconciliation,
   - uses only the official Robot boot and reset modules.
 
+- `lit.foundational.root_of_trust_validate`
+  Validates one generic infrastructure root-of-trust boundary:
+  - observes Robot server identity, firewall, and vSwitch state without
+    mutation and reports unsafe drift as sanitized findings,
+  - fails live observation only for provider API errors or ambiguous server
+    identity,
+  - validates an exact single-target, complete-fleet G2 installation and
+    ready/non-cancelled lifecycle plus a strict active eight-/ten-rule
+    IPv4-only firewall plan entirely on the controller.
+
 - `lit.foundational.secret_resolver`
   Resolves controller-side secret requests into provider-independent values:
   - supports HashiCorp Vault/HCP Vault, Ansible Vault, 1Password, environment,

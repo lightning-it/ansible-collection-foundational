@@ -1,0 +1,5 @@
+---
+minor_changes:
+  - >-
+    hetzner_robot_cac - allow read-only Robot audits to pin the positive
+    numeric server identity in addition to the public IP and server name.
