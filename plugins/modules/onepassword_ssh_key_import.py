@@ -91,7 +91,52 @@ agent_verified:
 
 
 def main():
-    module = AnsibleModule(argument_spec={}, supports_check_mode=True)
+    module = AnsibleModule(
+        argument_spec={
+            "account_id": {"type": "str", "required": True},
+            "account_sign_in_address": {"type": "str", "required": True},
+            "action": {
+                "type": "str",
+                "required": True,
+                "choices": ["plan", "apply"],
+            },
+            "agent_socket_path": {"type": "path", "required": True},
+            "allow_import": {"type": "bool", "required": True},
+            "authorized_user_uuids": {
+                "type": "list",
+                "elements": "str",
+                "required": True,
+            },
+            "category": {
+                "type": "str",
+                "default": "SSH Key",
+                "choices": ["SSH Key"],
+            },
+            "cli_path": {"type": "path", "required": True},
+            "cli_sha256": {"type": "str", "required": True},
+            "cli_version": {"type": "str", "required": True},
+            "confirmation": {"type": "str", "required": True},
+            "expected_fingerprint": {"type": "str", "required": True},
+            "item_id": {"type": "str", "default": ""},
+            "item_title": {"type": "str", "required": True},
+            "item_version": {"type": "int", "default": 0},
+            "key_type": {
+                "type": "str",
+                "default": "ed25519",
+                "choices": ["ed25519"],
+            },
+            "private_key_path": {"type": "path", "required": True},
+            "schema_version": {"type": "int", "default": 1},
+            "ssh_add_path": {"type": "path", "required": True},
+            "ssh_add_sha256": {"type": "str", "required": True},
+            "ssh_keygen_path": {"type": "path", "required": True},
+            "ssh_keygen_sha256": {"type": "str", "required": True},
+            "subject": {"type": "str", "required": True},
+            "tags": {"type": "list", "elements": "str", "required": True},
+            "vault_id": {"type": "str", "required": True},
+        },
+        supports_check_mode=True,
+    )
     module.fail_json(msg="onepassword_ssh_key_import requires its controller action plugin")
 
 

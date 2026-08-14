@@ -80,7 +80,21 @@ approval_metadata:
 
 
 def main():
-    module = AnsibleModule(argument_spec={}, supports_check_mode=True)
+    module = AnsibleModule(
+        argument_spec={
+            "approval_authority": {"type": "dict", "required": True},
+            "binding": {"type": "raw", "required": True},
+            "commit_shas": {"type": "dict", "required": True},
+            "execution_id_prefix": {"type": "str", "required": True},
+            "operation": {"type": "str", "required": True},
+            "signing_agent_socket_path": {"type": "path", "required": True},
+            "signing_ssh_add_path": {"type": "path", "required": True},
+            "signing_ssh_add_sha256": {"type": "str", "required": True},
+            "target": {"type": "str", "required": True},
+            "validity_seconds": {"type": "int", "required": True},
+        },
+        supports_check_mode=True,
+    )
     module.fail_json(msg="onepassword_approval requires its controller action plugin")
 
 
