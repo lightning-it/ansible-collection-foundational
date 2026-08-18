@@ -54,6 +54,11 @@ If generic guidance conflicts with repository behavior, you MUST prefer reposito
    17. `scripts/wunder-devtools-ee.sh`
    18. `.github/workflows/shared-assets-guarded-automerge.yml`
    19. `.github/workflows/release-bot-exact-head-review.yml`
+   20. `scripts/materialize-exact-revision-review.py`
+   21. `.github/workflows/current-revision-rerun.yml`
+   The enterprise `role-quality-*` hook block outside the shared pre-commit
+   markers is repository-local. Its script allowlist and mypy target list MUST
+   be preserved byte-for-byte by the narrow enterprise synchronizer.
 5. Until a fresh real Security release proves the Supplementary golden path
    with `humanActions=0`, `ansible-collection-supplementary` owns exactly
    `.github/workflows/copilot-review.yml`,
