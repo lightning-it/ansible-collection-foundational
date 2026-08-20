@@ -56,6 +56,10 @@ If generic guidance conflicts with repository behavior, you MUST prefer reposito
    19. `.github/workflows/release-bot-exact-head-review.yml`
    20. `scripts/materialize-exact-revision-review.py`
    21. `.github/workflows/current-revision-rerun.yml`
+   22. `.github/workflows/dot-github-current-revision-required.yml` in
+       `ansible-collection-supplementary` only
+   23. `scripts/verify-dot-github-current-revision.py` in
+       `ansible-collection-supplementary` only
    The enterprise `role-quality-*` hook block outside the shared pre-commit
    markers is repository-local. Its script allowlist and mypy target list MUST
    be preserved byte-for-byte by the narrow enterprise synchronizer.
