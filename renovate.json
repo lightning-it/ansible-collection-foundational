@@ -63,6 +63,7 @@
         ".github/workflows/codex-copilot-remediation.yml",
         ".github/workflows/collection-ci.yml",
         ".github/workflows/collection-publish.yml",
+        ".github/workflows/copilot-review-refresh.yml",
         ".github/workflows/copilot-review.yml",
         ".github/workflows/current-revision-rerun.yml",
         ".github/workflows/openssf-scorecard.yml",

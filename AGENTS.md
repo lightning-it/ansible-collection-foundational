@@ -164,8 +164,9 @@ production readiness, Ansible Galaxy readiness, and Red Hat Ansible Automation P
 
 ### 2.1.4 Testing and Quality Gates
 
-1. `pre-commit run --all-files` MUST be the first local PR preflight for collection repositories. Shared hooks run
-   the PR-equivalent changelog, ansible-lint, Molecule light, and smoke gates through `ee-wunder-devtools-ubi9`.
+1. `pre-commit run --all-files` MUST be the first local PR preflight for collection repositories. The host command is
+   only a dispatcher: every shared and repository-specific validation hook MUST execute through the digest-pinned
+   `ee-wunder-devtools-ubi9` wrapper. A host language runtime is never acceptance evidence.
 2. `ansible-lint --profile production .` SHOULD pass, or repository-specific devtools lint MUST pass with documented
    equivalent strictness.
 3. `ansible-test sanity --docker` SHOULD pass for custom modules/plugins and collection packaging concerns.
@@ -187,6 +188,17 @@ bash scripts/devtools-molecule.sh
 bash scripts/devtools-collection-smoke.sh
 bash scripts/devtools-changelog-check.sh
 ```
+
+All commands in this section are container entrypoints or pre-commit
+dispatchers into the managed Devtools container. If the image lacks a command
+or compatible version, fail closed and update/release the image and centrally
+managed digest. Do not substitute host Python, Node.js, Ansible, Ruff, Mypy,
+markdownlint, Renovate, an ad-hoc virtual environment, or an unpinned helper
+image. Least-privilege defaults are read-only workspace/rootfs, no network, no
+container socket, dropped capabilities, and no privilege escalation; each gate
+may opt into only its tested minimum. Linked-worktree Git metadata stays
+read-only and Git may trust only `/workspace`, never `*`. Executable temporary
+fixtures use the isolated container home while generic `/tmp` remains `noexec`.
 
 Recommended commands when applicable:
 
