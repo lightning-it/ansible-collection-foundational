@@ -72,7 +72,8 @@
         ".github/workflows/release-bot-exact-head-review.yml",
         ".github/workflows/release-prepare.yml",
         ".github/workflows/renovate-guarded-automerge.yml",
-        ".github/workflows/shared-assets-guarded-automerge.yml"
+        ".github/workflows/shared-assets-guarded-automerge.yml",
+        ".github/workflows/sync-main-to-develop.yml"
       ],
       "enabled": false
     }
