@@ -192,13 +192,14 @@ bash scripts/devtools-changelog-check.sh
 All commands in this section are container entrypoints or pre-commit
 dispatchers into the managed Devtools container. If the image lacks a command
 or compatible version, fail closed and update/release the image and centrally
-managed digest. Do not substitute host Python, Node.js, Ansible, Ruff, Mypy,
-markdownlint, Renovate, an ad-hoc virtual environment, or an unpinned helper
-image. Least-privilege defaults are read-only workspace/rootfs, no network, no
-container socket, dropped capabilities, and no privilege escalation; each gate
-may opt into only its tested minimum. Linked-worktree Git metadata stays
-read-only and Git may trust only `/workspace`, never `*`. Executable temporary
-fixtures use the isolated container home while generic `/tmp` remains `noexec`.
+managed digest. Do not substitute host Python, Node.js, Ansible, Ruff, Python
+type checkers, markdownlint, Renovate, an ad-hoc virtual environment, or an
+unpinned helper image. Least-privilege defaults are read-only workspace/rootfs,
+no network, no container socket, dropped capabilities, and no privilege
+escalation; each gate may opt into only its tested minimum. Linked-worktree Git
+metadata stays read-only and Git may trust only `/workspace`, never `*`.
+Executable temporary fixtures use the isolated container home while generic
+`/tmp` remains non-executable.
 
 Recommended commands when applicable:
 
