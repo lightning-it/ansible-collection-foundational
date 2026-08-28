@@ -60,6 +60,9 @@ If generic guidance conflicts with repository behavior, you MUST prefer reposito
        `ansible-collection-supplementary` only
    23. `scripts/verify-dot-github-current-revision.py` in
        `ansible-collection-supplementary` only
+   24. `tests/unit/test_dot_github_current_revision.py` in
+       `ansible-collection-supplementary` only; it is distributed atomically
+       with item 23
    The enterprise `role-quality-*` hook block outside the shared pre-commit
    markers is repository-local. Its script allowlist and mypy target list MUST
    be preserved byte-for-byte by the narrow enterprise synchronizer.
@@ -85,6 +88,14 @@ If generic guidance conflicts with repository behavior, you MUST prefer reposito
    temporary path `docs/development/push-ready-secret-fixtures.md` MUST remain
    absent after the guarded cleanup sync and MUST NOT be recreated.
 6. Repo-local exceptions MUST be explicit in the sync workflow and documented in the repository.
+7. A deterministic ancestry-backmerge retry MUST exhaustively read the open
+   and closed pull-request history for its exact repository-owned branch, base
+   and head before it creates a pull request. A closed exact match, malformed
+   response, or ambiguous inventory fails before PR creation and before review
+   dispatch. An already-open exact match is never dispatched to AI again.
+   Recovery after terminal evidence uses a fresh revision through the normal
+   correction, promotion and backmerge chain; the same commit is never attached
+   to a successor PR.
 
 ## 2. Repository Baseline (This Repo)
 
