@@ -91,9 +91,8 @@ If generic guidance conflicts with repository behavior, you MUST prefer reposito
 7. A deterministic ancestry-backmerge retry MUST exhaustively read the open
    and closed pull-request history for its exact repository-owned branch, base
    and head before it creates a pull request. A closed exact match, malformed
-   response, or ambiguous inventory fails before PR creation and before
-   protected auto-merge. The ancestry controller never dispatches AI. An
-   already-open exact match is never dispatched to AI.
+   response, or ambiguous inventory fails before PR creation and before review
+   dispatch. An already-open exact match is never dispatched to AI again.
    Recovery after terminal evidence uses a fresh revision through the normal
    correction, promotion and backmerge chain; the same commit is never attached
    to a successor PR.
