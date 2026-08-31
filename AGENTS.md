@@ -97,6 +97,22 @@ If generic guidance conflicts with repository behavior, you MUST prefer reposito
    correction, promotion and backmerge chain; the same commit is never attached
    to a successor PR.
 
+### REP-60 evidence lifecycle (mandatory)
+
+- Every pull request into `develop` retains its exact-final-head native GitHub
+  CI, required-check, and review history as the authoritative evidence for
+  acceptance into `develop`.
+- A pull request into `develop` MUST NOT create or retain an additional durable
+  release-evidence package, duplicate WORM artifact, or second AI-review
+  evidence outside that native GitHub history.
+- Only the protected `develop` to `main` promotion creates exactly one durable,
+  complete release-evidence package. It binds the full integrated promotion
+  diff, base, head, merge base, integration tree, policy, reviewer result, and
+  all release and audit checks.
+- Agents, workflows, and repository-local rules MUST NOT duplicate that durable
+  evidence per `develop` pull request or invoke local AI to create evidence.
+  Repository-local rules may only make this lifecycle stricter.
+
 ## 2. Repository Baseline (This Repo)
 
 1. Repository identity values (namespace, name, license, tags, dependencies) MUST be read from `galaxy.yml`.
