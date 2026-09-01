@@ -63,6 +63,8 @@ If generic guidance conflicts with repository behavior, you MUST prefer reposito
    24. `tests/unit/test_dot_github_current_revision.py` in
        `ansible-collection-supplementary` only; it is distributed atomically
        with item 23
+   25. `tests/test_managed_exact_revision_materializer_security.py` in the
+       five generic collections; it is distributed atomically with item 20
    The enterprise `role-quality-*` hook block outside the shared pre-commit
    markers is repository-local. Its script allowlist and mypy target list MUST
    be preserved byte-for-byte by the narrow enterprise synchronizer.
