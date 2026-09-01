@@ -194,6 +194,10 @@ Collections assume the following tooling:
   Incus, and managed-container matrices run only in their protected pipeline
   jobs, where any additional runtime authority is isolated from pull-request
   code and governed separately.
+  The specialized `ansible-collection-supplementary` sync intentionally keeps
+  its existing, registry-owned `artifacts-basic` default and does not copy the
+  role-neutral parity scenario; every root scenario in that repository must be
+  represented by its authoritative role-coverage registry.
 - **ee-wunder-devtools-ubi9** container as the canonical dev/CI environment:
   - Terraform, tflint, terraform-docs,
   - ansible-core, ansible-lint, Molecule,

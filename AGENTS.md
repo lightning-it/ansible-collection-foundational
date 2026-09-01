@@ -731,6 +731,9 @@ Molecule scenarios MUST live at repository root under `molecule/`.
 
 1. `scripts/devtools-molecule.sh` runs the centrally managed, repository-neutral
    `controller-parity-basic` scenario by default. It uses no collection role or external dependency.
+   `ansible-collection-supplementary` is the deliberate exception: its specialized sync keeps
+   `artifacts-basic` as the default and does not install `controller-parity-basic`, because its
+   authoritative role-coverage registry requires every root scenario to be role-backed.
 2. Scenarios with `.molecule-mode` set to `protected-incus` are skipped unless
    `MOLECULE_RUN_PROTECTED=true` is set and the devtools container has the `incus` CLI.
 3. A repository-specific unmanaged scenario is run explicitly with:
