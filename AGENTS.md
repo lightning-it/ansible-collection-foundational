@@ -724,15 +724,16 @@ Molecule scenarios MUST live at repository root under `molecule/`.
 1. Existing light scenarios use kebab-case with `-basic` suffix:
    1. `minio-deploy-basic`, `nginx-config-basic`, `vault-basic`
 2. Do NOT rename existing scenarios.
-3. New heavy scenarios MUST end in `_heavy` so `scripts/devtools-molecule.sh` skips them.
+3. New heavy scenarios MUST end in `_heavy` so scenario discovery and protected routing identify them.
 4. Recommended new heavy pattern: `<role-kebab>-<purpose>_heavy`.
 
 ### 8.3 Execution Behavior
 
-1. `scripts/devtools-molecule.sh` runs all root scenarios except names ending in `_heavy`.
+1. `scripts/devtools-molecule.sh` runs the centrally managed, repository-neutral
+   `controller-parity-basic` scenario by default. It uses no collection role or external dependency.
 2. Scenarios with `.molecule-mode` set to `protected-incus` are skipped unless
    `MOLECULE_RUN_PROTECTED=true` is set and the devtools container has the `incus` CLI.
-3. A single scenario is run with:
+3. A repository-specific unmanaged scenario is run explicitly with:
 
 ```bash
 scripts/devtools-molecule.sh minio-config-basic

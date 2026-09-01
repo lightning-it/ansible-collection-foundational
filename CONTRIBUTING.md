@@ -185,14 +185,15 @@ Collections assume the following tooling:
   persistent whole-home cache is mounted.
 - A Docker-compatible engine socket grants host-control-equivalent authority:
   code with socket access can ask the engine to launch containers and expose
-  host resources available to that engine. Enable it only for trusted code.
-  Molecule explicitly opts into this socket access, bridge networking, and a
-  read-write workspace and container root filesystem for its nested test
-  lifecycle. The controller runs with the invoking host identity (or rootless
-  Podman's equivalent user-namespace mapping), so generated workspace artifacts
-  remain host-owned. It receives no added Linux capabilities, container-root
-  policy, or privileged mode; production ownership contracts are exercised
-  inside the nested test containers instead.
+  host resources available to that engine. The default local Molecule launcher
+  therefore runs only the centrally managed, repository-neutral
+  `controller-parity-basic` controller scenario with
+  no socket, no network, read-only workspace and root filesystem, and no added
+  Linux capabilities or privileged mode. Explicit local scenarios must satisfy
+  the same unmanaged/offline contract or fail closed. Full dependency-backed,
+  Incus, and managed-container matrices run only in their protected pipeline
+  jobs, where any additional runtime authority is isolated from pull-request
+  code and governed separately.
 - **ee-wunder-devtools-ubi9** container as the canonical dev/CI environment:
   - Terraform, tflint, terraform-docs,
   - ansible-core, ansible-lint, Molecule,
