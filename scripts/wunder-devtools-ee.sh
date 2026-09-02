@@ -74,12 +74,17 @@ cleanup_linked_worktree_git_pointer() {
 trap cleanup_linked_worktree_git_pointer EXIT
 
 sanitize_docker_host_env() {
-  if [[ "${DOCKER_HOST:-}" == unix://* ]]; then
-    host_sock="${DOCKER_HOST#unix://}"
-    if [ ! -S "$host_sock" ]; then
-      unset DOCKER_HOST
-    fi
-  fi
+  local host_sock
+  case "${DOCKER_HOST:-}" in
+    "") ;;
+    unix://*)
+      host_sock="${DOCKER_HOST#unix://}"
+      if [ ! -S "$host_sock" ]; then
+        unset DOCKER_HOST
+      fi
+      ;;
+    *) fail_closed "DOCKER_HOST must reference a local unix:// socket" ;;
+  esac
 }
 
 docker_usable() {
@@ -92,6 +97,8 @@ podman_usable() {
   command -v podman >/dev/null 2>&1 || return 1
   podman info >/dev/null 2>&1
 }
+
+sanitize_docker_host_env
 
 CONTAINER_BIN="${WUNDER_CONTAINER_ENGINE:-}"
 if [ -z "$CONTAINER_BIN" ]; then
