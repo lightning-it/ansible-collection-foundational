@@ -100,6 +100,7 @@ If generic guidance conflicts with repository behavior, you MUST prefer reposito
    to a successor PR.
 
 <!-- LIT REP-60 evidence lifecycle: start -->
+
 ### REP-60 evidence lifecycle (mandatory)
 
 - Every pull request into `develop` retains its exact-final-head native GitHub
@@ -115,6 +116,7 @@ If generic guidance conflicts with repository behavior, you MUST prefer reposito
 - Agents, workflows, and repository-local rules MUST NOT duplicate that durable
   evidence per `develop` pull request or invoke local AI to create evidence.
   Repository-local rules may only make this lifecycle stricter.
+
 <!-- LIT REP-60 evidence lifecycle: end -->
 
 ## 2. Repository Baseline (This Repo)
