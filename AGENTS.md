@@ -65,6 +65,12 @@ If generic guidance conflicts with repository behavior, you MUST prefer reposito
        with item 23
    25. `tests/test_managed_exact_revision_materializer_security.py` in the
        five generic collections; it is distributed atomically with item 20
+   Reusable `pull_request_target` re-evaluation binds its executed controller
+   SHA and ref to the live protected default branch, even when the PR base is
+   different; PR base and head stay separately exact. A `workflow_run`
+   finalizer separately re-reads that controller and its runner-backed guard
+   job while binding the triggering helper to the exact protected PR base.
+   One trust-boundary SHA never substitutes for another.
    The enterprise `role-quality-*` hook block outside the shared pre-commit
    markers is repository-local. Its script allowlist and mypy target list MUST
    be preserved byte-for-byte by the narrow enterprise synchronizer.
