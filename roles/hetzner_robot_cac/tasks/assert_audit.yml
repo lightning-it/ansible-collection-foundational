@@ -8,7 +8,20 @@
         | map(attribute='server_ip')
         | unique
         | length == hetzner_robot_cac_audit_servers | length
-    fail_msg: Hetzner Robot retry timeout is invalid or audit server public IPs are duplicated.
+      - >-
+        hetzner_robot_cac_audit_servers
+        | selectattr('server_number', 'defined')
+        | map(attribute='server_number')
+        | map('string')
+        | unique
+        | length
+        == hetzner_robot_cac_audit_servers
+        | selectattr('server_number', 'defined')
+        | list
+        | length
+    fail_msg: >-
+      Hetzner Robot retry timeout is invalid, or audit server public IPs or
+      declared numeric server identities are duplicated.
     quiet: true
 
 - name: Require resolved Robot credentials for live audit
@@ -25,6 +38,7 @@
   ansible.builtin.assert:
     that:
       - item.server_ip | trim | length > 0
+      - item.server_number is not defined or item.server_number | int > 0
       - item.status | default('ready') in ['ready', 'in process']
       - item.server_name is not defined or item.server_name | trim | length > 0
       - >-

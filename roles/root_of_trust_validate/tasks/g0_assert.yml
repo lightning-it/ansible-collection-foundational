@@ -1,0 +1,110 @@
+---
+- name: Validate the G0 exact-selection and target identity contract
+  ansible.builtin.assert:
+    that:
+      - root_of_trust_validate_selection_scope == 'single_root_of_trust'
+      - >-
+        root_of_trust_validate_target.keys() | list | sort
+        == ['cancelled', 'inventory_hostname', 'server_ip', 'server_name',
+            'server_number', 'status']
+      - root_of_trust_validate_target.inventory_hostname | trim | length > 0
+      - root_of_trust_validate_target.inventory_hostname is not search('[\r\n]')
+      - root_of_trust_validate_target.server_number is integer
+      - root_of_trust_validate_target.server_number | int > 0
+      - >-
+        root_of_trust_validate_target.server_ip
+        is match('^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$')
+      - >-
+        root_of_trust_validate_target.server_ip.split('.')
+        | map('int') | select('gt', 255) | list | length == 0
+      - root_of_trust_validate_target.server_name | trim | length > 0
+      - root_of_trust_validate_target.server_name is not search('[\r\n]')
+      - root_of_trust_validate_target.status in ['ready', 'in process']
+      - root_of_trust_validate_target.cancelled is boolean
+      - root_of_trust_validate_robot_rate_limit_retry_timeout | int >= 0
+    fail_msg: >-
+      G0 requires selection_scope=single_root_of_trust and one complete,
+      positive, unambiguous Robot server identity.
+    quiet: true
+  changed_when: false
+  tags: always
+
+- name: Validate the G0 expected firewall and vSwitch declarations
+  ansible.builtin.assert:
+    that:
+      - >-
+        root_of_trust_validate_expected_firewall.keys() | list | sort
+        == ['allowlist_hos', 'filter_ipv6', 'port', 'rules', 'status']
+      - root_of_trust_validate_expected_firewall.status in ['active', 'disabled']
+      - root_of_trust_validate_expected_firewall.port in ['main', 'kvm']
+      - root_of_trust_validate_expected_firewall.filter_ipv6 is boolean
+      - root_of_trust_validate_expected_firewall.allowlist_hos is boolean
+      - >-
+        root_of_trust_validate_expected_firewall.rules.keys() | list | sort
+        == ['input', 'output']
+      - root_of_trust_validate_expected_firewall.rules.input | length > 0
+      - root_of_trust_validate_expected_firewall.rules.output | length > 0
+      - >-
+        root_of_trust_validate_expected_vswitch.keys() | list | sort
+        == ['name', 'servers', 'vlan']
+      - root_of_trust_validate_expected_vswitch.name | trim | length > 0
+      - root_of_trust_validate_expected_vswitch.name is not search('[\r\n]')
+      - root_of_trust_validate_expected_vswitch.vlan | int >= 4000
+      - root_of_trust_validate_expected_vswitch.vlan | int <= 4091
+      - root_of_trust_validate_expected_vswitch.servers | length > 0
+      - >-
+        root_of_trust_validate_expected_vswitch.servers | unique | length
+        == root_of_trust_validate_expected_vswitch.servers | length
+      - >-
+        root_of_trust_validate_expected_vswitch.servers
+        | map('trim') | select('equalto', '') | list | length == 0
+      - >-
+        '0.0.0.0/0' not in root_of_trust_validate_expected_vswitch.servers
+    fail_msg: >-
+      G0 requires complete exact firewall and vSwitch expectations without
+      empty or wildcard vSwitch identities.
+    quiet: true
+  changed_when: false
+  tags: always
+
+- name: Validate G0 expected firewall rule scalar safety
+  vars:
+    _root_of_trust_validate_rule_values: >-
+      {{ item | dict2items | map(attribute='value') | list }}
+  ansible.builtin.assert:
+    that:
+      - item is mapping
+      - item.action in ['accept', 'discard']
+      - >-
+        _root_of_trust_validate_rule_values
+        | select('none') | list | length == 0
+      - >-
+        _root_of_trust_validate_rule_values
+        | map('string') | map('trim')
+        | select('equalto', '') | list | length == 0
+      - "'0.0.0.0/0' not in (_root_of_trust_validate_rule_values | map('string') | list)"
+    fail_msg: >-
+      G0 expected firewall rules must not contain null, empty, or unrestricted
+      0.0.0.0/0 scalar values.
+    quiet: true
+  loop: >-
+    {{
+      root_of_trust_validate_expected_firewall.rules.input
+      + root_of_trust_validate_expected_firewall.rules.output
+    }}
+  loop_control:
+    label: "{{ item.name | default(item.action | default('invalid')) }}"
+  changed_when: false
+  tags: always
+
+- name: Require resolved Robot credentials for live G0 observation
+  ansible.builtin.assert:
+    that:
+      - root_of_trust_validate_robot_user | trim | length > 0
+      - root_of_trust_validate_robot_password | length > 0
+    fail_msg: Resolve both Robot credentials before running live G0 observation.
+    quiet: true
+  when: not (root_of_trust_validate_g0_validate_only | bool)
+  changed_when: false
+  no_log: true
+  tags: always

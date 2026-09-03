@@ -53,7 +53,67 @@ If generic guidance conflicts with repository behavior, you MUST prefer reposito
    16. `scripts/devtools-molecule.sh`
    17. `scripts/wunder-devtools-ee.sh`
    18. `.github/workflows/shared-assets-guarded-automerge.yml`
-5. Repo-local exceptions MUST be explicit in the sync workflow and documented in the repository.
+   19. `.github/workflows/release-bot-exact-head-review.yml`
+   20. `scripts/materialize-exact-revision-review.py`
+   21. `.github/workflows/current-revision-rerun.yml`
+   22. `.github/workflows/dot-github-current-revision-required.yml` in
+       `ansible-collection-supplementary` only
+   23. `scripts/verify-dot-github-current-revision.py` in
+       `ansible-collection-supplementary` only
+   24. `tests/unit/test_dot_github_current_revision.py` in
+       `ansible-collection-supplementary` only; it is distributed atomically
+       with item 23
+   The enterprise `role-quality-*` hook block outside the shared pre-commit
+   markers is repository-local. Its script allowlist and mypy target list MUST
+   be preserved byte-for-byte by the narrow enterprise synchronizer.
+5. Until a fresh real Security release proves the Supplementary golden path
+   with `humanActions=0`, `ansible-collection-supplementary` owns exactly
+   `.github/workflows/copilot-review.yml`,
+   `scripts/security-release-intake.py`,
+   `.github/workflows/security-release-intake.yml`,
+   `scripts/security-release-dispatch.py`,
+   `.github/workflows/security-release-dispatch.yml`, and
+   `tests/unit/test_security_release_request_dispatch.py`,
+   `scripts/main-promotion-authorization.py`, and
+   `.github/workflows/main-promotion-authorization.yml`. Generic and narrow
+   collection synchronization MUST preserve those incubating files and MUST
+   NOT install or overwrite them; the two main-promotion files are
+   repository-owned and remain human-approved for normal promotions. After
+   acceptance, their proven versions are
+   canonicalized once in `shared-assets-lit` before versioned rollout resumes.
+   They MUST NOT remove the human-controlled checkpoint for normal `develop`
+   to `main` promotions. The supplementary repository's
+   `.lit/push-ready-secret-fixtures.json` is a repository-owned historical
+   synthetic-fixture inventory and MUST be preserved byte-for-byte. The retired
+   temporary path `docs/development/push-ready-secret-fixtures.md` MUST remain
+   absent after the guarded cleanup sync and MUST NOT be recreated.
+6. Repo-local exceptions MUST be explicit in the sync workflow and documented in the repository.
+7. A deterministic ancestry-backmerge retry MUST exhaustively read the open
+   and closed pull-request history for its exact repository-owned branch, base
+   and head before it creates a pull request. A closed exact match, malformed
+   response, or ambiguous inventory fails before PR creation and before review
+   dispatch. An already-open exact match is never dispatched to AI again.
+   Recovery after terminal evidence uses a fresh revision through the normal
+   correction, promotion and backmerge chain; the same commit is never attached
+   to a successor PR.
+
+<!-- LIT REP-60 evidence lifecycle: start -->
+### REP-60 evidence lifecycle (mandatory)
+
+- Every pull request into `develop` retains its exact-final-head native GitHub
+  CI, required-check, and review history as the authoritative evidence for
+  acceptance into `develop`.
+- A pull request into `develop` MUST NOT create or retain an additional durable
+  release-evidence package, duplicate WORM artifact, or second AI-review
+  evidence outside that native GitHub history.
+- Only the protected `develop` to `main` promotion creates exactly one durable,
+  complete release-evidence package. It binds the full integrated promotion
+  diff, base, head, merge base, integration tree, policy, reviewer result, and
+  all release and audit checks.
+- Agents, workflows, and repository-local rules MUST NOT duplicate that durable
+  evidence per `develop` pull request or invoke local AI to create evidence.
+  Repository-local rules may only make this lifecycle stricter.
+<!-- LIT REP-60 evidence lifecycle: end -->
 
 ## 2. Repository Baseline (This Repo)
 
@@ -133,8 +193,9 @@ production readiness, Ansible Galaxy readiness, and Red Hat Ansible Automation P
 
 ### 2.1.4 Testing and Quality Gates
 
-1. `pre-commit run --all-files` MUST be the first local PR preflight for collection repositories. Shared hooks run
-   the PR-equivalent changelog, ansible-lint, Molecule light, and smoke gates through `ee-wunder-devtools-ubi9`.
+1. `pre-commit run --all-files` MUST be the first local PR preflight for collection repositories. The host command is
+   only a dispatcher: every shared and repository-specific validation hook MUST execute through the digest-pinned
+   `ee-wunder-devtools-ubi9` wrapper. A host language runtime is never acceptance evidence.
 2. `ansible-lint --profile production .` SHOULD pass, or repository-specific devtools lint MUST pass with documented
    equivalent strictness.
 3. `ansible-test sanity --docker` SHOULD pass for custom modules/plugins and collection packaging concerns.
@@ -156,6 +217,18 @@ bash scripts/devtools-molecule.sh
 bash scripts/devtools-collection-smoke.sh
 bash scripts/devtools-changelog-check.sh
 ```
+
+All commands in this section are container entrypoints or pre-commit
+dispatchers into the managed Devtools container. If the image lacks a command
+or compatible version, fail closed and update/release the image and centrally
+managed digest. Do not substitute host Python, Node.js, Ansible, Ruff, Python
+type checkers, markdownlint, Renovate, an ad-hoc virtual environment, or an
+unpinned helper image. Least-privilege defaults are read-only workspace/rootfs,
+no network, no container socket, dropped capabilities, and no privilege
+escalation; each gate may opt into only its tested minimum. Linked-worktree Git
+metadata stays read-only and Git may trust only `/workspace`, never `*`.
+Executable temporary fixtures use the isolated container home while generic
+`/tmp` remains non-executable.
 
 Recommended commands when applicable:
 
@@ -254,7 +327,14 @@ The standard branch and release model is:
 - Major updates require manual approval.
 - `main` is the stable release branch.
 - Promotion from `develop` to `main` must happen through a pull request.
-- Promotion pull requests must remain a human-visible manual merge checkpoint after required checks pass.
+- Promotion pull requests remain a human-visible manual checkpoint after all
+  required checks pass.
+- In `ansible-collection-supplementary`, that checkpoint is an exact-head
+  protected human environment approval; a manual merge click alone is not the
+  approval record. Only an exact App-authored, evidence-bound MLX-90 Security
+  Release may use the dedicated reviewer-free authorization environment. It
+  remains subject to every independent Security and branch gate and receives
+  no bypass.
 - Do not direct-push from `develop` to `main`.
 - Collection release PRs are created automatically from `release/vX.Y.Z` branches after `main` receives unreleased
   changelog fragments.
@@ -263,12 +343,16 @@ The standard branch and release model is:
 Automation safety requirements:
 
 - Protected branches must require pull request review.
-- Only trusted Renovate PRs may be auto-approved by collection automation.
+- Only trusted Renovate PRs may be auto-merged by collection automation.
 - A trusted Renovate PR must have `renovate[bot]` as both trigger actor and PR author, a `renovate/*` source
   branch, `develop` as the base branch, and the `renovate`, `dependencies`, and package-rule-controlled
-  `safe-automerge` labels. The latest `safe-automerge` label event must come from Renovate.
+  `safe-automerge` labels. The latest `safe-automerge` label event must come from Renovate. Every commit in the
+  current PR head must be attributed to `renovate[bot]`, committed by GitHub `web-flow`, carry a valid verified
+  signature, and culminate in the exact live head SHA.
 - Major updates receive `breaking-update`, never receive `safe-automerge`, and must remain manual. Removing or
   spoofing labels does not make a PR eligible because the guarded workflow checks label-event history.
+- The guarded Renovate workflow must not submit a synthetic approving review;
+  protected-branch required checks are the merge boundary.
 - Human, external contributor, and develop-to-main promotion PRs must not be auto-approved or auto-merged by
   collection automation.
 - Do not use `pull_request_target` for Renovate approval or merge automation.

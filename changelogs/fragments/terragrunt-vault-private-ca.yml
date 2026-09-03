@@ -1,0 +1,14 @@
+---
+minor_changes:
+  - >-
+    terragrunt - add an optional private Vault CA path to certificate-validated
+    token preflight and every Terraform/Terragrunt subprocess via VAULT_CACERT.
+  - >-
+    terragrunt - support validated per-resource import arguments so existing
+    resources can be adopted when unrelated module inputs require static values.
+  - >-
+    terragrunt - add idempotent, collision-checked state-only moves and guarded
+    removals for pinned module upgrades without deleting remote resources.
+  - >-
+    terragrunt - add an explicit opt-in provider lock upgrade for pinned module
+    migrations whose provider constraints no longer match the cached lock.

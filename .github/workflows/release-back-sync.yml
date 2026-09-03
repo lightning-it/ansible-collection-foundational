@@ -33,6 +33,9 @@ jobs:
           client-id: ${{ vars.RELEASE_AUTOMATION_APP_CLIENT_ID }}
           private-key: ${{ secrets.RELEASE_AUTOMATION_APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-pull-requests: write
 
       - name: Resolve release automation App bot identity
         id: release-bot
@@ -52,6 +55,7 @@ jobs:
           echo "email=${bot_id}+${login}@users.noreply.github.com" >>"$GITHUB_OUTPUT"
 
       - name: Open or update release back-sync PR
+        id: exact-review-target
         env:
           GH_TOKEN: ${{ steps.release-app.outputs.token }}
           TAG_INPUT: ${{ github.event.inputs.tag }}
@@ -192,13 +196,13 @@ jobs:
               --body "$body" \
               --add-label skip-changelog
           else
-            if ! gh pr create \
+            if ! existing="$(gh pr create \
                 --repo "$REPO" \
                 --base develop \
                 --head "$branch" \
                 --title "$title" \
                 --body "$body" \
-                --label skip-changelog
+                --label skip-changelog)"
             then
               existing="$(
                 gh pr list \
@@ -221,3 +225,58 @@ jobs:
                 --add-label skip-changelog
             fi
           fi
+          back_sync_pr="$(gh pr view "$existing" \
+            --repo "$REPO" \
+            --json author,baseRefName,baseRefOid,headRefName,headRefOid,headRepositoryOwner,isDraft,number,title)"
+          jq -e \
+            --arg branch "$branch" \
+            --arg expected_head "$(git rev-parse HEAD)" \
+            --arg owner "$GITHUB_REPOSITORY_OWNER" \
+            --arg title "$title" '
+              .author.login == "app/lightning-it-release-automation"
+              and .baseRefName == "develop"
+              and .headRefName == $branch
+              and .headRefOid == $expected_head
+              and .headRepositoryOwner.login == $owner
+              and .isDraft == false
+              and .title == $title
+            ' <<< "$back_sync_pr" >/dev/null
+          {
+            echo "pr_number=$(jq -r .number <<<"$back_sync_pr")"
+            echo "base_ref=$(jq -r .baseRefName <<<"$back_sync_pr")"
+            echo "expected_base=$(jq -r .baseRefOid <<<"$back_sync_pr")"
+            echo "expected_head=$(jq -r .headRefOid <<<"$back_sync_pr")"
+          } >>"$GITHUB_OUTPUT"
+
+      - name: Mint protected review dispatch token
+        if: steps.exact-review-target.outputs.pr_number != ''
+        id: review-dispatch-app
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
+        with:
+          client-id: ${{ vars.RELEASE_AUTOMATION_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_AUTOMATION_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-actions: write
+          permission-contents: read
+
+      - name: Dispatch protected Exact-Revision review
+        if: steps.exact-review-target.outputs.pr_number != ''
+        env:
+          GH_TOKEN: ${{ steps.review-dispatch-app.outputs.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.exact-review-target.outputs.pr_number }}
+          BASE_REF: ${{ steps.exact-review-target.outputs.base_ref }}
+          EXPECTED_BASE: ${{ steps.exact-review-target.outputs.expected_base }}
+          EXPECTED_HEAD: ${{ steps.exact-review-target.outputs.expected_head }}
+        run: |
+          set -euo pipefail
+          [[ "${EXPECTED_BASE}" =~ ^[0-9a-f]{40}$ ]]
+          [[ "${EXPECTED_HEAD}" =~ ^[0-9a-f]{40}$ ]]
+          gh workflow run release-bot-exact-head-review.yml \
+            --repo "${REPO}" \
+            --ref "${BASE_REF}" \
+            -f "pr_number=${PR_NUMBER}" \
+            -f "base_ref=${BASE_REF}" \
+            -f "expected_base=${EXPECTED_BASE}" \
+            -f "expected_head=${EXPECTED_HEAD}"
