@@ -107,7 +107,10 @@ If generic guidance conflicts with repository behavior, you MUST prefer reposito
    and closed pull-request history for its exact repository-owned branch, base
    and head before it creates a pull request. A closed exact match, malformed
    response, or ambiguous inventory fails before PR creation and before review
-   dispatch. An already-open exact match is never dispatched to AI again.
+   dispatch. An exact ancestry-only `main` to `develop` backmerge uses the
+   deterministic REP-60 zero-AI exception; it never dispatches Codex or
+   Copilot. An already-open exact match is never reprocessed or dispatched to
+   AI.
    Recovery after terminal evidence uses a fresh revision through the normal
    correction, promotion and backmerge chain; the same commit is never attached
    to a successor PR.
