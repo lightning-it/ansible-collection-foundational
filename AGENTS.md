@@ -71,6 +71,13 @@ If generic guidance conflicts with repository behavior, you MUST prefer reposito
    finalizer separately re-reads that controller and its runner-backed guard
    job while binding the triggering helper to the exact protected PR base.
    One trust-boundary SHA never substitutes for another.
+   Exactly the Shared-Assets-App `ready_for_review` run may dispatch one
+   standalone protected `current-revision-rerun.yml` after a unique successful
+   `managed-sync:v6` neutral result binds PR, source run, base, head and
+   protected default-branch controller. The successful helper `workflow_run`
+   is the only automatic guarded-finalizer re-entry after slower native checks
+   finish. Other events never dispatch it; it never requests AI or mutates a
+   check, and missing or duplicate handoff evidence fails closed.
    The enterprise `role-quality-*` hook block outside the shared pre-commit
    markers is repository-local. Its script allowlist and mypy target list MUST
    be preserved byte-for-byte by the narrow enterprise synchronizer.
