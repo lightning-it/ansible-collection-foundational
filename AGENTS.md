@@ -78,6 +78,13 @@ If generic guidance conflicts with repository behavior, you MUST prefer reposito
    is the only automatic guarded-finalizer re-entry after slower native checks
    finish. Other events never dispatch it; it never requests AI or mutates a
    check, and missing or duplicate handoff evidence fails closed.
+   The existing Renovate exception is valid only for the exact
+   `renovate[bot]` author, a same-repository `renovate/*` head, protected
+   `develop` base, all three `renovate`, `dependencies`, and `safe-automerge`
+   labels, no `breaking-update` label, and a null AI review ID. Its producer
+   exits after publishing the bound deterministic result; the independent
+   Required Workflow verifies the completed producer directly without a
+   producer-authored rerun. No other Renovate or dependency exception exists.
    The enterprise `role-quality-*` hook block outside the shared pre-commit
    markers is repository-local. Its script allowlist and mypy target list MUST
    be preserved byte-for-byte by the narrow enterprise synchronizer.
