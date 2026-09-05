@@ -98,6 +98,13 @@ If generic guidance conflicts with repository behavior, you MUST prefer reposito
    only that job once, must observe attempt two as `github-actions[bot]`, and
    never requests AI or mutates a check. The ordinary controller still owns
    the one final Pipeline-Copilot request and result.
+   After the controller publishes one exact neutral PASS, the protected rerun
+   helper discovers exactly one organization Required Workflow run through its
+   non-local `actions/required_workflows` URL and complete PR/base/head/repo
+   binding. That lookup is never PASS evidence. A reservation is optional only
+   if attempt one ended before publishing it; if present, it must identify the
+   same run. Only the one failed verifier job may be rerun once, and attempt two
+   must execute the full ordinary verification before it can pass.
    The existing Renovate exception is valid only for the exact
    `renovate[bot]` author, a same-repository `renovate/*` head, protected
    `develop` base, all three `renovate`, `dependencies`, and `safe-automerge`
@@ -135,9 +142,10 @@ If generic guidance conflicts with repository behavior, you MUST prefer reposito
    and head before it creates a pull request. A closed exact match, malformed
    response, or ambiguous inventory fails before PR creation and before review
    dispatch. An exact ancestry-only `main` to `develop` backmerge uses the
-   deterministic REP-60 zero-AI exception; it never dispatches Codex or
-   Copilot. An already-open exact match is never reprocessed or dispatched to
-   AI.
+   deterministic evidence-bound zero-AI exception; it never dispatches Codex or
+   Copilot. No other deterministic release exemption or GitHub Copilot fallback
+   is permitted. An already-open exact match is never reprocessed or dispatched
+   to AI.
    Recovery after terminal evidence uses a fresh revision through the normal
    correction, promotion and backmerge chain; the same commit is never attached
    to a successor PR.
