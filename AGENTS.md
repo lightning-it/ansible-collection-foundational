@@ -56,15 +56,25 @@ If generic guidance conflicts with repository behavior, you MUST prefer reposito
    19. `.github/workflows/release-bot-exact-head-review.yml`
    20. `scripts/materialize-exact-revision-review.py`
    21. `.github/workflows/current-revision-rerun.yml`
-   22. `.github/workflows/dot-github-current-revision-required.yml` in
+   22. `.github/workflows/copilot-review.yml` in the five generic
+       collections; it is distributed atomically with items 19 through 21
+   23. `.github/workflows/dot-github-current-revision-required.yml` in
        `ansible-collection-supplementary` only
-   23. `scripts/verify-dot-github-current-revision.py` in
+   24. `scripts/verify-dot-github-current-revision.py` in
        `ansible-collection-supplementary` only
-   24. `tests/unit/test_dot_github_current_revision.py` in
+   25. `tests/unit/test_dot_github_current_revision.py` in
        `ansible-collection-supplementary` only; it is distributed atomically
-       with item 23
-   25. `tests/test_managed_exact_revision_materializer_security.py` in the
+       with item 24
+   26. `tests/test_managed_exact_revision_materializer_security.py` in the
        five generic collections; it is distributed atomically with item 20
+   The Exact-Revision bootstrap is one dependency-closed trust surface. It MUST
+   install `.github/workflows/copilot-review.yml`,
+   `.github/workflows/release-bot-exact-head-review.yml`,
+   `.github/workflows/current-revision-rerun.yml`,
+   `scripts/materialize-exact-revision-review.py`,
+   `.github/codex/prompts/review-exact-head.md`, and
+   `.github/codex/schemas/exact-head-review.schema.json` byte-identically and
+   atomically; a partial bootstrap fails closed.
    Reusable `pull_request_target` re-evaluation binds its executed controller
    SHA and ref to the live protected default branch, even when the PR base is
    different; PR base and head stay separately exact. A `workflow_run`
