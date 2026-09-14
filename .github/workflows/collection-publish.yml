@@ -177,7 +177,10 @@ jobs:
           PY
           )"
           IFS=$'\t' read -r namespace collection version <<<"$metadata"
-          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$ ]]; then
+          semver_number='(0|[1-9][0-9]*)'
+          semver_identifier="(${semver_number}|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)"
+          semver_pattern="^${semver_number}\.${semver_number}\.${semver_number}(-${semver_identifier}(\.${semver_identifier})*)?$"
+          if ! [[ "$version" =~ $semver_pattern ]]; then
             echo "::error::galaxy.yml contains an invalid release version: ${version}"
             exit 1
           fi
@@ -342,6 +345,12 @@ jobs:
           fi
 
           assets=("$TARBALL" dist/SHA256SUMS dist/release-evidence.json dist/release-evidence.md)
+          expected_prerelease=false
+          prerelease_arguments=()
+          if [[ "$TAG" == *-* ]]; then
+            expected_prerelease=true
+            prerelease_arguments=(--prerelease)
+          fi
           if gh release view "$TAG" >/dev/null 2>&1; then
             expected_assets="$(printf '%s\n' "${assets[@]##*/}" | sort)"
             actual_assets="$(gh release view "$TAG" --json assets --jq '.assets[].name' | sort)"
@@ -358,12 +367,20 @@ jobs:
                 exit 1
               fi
             done
+            actual_prerelease="$(
+              gh release view "$TAG" --json isPrerelease --jq '.isPrerelease'
+            )"
+            if [ "$actual_prerelease" != "$expected_prerelease" ]; then
+              echo "::error::Existing ${TAG} release prerelease state differs from its SemVer tag."
+              exit 1
+            fi
             echo "GitHub release $TAG already exists with the exact SHA and assets."
           else
             assert_remote_main
             gh release create "$TAG" "${assets[@]}" \
               --target "$RELEASE_SHA" \
               --title "$TAG" \
+              "${prerelease_arguments[@]}" \
               --notes-file dist/release-notes.rst
           fi
 

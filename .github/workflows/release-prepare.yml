@@ -162,7 +162,12 @@ jobs:
 
           data = yaml.safe_load(Path("galaxy.yml").read_text()) or {}
           current = str(data.get("version", "")).removeprefix("v")
-          match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:[-.][0-9A-Za-z.-]+)?", current)
+          match = re.fullmatch(
+              r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)"
+              r"(?:-(?:(?:0|[1-9][0-9]*)|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)"
+              r"(?:\.(?:(?:0|[1-9][0-9]*)|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*)?",
+              current,
+          )
           if not match:
               raise SystemExit(f"Cannot calculate next version from galaxy.yml version: {current!r}")
           major, minor, patch = map(int, match.groups())
@@ -176,7 +181,10 @@ jobs:
           PY
             )"
           fi
-          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$ ]]; then
+          semver_number='(0|[1-9][0-9]*)'
+          semver_identifier="(${semver_number}|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)"
+          semver_pattern="^${semver_number}\.${semver_number}\.${semver_number}(-${semver_identifier}(\.${semver_identifier})*)?$"
+          if ! [[ "$VERSION" =~ $semver_pattern ]]; then
             echo "::error::Version must be semantic versioning, for example 1.2.3."
             exit 1
           fi
@@ -185,6 +193,10 @@ jobs:
           RELEASE_BRANCH="release/v${VERSION}"
           echo "Preparing release PR for v${VERSION} from ${BASE_BRANCH} to ${TARGET_BRANCH}."
 
+          remote_head_before="$(
+            git ls-remote --heads origin "refs/heads/${RELEASE_BRANCH}" \
+              | awk 'NR == 1 { print $1 }'
+          )"
           git switch -C "$RELEASE_BRANCH" "origin/$BASE_BRANCH"
           RELEASE_BASE_SHA="$(git rev-parse HEAD)"
           export RELEASE_BASE_SHA
@@ -279,7 +291,22 @@ jobs:
           git add galaxy.yml changelogs CHANGELOG.rst
           git commit -m "chore(release): prepare v${VERSION}"
           gh auth setup-git
-          git push --force-with-lease origin "$RELEASE_BRANCH"
+          local_head="$(git rev-parse HEAD)"
+          git push \
+            --force-with-lease="refs/heads/${RELEASE_BRANCH}:${remote_head_before}" \
+            origin "$RELEASE_BRANCH"
+          remote_head_after="$(
+            git ls-remote --heads origin "refs/heads/${RELEASE_BRANCH}" \
+              | awk 'NR == 1 { print $1 }'
+          )"
+          if [ "$remote_head_after" != "$local_head" ]; then
+            echo "::error::Release preparation did not publish the exact local head."
+            exit 1
+          fi
+          branch_advanced=false
+          if [ "$remote_head_before" != "$remote_head_after" ]; then
+            branch_advanced=true
+          fi
 
           body_file="$(mktemp)"
           {
@@ -310,7 +337,36 @@ jobs:
               --json url \
               --jq '.[0].url'
           )"
+          expected_base="$(
+            git ls-remote --heads origin "refs/heads/${TARGET_BRANCH}" \
+              | awk 'NR == 1 { print $1 }'
+          )"
+          expected_head="$(git rev-parse HEAD)"
+          [[ "$expected_base" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$expected_head" =~ ^[0-9a-f]{40}$ ]]
+          validate_existing_release_pr() {
+            local candidate="$1"
+            local candidate_json
+            candidate_json="$(gh pr view "$candidate" \
+              --json author,baseRefName,baseRefOid,headRefName,headRefOid,headRepositoryOwner,isDraft)"
+            jq -e \
+              --arg base "$TARGET_BRANCH" \
+              --arg expected_base "$expected_base" \
+              --arg expected_head "$expected_head" \
+              --arg head "$RELEASE_BRANCH" \
+              --arg owner "$GITHUB_REPOSITORY_OWNER" '
+                .author.login == "app/lightning-it-release-automation"
+                and .baseRefName == $base
+                and .baseRefOid == $expected_base
+                and .headRefName == $head
+                and .headRefOid == $expected_head
+                and .headRepositoryOwner.login == $owner
+                and .isDraft == false
+              ' <<< "$candidate_json" >/dev/null
+          }
+          created_pr=false
           if [ -n "$existing" ]; then
+            validate_existing_release_pr "$existing"
             gh pr edit "$existing" --title "Release v${VERSION}" --body-file "$body_file"
           else
             existing="$(
@@ -320,17 +376,20 @@ jobs:
                 --title "Release v${VERSION}" \
                 --body-file "$body_file"
             )"
+            created_pr=true
           fi
           release_pr="$(gh pr view "$existing" \
             --json author,baseRefName,baseRefOid,headRefName,headRefOid,headRepositoryOwner,isDraft,number,title)"
           jq -e \
             --arg base "$TARGET_BRANCH" \
-            --arg expected_head "$(git rev-parse HEAD)" \
+            --arg expected_base "$expected_base" \
+            --arg expected_head "$expected_head" \
             --arg head "$RELEASE_BRANCH" \
             --arg owner "$GITHUB_REPOSITORY_OWNER" \
             --arg title "Release v${VERSION}" '
               .author.login == "app/lightning-it-release-automation"
               and .baseRefName == $base
+              and .baseRefOid == $expected_base
               and .headRefName == $head
               and .headRefOid == $expected_head
               and .headRepositoryOwner.login == $owner
@@ -342,10 +401,17 @@ jobs:
             echo "base_ref=$(jq -r .baseRefName <<<"$release_pr")"
             echo "expected_base=$(jq -r .baseRefOid <<<"$release_pr")"
             echo "expected_head=$(jq -r .headRefOid <<<"$release_pr")"
+            if [ "$branch_advanced" = true ] || [ "$created_pr" = true ]; then
+              echo "dispatch_review=true"
+            else
+              echo "dispatch_review=false"
+            fi
           } >>"$GITHUB_OUTPUT"
 
       - name: Mint protected review dispatch token
-        if: steps.exact-review-target.outputs.pr_number != ''
+        if: >-
+          steps.exact-review-target.outputs.pr_number != '' &&
+          steps.exact-review-target.outputs.dispatch_review == 'true'
         id: review-dispatch-app
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
         with:
@@ -357,7 +423,9 @@ jobs:
           permission-contents: read
 
       - name: Dispatch protected Exact-Revision review
-        if: steps.exact-review-target.outputs.pr_number != ''
+        if: >-
+          steps.exact-review-target.outputs.pr_number != '' &&
+          steps.exact-review-target.outputs.dispatch_review == 'true'
         env:
           GH_TOKEN: ${{ steps.review-dispatch-app.outputs.token }}
           PR_NUMBER: ${{ steps.exact-review-target.outputs.pr_number }}
