@@ -144,22 +144,26 @@ jobs:
           fi
 
           gh auth setup-git
-          if ! git push --force-with-lease origin "$branch"; then
-            existing="$(
-              gh pr list \
-                --repo "$REPO" \
-                --base develop \
-                --head "$branch" \
-                --state open \
-                --json url \
-                --jq '.[0].url'
-            )"
-            if [ -n "$existing" ]; then
-              echo "Release back-sync PR already exists after push race: $existing"
-            else
-              echo "Force-with-lease failed and no open PR exists; retrying branch push."
-              git push --force origin "$branch"
-            fi
+          local_head="$(git rev-parse HEAD)"
+          remote_head_before="$(git ls-remote --heads origin "refs/heads/${branch}" | awk 'NR == 1 { print $1 }')"
+          branch_advanced=false
+          if ! git push \
+              --force-with-lease="refs/heads/${branch}:${remote_head_before}" \
+              origin "$branch"
+          then
+            echo "::error::Release back-sync branch changed after the exact lease was captured."
+            exit 1
+          fi
+          remote_head_after="$(
+            git ls-remote --heads origin "refs/heads/${branch}" \
+              | awk 'NR == 1 { print $1 }'
+          )"
+          if [ "$remote_head_after" != "$local_head" ]; then
+            echo "::error::Release back-sync did not publish the exact local head."
+            exit 1
+          fi
+          if [ "$remote_head_before" != "$remote_head_after" ]; then
+            branch_advanced=true
           fi
 
           if ! gh label list --repo "$REPO" --json name --jq '.[].name' \
@@ -180,6 +184,34 @@ jobs:
             fi
           fi
 
+          expected_base="$(
+            git ls-remote --heads origin refs/heads/develop \
+              | awk 'NR == 1 { print $1 }'
+          )"
+          expected_head="$(git rev-parse HEAD)"
+          [[ "$expected_base" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$expected_head" =~ ^[0-9a-f]{40}$ ]]
+          validate_existing_back_sync_pr() {
+            local candidate="$1"
+            local candidate_json
+            candidate_json="$(gh pr view "$candidate" \
+              --repo "$REPO" \
+              --json author,baseRefName,baseRefOid,headRefName,headRefOid,headRepositoryOwner,isDraft)"
+            jq -e \
+              --arg branch "$branch" \
+              --arg expected_base "$expected_base" \
+              --arg expected_head "$expected_head" \
+              --arg owner "$GITHUB_REPOSITORY_OWNER" '
+                .author.login == "app/lightning-it-release-automation"
+                and .baseRefName == "develop"
+                and .baseRefOid == $expected_base
+                and .headRefName == $branch
+                and .headRefOid == $expected_head
+                and .headRepositoryOwner.login == $owner
+                and .isDraft == false
+              ' <<< "$candidate_json" >/dev/null
+          }
+
           existing="$(
             gh pr list \
               --repo "$REPO" \
@@ -189,7 +221,9 @@ jobs:
               --json url \
               --jq '.[0].url'
           )"
+          created_pr=false
           if [ -n "$existing" ]; then
+            validate_existing_back_sync_pr "$existing"
             gh pr edit "$existing" \
               --repo "$REPO" \
               --title "$title" \
@@ -218,11 +252,14 @@ jobs:
                 exit 1
               fi
               echo "Release back-sync PR was created by another run: $existing"
+              validate_existing_back_sync_pr "$existing"
               gh pr edit "$existing" \
                 --repo "$REPO" \
                 --title "$title" \
                 --body "$body" \
                 --add-label skip-changelog
+            else
+              created_pr=true
             fi
           fi
           back_sync_pr="$(gh pr view "$existing" \
@@ -230,11 +267,13 @@ jobs:
             --json author,baseRefName,baseRefOid,headRefName,headRefOid,headRepositoryOwner,isDraft,number,title)"
           jq -e \
             --arg branch "$branch" \
-            --arg expected_head "$(git rev-parse HEAD)" \
+            --arg expected_base "$expected_base" \
+            --arg expected_head "$expected_head" \
             --arg owner "$GITHUB_REPOSITORY_OWNER" \
             --arg title "$title" '
               .author.login == "app/lightning-it-release-automation"
               and .baseRefName == "develop"
+              and .baseRefOid == $expected_base
               and .headRefName == $branch
               and .headRefOid == $expected_head
               and .headRepositoryOwner.login == $owner
@@ -246,10 +285,17 @@ jobs:
             echo "base_ref=$(jq -r .baseRefName <<<"$back_sync_pr")"
             echo "expected_base=$(jq -r .baseRefOid <<<"$back_sync_pr")"
             echo "expected_head=$(jq -r .headRefOid <<<"$back_sync_pr")"
+            if [ "$branch_advanced" = true ] || [ "$created_pr" = true ]; then
+              echo "dispatch_review=true"
+            else
+              echo "dispatch_review=false"
+            fi
           } >>"$GITHUB_OUTPUT"
 
       - name: Mint protected review dispatch token
-        if: steps.exact-review-target.outputs.pr_number != ''
+        if: >-
+          steps.exact-review-target.outputs.pr_number != '' &&
+          steps.exact-review-target.outputs.dispatch_review == 'true'
         id: review-dispatch-app
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
         with:
@@ -261,7 +307,9 @@ jobs:
           permission-contents: read
 
       - name: Dispatch protected Exact-Revision review
-        if: steps.exact-review-target.outputs.pr_number != ''
+        if: >-
+          steps.exact-review-target.outputs.pr_number != '' &&
+          steps.exact-review-target.outputs.dispatch_review == 'true'
         env:
           GH_TOKEN: ${{ steps.review-dispatch-app.outputs.token }}
           REPO: ${{ github.repository }}
