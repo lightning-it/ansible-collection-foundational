@@ -52,21 +52,35 @@ If generic guidance conflicts with repository behavior, you MUST prefer reposito
    15. `scripts/devtools-galaxy.sh`
    16. `scripts/devtools-molecule.sh`
    17. `scripts/wunder-devtools-ee.sh`
-   18. `.github/workflows/shared-assets-guarded-automerge.yml`
-   19. `.github/workflows/release-bot-exact-head-review.yml`
-   20. `scripts/materialize-exact-revision-review.py`
-   21. `.github/workflows/current-revision-rerun.yml`
-   22. `.github/workflows/copilot-review.yml` in the five generic
-       collections; it is distributed atomically with items 19 through 21
-   23. `.github/workflows/dot-github-current-revision-required.yml` in
+   18. `scripts/lit-ci-profile.sh`
+   19. public MLX-10, MLX-40, and MLX-70 summaries under `docs/adr/`
+   20. `.github/workflows/shared-assets-guarded-automerge.yml`
+   21. `.github/workflows/release-bot-exact-head-review.yml`
+   22. `scripts/materialize-exact-revision-review.py`
+   23. `.github/workflows/current-revision-rerun.yml`
+   24. `.github/workflows/copilot-review.yml` in the five generic
+       collections; it is distributed atomically with items 21 through 23
+   25. `.github/workflows/dot-github-current-revision-required.yml` in
        `ansible-collection-supplementary` only
-   24. `scripts/verify-dot-github-current-revision.py` in
+   26. `scripts/verify-dot-github-current-revision.py` in
        `ansible-collection-supplementary` only
-   25. `tests/unit/test_dot_github_current_revision.py` in
+   27. `tests/unit/test_dot_github_current_revision.py` in
        `ansible-collection-supplementary` only; it is distributed atomically
-       with item 24
-   26. `tests/test_managed_exact_revision_materializer_security.py` in the
-       five generic collections; it is distributed atomically with item 20
+       with item 26
+   28. `tests/test_managed_exact_revision_materializer_security.py` in the
+       five generic collections; it is distributed atomically with item 22
+   The collection-specific `scripts/lit-ci-profile.sh repository-quality`
+   dispatcher and Collection CI both validate the rendered quality policy in
+   the pinned offline Devtools image. Its MLX references are the public,
+   repository-local summaries distributed with the policy; internal Confluence
+   URLs must not be rendered into a public Collection.
+   For `ansible-collection-supplementary`, the specialized synchronizer owns
+   that profile and only the explicitly marked quality-policy step inside
+   `.github/workflows/collection-ci.yml`. It also owns the exact target-side
+   offline/read-only/non-root profile assertion in
+   `tests/unit/test_workflow_security.py`; every other byte of that test and
+   of its repository-specific Security CI remains repository-owned and must
+   be preserved.
    The Exact-Revision bootstrap is one dependency-closed trust surface. It MUST
    install `.github/workflows/copilot-review.yml`,
    `.github/workflows/release-bot-exact-head-review.yml`,
