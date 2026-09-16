@@ -46,6 +46,7 @@ jobs:
           COLLECTION_NAMESPACE: ${{ env.COLLECTION_NAMESPACE }}
           ANSIBLE_LINT_VERSION: ${{ env.ANSIBLE_LINT_VERSION }}
         run: |
+          bash scripts/lit-ci-profile.sh repository-quality
           bash scripts/devtools-ansible-lint.sh
 
   molecule:
