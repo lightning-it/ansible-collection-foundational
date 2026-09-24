@@ -25,6 +25,7 @@ galaxy_publish: true
 quay_publish: false
 release_evidence: true
 heavy_incus_required: false
+preserve_main_merge_ancestry: true
 openssf_best_practices:
   required: true
   project_id: null
