@@ -38,6 +38,7 @@ _APPROVAL_NAMESPACE = "lit-onepassword-approval-v1"
 _MAX_APPROVAL_SECONDS = 900
 _MAX_CLOCK_SKEW_SECONDS = 60
 _PROCESS_TIMEOUT_SECONDS = 30
+_TRUSTED_CHILD_PATH = "/usr/bin:/bin:/usr/sbin:/sbin"
 _APPROVAL_KEYS = frozenset(
     (
         "schema_version",

@@ -16,6 +16,7 @@ from ansible.errors import AnsibleActionFail
 from ansible.plugins.action import ActionBase
 
 from ._onepassword_boundary import (
+    _TRUSTED_CHILD_PATH,
     claim_approval,
     normalize_approval,
     normalize_user_uuid_list,
@@ -497,11 +498,12 @@ class _OnePasswordCLI:
             )
         environment = {
             name: process_environment[name]
-            for name in ("HOME", "PATH", "TMPDIR", "LANG", "LC_ALL")
+            for name in ("HOME", "TMPDIR", "LANG", "LC_ALL")
             if process_environment.get(name)
         }
         if not environment.get("HOME"):
             _fail("HOME is required for the 1Password desktop CLI integration.")
+        environment["PATH"] = _TRUSTED_CHILD_PATH
         return environment
 
     def _run(self, arguments, operation, discard_stdout=False):
@@ -697,8 +699,10 @@ class _OnePasswordSecretItemStore:
         if str(item.get("category", "")).lower() != config["category"].lower():
             _fail("The 1Password item category does not match.")
         observed_tags = item.get("tags", [])
-        if not isinstance(observed_tags, list) or sorted(observed_tags) != sorted(
-            config["tags"]
+        if (
+            not isinstance(observed_tags, list)
+            or any(not isinstance(tag, str) for tag in observed_tags)
+            or sorted(observed_tags) != sorted(config["tags"])
         ):
             _fail("The 1Password item tags do not match.")
 

@@ -19,6 +19,7 @@ from ansible.errors import AnsibleActionFail
 from ansible.plugins.action import ActionBase
 
 from ._onepassword_boundary import (
+    _TRUSTED_CHILD_PATH,
     _write_private_file,
     approval_signing_payload,
     normalize_approval,
@@ -103,6 +104,7 @@ def _verified_agent_signer(config):
     environment = {
         "LANG": "C",
         "LC_ALL": "C",
+        "PATH": _TRUSTED_CHILD_PATH,
         "SSH_AUTH_SOCK": agent_socket,
     }
     try:
@@ -226,6 +228,7 @@ def _sign(config):
                 env={
                     "LANG": "C",
                     "LC_ALL": "C",
+                    "PATH": _TRUSTED_CHILD_PATH,
                     "SSH_AUTH_SOCK": agent_socket,
                 },
                 check=False,
@@ -282,7 +285,7 @@ class ActionModule(ActionBase):
 
     TRANSFERS_FILES = False
     _requires_connection = False
-    _supports_check_mode = True
+    _supports_check_mode = False
     _VALID_ARGS = _EXPECTED_ARGS
 
     def run(self, tmp=None, task_vars=None):
@@ -290,4 +293,6 @@ class ActionModule(ActionBase):
             task_vars = {}
         self._task.no_log = True
         super(ActionModule, self).run(tmp, task_vars)
+        if self._task.check_mode:
+            _fail("onepassword_approval cannot mint approvals in check mode.")
         return _sign(_normalize_arguments(dict(self._task.args)))

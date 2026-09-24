@@ -22,6 +22,7 @@ from ansible.errors import AnsibleActionFail
 from ansible.plugins.action import ActionBase
 
 from ._onepassword_boundary import (
+    _TRUSTED_CHILD_PATH,
     claim_approval,
     normalize_approval,
     normalize_user_uuid_list,
@@ -532,11 +533,12 @@ class _OnePasswordCLI:
             )
         environment = {
             name: process_environment[name]
-            for name in ("HOME", "PATH", "TMPDIR", "LANG", "LC_ALL")
+            for name in ("HOME", "TMPDIR", "LANG", "LC_ALL")
             if process_environment.get(name)
         }
         if not environment.get("HOME"):
             _fail("HOME is required for the 1Password desktop CLI integration.")
+        environment["PATH"] = _TRUSTED_CHILD_PATH
         return environment
 
     def _run(self, arguments, operation, discard_stdout=False, stdin_payload=None):
@@ -869,7 +871,7 @@ class _OnePasswordSSHKeyItemStore:
         expected_public_key = public_identity["public_key"]
         environment = {
             "HOME": os.environ.get("HOME", ""),
-            "PATH": os.environ.get("PATH", ""),
+            "PATH": _TRUSTED_CHILD_PATH,
         }
         for name in ("LANG", "LC_ALL"):
             if os.environ.get(name):

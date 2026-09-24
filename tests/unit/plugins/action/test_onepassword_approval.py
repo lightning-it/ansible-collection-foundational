@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from types import SimpleNamespace
 
 import pytest
 
@@ -52,3 +53,12 @@ def test_normalize_rejects_invalid_contract(tmp_path, mutation):
 def test_authority_public_key_is_derived_from_pinned_allowed_signers(tmp_path):
     normalized = signer._normalize_arguments(_arguments(tmp_path))
     assert normalized["signing_public_key"].startswith("ssh-ed25519 ")
+
+
+def test_action_refuses_to_mint_approval_in_check_mode(monkeypatch):
+    action = object.__new__(signer.ActionModule)
+    action._task = SimpleNamespace(args={}, check_mode=True, no_log=False)
+    monkeypatch.setattr(signer.ActionBase, "run", lambda self, tmp, task_vars: {})
+
+    with pytest.raises(AnsibleActionFail, match="cannot mint approvals"):
+        action.run()

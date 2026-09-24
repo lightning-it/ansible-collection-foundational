@@ -93,7 +93,7 @@ def main():
             "target": {"type": "str", "required": True},
             "validity_seconds": {"type": "int", "required": True},
         },
-        supports_check_mode=True,
+        supports_check_mode=False,
     )
     module.fail_json(msg="onepassword_approval requires its controller action plugin")
 
