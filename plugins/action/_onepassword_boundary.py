@@ -16,10 +16,12 @@ import json
 import os
 from pathlib import Path
 import re
+import selectors
 import stat
 import struct
 import subprocess
 import tempfile
+import time
 
 from ansible.errors import AnsibleActionFail
 
@@ -198,6 +200,61 @@ class _TrustedExecutable(str):
             )
         finally:
             os.close(descriptor)
+
+    def popen(self, arguments, **kwargs):
+        """Start the already-verified descriptor, not a mutable pathname."""
+        if "pass_fds" in kwargs or "executable" in kwargs:
+            _fail("Trusted executable launch options are invalid.")
+        descriptor = _open_trusted_executable(
+            Path(str(self)), self.expected_sha256, self.validation_name
+        )
+        try:
+            return subprocess.Popen(
+                ["/dev/fd/{0}".format(descriptor)] + list(arguments),
+                pass_fds=(descriptor,),
+                **kwargs
+            )
+        finally:
+            os.close(descriptor)
+
+
+def run_bounded_output(executable, arguments, env, timeout, maximum_size=1048576):
+    """Run one trusted executable and collect at most maximum_size stdout bytes."""
+    process = executable.popen(
+        arguments,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        env=env,
+        close_fds=True,
+    )
+    selector = selectors.DefaultSelector()
+    payload = bytearray()
+    deadline = time.monotonic() + timeout
+    try:
+        selector.register(process.stdout, selectors.EVENT_READ)
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0 or not selector.select(remaining):
+                raise subprocess.TimeoutExpired(list(arguments), timeout)
+            chunk = os.read(
+                process.stdout.fileno(), min(65536, maximum_size + 1 - len(payload))
+            )
+            if not chunk:
+                break
+            payload.extend(chunk)
+            if len(payload) > maximum_size:
+                _fail("Trusted command output exceeded the approved size boundary.")
+        process.wait(timeout=max(0.001, deadline - time.monotonic()))
+        return process.returncode, bytes(payload)
+    except Exception:
+        if process.poll() is None:
+            process.kill()
+            process.wait()
+        raise
+    finally:
+        selector.close()
+        process.stdout.close()
 
 
 def trusted_executable(path, expected_sha256, name):

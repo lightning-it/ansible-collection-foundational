@@ -20,6 +20,7 @@ from ._onepassword_boundary import (
     claim_approval,
     normalize_approval,
     normalize_user_uuid_list,
+    run_bounded_output,
     normalize_sha256,
     safe_approval_metadata,
     trusted_executable,
@@ -511,25 +512,34 @@ class _OnePasswordCLI:
             self.requested_binary, self.binary_sha256, "cli_path"
         )
         try:
-            completed = self.binary.run(
-                arguments,
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL if discard_stdout else subprocess.PIPE,
-                stderr=subprocess.DEVNULL if discard_stdout else subprocess.PIPE,
-                env=self.environment,
-                check=False,
-                timeout=_PROCESS_TIMEOUT_SECONDS,
-            )
+            if discard_stdout:
+                completed = self.binary.run(
+                    arguments,
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    env=self.environment,
+                    check=False,
+                    timeout=_PROCESS_TIMEOUT_SECONDS,
+                )
+                returncode, output = completed.returncode, b""
+            else:
+                returncode, output = run_bounded_output(
+                    self.binary,
+                    arguments,
+                    self.environment,
+                    _PROCESS_TIMEOUT_SECONDS,
+                )
         except (OSError, subprocess.SubprocessError):
             _fail("1Password {0} could not be executed safely.".format(operation))
-        if completed.returncode != 0:
+        if returncode != 0:
             _fail(
                 "1Password {0} failed closed with exit code {1}.".format(
                     operation,
-                    completed.returncode,
+                    returncode,
                 )
             )
-        return b"" if discard_stdout else completed.stdout
+        return output
 
     def metadata(self, arguments, operation):
         payload = self._run(arguments, operation)

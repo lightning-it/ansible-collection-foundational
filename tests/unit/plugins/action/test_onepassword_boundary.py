@@ -87,6 +87,23 @@ def test_trusted_executable_revalidates_and_launches_verified_descriptor(tmp_pat
         trusted.run([], stdout=subprocess.PIPE, check=False)
 
 
+def test_bounded_output_rejects_excess_before_collecting_it(tmp_path):
+    executable = tmp_path / "output-tool"
+    executable.write_bytes(b"#!/bin/sh\nprintf 123456789")
+    executable.chmod(0o700)
+    digest = hashlib.sha256(executable.read_bytes()).hexdigest()
+    trusted = boundary.trusted_executable(str(executable), digest, "tool")
+
+    with pytest.raises(AnsibleActionFail, match="output exceeded"):
+        boundary.run_bounded_output(trusted, [], {}, timeout=10, maximum_size=8)
+
+    returncode, payload = boundary.run_bounded_output(
+        trusted, [], {}, timeout=10, maximum_size=9
+    )
+    assert returncode == 0
+    assert payload == b"123456789"
+
+
 def test_agent_socket_resolves_official_style_alias_with_spaces(tmp_path):
     canonical_parent = tmp_path / "op socket alias target"
     canonical_parent.mkdir(mode=0o700)
