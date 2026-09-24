@@ -4,7 +4,7 @@ import json
 import os
 from pathlib import Path
 import socket
-import tempfile
+import subprocess
 
 import pytest
 
@@ -69,19 +69,41 @@ def test_trusted_executable_rejects_mutable_parent_and_hard_link(tmp_path):
         boundary.trusted_executable(str(executable), digest, "tool")
 
 
+def test_trusted_executable_revalidates_and_launches_verified_descriptor(tmp_path):
+    executable = tmp_path / "tool"
+    executable.write_bytes(b"#!/bin/sh\nprintf trusted")
+    executable.chmod(0o700)
+    digest = hashlib.sha256(executable.read_bytes()).hexdigest()
+    trusted = boundary.trusted_executable(str(executable), digest, "tool")
+
+    completed = trusted.run([], stdout=subprocess.PIPE, check=False)
+    assert completed.returncode == 0
+    assert completed.stdout == b"trusted"
+
+    executable.unlink()
+    executable.write_bytes(b"#!/bin/sh\nprintf replaced")
+    executable.chmod(0o700)
+    with pytest.raises(AnsibleActionFail, match="approved SHA-256"):
+        trusted.run([], stdout=subprocess.PIPE, check=False)
+
+
 def test_agent_socket_resolves_official_style_alias_with_spaces(tmp_path):
-    with tempfile.TemporaryDirectory(prefix="op socket ", dir="/private/tmp") as root:
-        canonical_parent = Path(root)
-        canonical_parent.chmod(0o700)
-        socket_path = canonical_parent / "agent.sock"
-        agent = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        agent.bind(str(socket_path))
-        alias = tmp_path / "agent-alias.sock"
-        alias.symlink_to(socket_path)
-        try:
-            assert boundary.trusted_agent_socket(str(alias)) == str(socket_path)
-        finally:
-            agent.close()
+    canonical_parent = tmp_path / "op socket alias target"
+    canonical_parent.mkdir(mode=0o700)
+    socket_path = canonical_parent / "agent.sock"
+    agent = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    agent.bind(str(socket_path))
+    alias = tmp_path / "agent-alias.sock"
+    alias.symlink_to(socket_path)
+    try:
+        assert boundary.trusted_agent_socket(str(alias)) == str(socket_path)
+    finally:
+        agent.close()
+
+
+def test_user_uuid_list_rejects_unhashable_elements_fail_closed():
+    with pytest.raises(AnsibleActionFail, match="unique non-empty list"):
+        boundary.normalize_user_uuid_list([{}], "authorized_user_uuids")
 
 
 def test_asymmetric_approval_is_verified_and_claimed_exactly_once(tmp_path):

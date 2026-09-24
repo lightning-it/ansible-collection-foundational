@@ -369,16 +369,14 @@ def _normalize_arguments(args):
         _fail("category must be exactly Password.")
 
     tags = args.get("tags", [])
-    if (
-        not isinstance(tags, list)
-        or not tags
-        or len(tags) > 10
-        or len(tags) != len(set(tags))
-        or any(
-            not isinstance(tag, str) or not _TAG_PATTERN.fullmatch(_plain_text(tag))
-            for tag in tags
-        )
+    if not isinstance(tags, list) or not tags or len(tags) > 10:
+        _fail("tags must be a unique list of safe non-sensitive values.")
+    if any(
+        not isinstance(tag, str) or not _TAG_PATTERN.fullmatch(_plain_text(tag))
+        for tag in tags
     ):
+        _fail("tags must be a unique list of safe non-sensitive values.")
+    if len(tags) != len(set(tags)):
         _fail("tags must be a unique list of safe non-sensitive values.")
     tags = [_plain_text(tag) for tag in tags]
 
@@ -511,8 +509,8 @@ class _OnePasswordCLI:
             self.requested_binary, self.binary_sha256, "cli_path"
         )
         try:
-            completed = subprocess.run(
-                [self.binary] + list(arguments),
+            completed = self.binary.run(
+                arguments,
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL if discard_stdout else subprocess.PIPE,
                 stderr=subprocess.DEVNULL if discard_stdout else subprocess.PIPE,

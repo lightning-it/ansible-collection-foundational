@@ -12,6 +12,7 @@ import binascii
 import hashlib
 import json
 import os
+from pathlib import Path
 import re
 import struct
 import subprocess
@@ -350,16 +351,14 @@ def _normalize_arguments(args):
         _fail("key_type must be exactly ed25519.")
 
     tags = args.get("tags", [])
-    if (
-        not isinstance(tags, list)
-        or not tags
-        or len(tags) > 10
-        or len(tags) != len(set(tags))
-        or any(
-            not isinstance(tag, str) or not _TAG_PATTERN.fullmatch(_plain_text(tag))
-            for tag in tags
-        )
+    if not isinstance(tags, list) or not tags or len(tags) > 10:
+        _fail("tags must be a unique list of safe non-sensitive values.")
+    if any(
+        not isinstance(tag, str) or not _TAG_PATTERN.fullmatch(_plain_text(tag))
+        for tag in tags
     ):
+        _fail("tags must be a unique list of safe non-sensitive values.")
+    if len(tags) != len(set(tags)):
         _fail("tags must be a unique list of safe non-sensitive values.")
     tags = [_plain_text(tag) for tag in tags]
 
@@ -545,8 +544,8 @@ class _OnePasswordCLI:
             self.requested_binary, self.binary_sha256, "cli_path"
         )
         try:
-            completed = subprocess.run(
-                [self.binary] + list(arguments),
+            completed = self.binary.run(
+                arguments,
                 input=stdin_payload,
                 stdin=subprocess.DEVNULL if stdin_payload is None else None,
                 stdout=subprocess.DEVNULL if discard_stdout else subprocess.PIPE,
@@ -885,8 +884,8 @@ class _OnePasswordSSHKeyItemStore:
             )
             agent_socket = trusted_agent_socket(config["agent_socket_path"])
             environment["SSH_AUTH_SOCK"] = agent_socket
-            completed = subprocess.run(
-                [ssh_add, "-L"],
+            completed = ssh_add.run(
+                ["-L"],
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -928,6 +927,7 @@ class _OnePasswordSSHKeyItemStore:
         os.chmod(temporary_root, 0o700)
         public_key_path = os.path.join(temporary_root, "identity.pub")
         allowed_signers_path = os.path.join(temporary_root, "allowed_signers")
+        challenge_path = os.path.join(temporary_root, "challenge")
         signature_path = os.path.join(temporary_root, "challenge.sig")
         try:
             _write_controller_file(
@@ -937,6 +937,7 @@ class _OnePasswordSSHKeyItemStore:
                 allowed_signers_path,
                 (principal + " " + expected_public_key + "\n").encode("ascii"),
             )
+            _write_controller_file(challenge_path, bytes(challenge))
             try:
                 ssh_keygen = trusted_executable(
                     config["ssh_keygen_path"],
@@ -945,9 +946,8 @@ class _OnePasswordSSHKeyItemStore:
                 )
                 agent_socket = trusted_agent_socket(config["agent_socket_path"])
                 environment["SSH_AUTH_SOCK"] = agent_socket
-                signed = subprocess.run(
+                signed = ssh_keygen.run(
                     [
-                        ssh_keygen,
                         "-Y",
                         "sign",
                         "-f",
@@ -956,9 +956,10 @@ class _OnePasswordSSHKeyItemStore:
                         namespace,
                         "-O",
                         "hashalg=sha256",
+                        challenge_path,
                     ],
-                    input=bytes(challenge),
-                    stdout=subprocess.PIPE,
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                     env=environment,
                     check=False,
@@ -968,16 +969,24 @@ class _OnePasswordSSHKeyItemStore:
                 _fail(
                     "The approved SSH Agent signing challenge could not be executed safely."
                 )
+            if signed.returncode != 0:
+                _fail(
+                    "The approved SSH Agent did not produce a valid signing challenge response."
+                )
+            try:
+                signature = Path(signature_path).read_bytes()
+            except OSError:
+                _fail(
+                    "The approved SSH Agent did not produce a signing challenge response."
+                )
             if (
-                signed.returncode != 0
-                or not signed.stdout.startswith(b"-----BEGIN SSH SIGNATURE-----\n")
-                or not signed.stdout.endswith(b"-----END SSH SIGNATURE-----\n")
-                or len(signed.stdout) > 65536
+                not signature.startswith(b"-----BEGIN SSH SIGNATURE-----\n")
+                or not signature.endswith(b"-----END SSH SIGNATURE-----\n")
+                or len(signature) > 65536
             ):
                 _fail(
                     "The approved SSH Agent did not produce a valid signing challenge response."
                 )
-            _write_controller_file(signature_path, signed.stdout)
             try:
                 ssh_keygen = trusted_executable(
                     config["ssh_keygen_path"],
@@ -986,9 +995,8 @@ class _OnePasswordSSHKeyItemStore:
                 )
                 agent_socket = trusted_agent_socket(config["agent_socket_path"])
                 environment["SSH_AUTH_SOCK"] = agent_socket
-                verified = subprocess.run(
+                verified = ssh_keygen.run(
                     [
-                        ssh_keygen,
                         "-Y",
                         "verify",
                         "-f",
@@ -1016,7 +1024,12 @@ class _OnePasswordSSHKeyItemStore:
         finally:
             for index in range(len(challenge)):
                 challenge[index] = 0
-            for path in (signature_path, allowed_signers_path, public_key_path):
+            for path in (
+                signature_path,
+                challenge_path,
+                allowed_signers_path,
+                public_key_path,
+            ):
                 if os.path.lexists(path):
                     os.unlink(path)
             os.rmdir(temporary_root)

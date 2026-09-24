@@ -106,8 +106,8 @@ def _verified_agent_signer(config):
         "SSH_AUTH_SOCK": agent_socket,
     }
     try:
-        completed = subprocess.run(
-            [ssh_add, "-L"],
+        completed = ssh_add.run(
+            ["-L"],
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
@@ -210,9 +210,8 @@ def _sign(config):
         )
         agent_socket = _verified_agent_signer(config)
         try:
-            completed = subprocess.run(
+            completed = ssh_keygen.run(
                 [
-                    ssh_keygen,
                     "-Y",
                     "sign",
                     "-f",

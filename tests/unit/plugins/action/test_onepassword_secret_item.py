@@ -220,6 +220,7 @@ def test_apply_signature_rejects_normalized_contract_mutation(tmp_path, field, v
         {"item_version": ITEM_VERSION},
         {"operation": "read"},
         {"tags": []},
+        {"tags": [{}]},
         {"password_recipe": "letters,digits,64"},
         {"tags": ["recovery", "recovery"]},
         {"allow_create": True},

@@ -269,14 +269,20 @@ def test_agent_verification_requires_exact_socket_and_public_identity(tmp_path):
         "#!{0}\n"
         "import pathlib, sys\n"
         "mode = sys.argv[sys.argv.index('-Y') + 1]\n"
-        "challenge = sys.stdin.buffer.read()\n"
         "with pathlib.Path({1!r}).open('a', encoding='ascii') as stream:\n"
         "    stream.write(mode + '\\n')\n"
-        "if len(challenge) != 32:\n"
-        "    raise SystemExit(8)\n"
         "if mode == 'sign':\n"
-        "    sys.stdout.write('-----BEGIN SSH SIGNATURE-----\\nFAKE\\n-----END SSH SIGNATURE-----\\n')\n"
+        "    challenge_path = pathlib.Path(sys.argv[-1])\n"
+        "    if len(challenge_path.read_bytes()) != 32:\n"
+        "        raise SystemExit(8)\n"
+        "    challenge_path.with_name(challenge_path.name + '.sig').write_text(\n"
+        "        '-----BEGIN SSH SIGNATURE-----\\nFAKE\\n-----END SSH SIGNATURE-----\\n',\n"
+        "        encoding='ascii',\n"
+        "    )\n"
         "elif mode == 'verify':\n"
+        "    challenge = sys.stdin.buffer.read()\n"
+        "    if len(challenge) != 32:\n"
+        "        raise SystemExit(8)\n"
         "    signature = pathlib.Path(sys.argv[sys.argv.index('-s') + 1]).read_text(encoding='ascii')\n"
         "    if signature != '-----BEGIN SSH SIGNATURE-----\\nFAKE\\n-----END SSH SIGNATURE-----\\n':\n"
         "        raise SystemExit(9)\n"
@@ -322,6 +328,7 @@ def test_agent_verification_requires_exact_socket_and_public_identity(tmp_path):
         {"category": "Password"},
         {"tags": ["recovery", "recovery"]},
         {"tags": []},
+        {"tags": [{}]},
         {"item_id": ITEM_ID},
         {"item_version": ITEM_VERSION},
         {"authorized_user_uuids": []},

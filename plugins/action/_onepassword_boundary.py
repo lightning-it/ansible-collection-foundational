@@ -79,15 +79,17 @@ def normalize_sha256(value, name):
 def normalize_user_uuid_list(value, name):
     """Require a unique, non-empty allowlist of 1Password user UUIDs."""
     pattern = re.compile(r"[A-Z0-9]{26}\Z", re.ASCII)
-    if (
-        not isinstance(value, list)
-        or not value
-        or len(value) > 32
-        or len(value) != len(set(value))
-        or any(
-            not isinstance(item, str) or not pattern.fullmatch(item) for item in value
+    if not isinstance(value, list) or not value or len(value) > 32:
+        _fail(
+            "{0} must be a unique non-empty list of exact 1Password user "
+            "UUIDs.".format(name)
         )
-    ):
+    if any(not isinstance(item, str) or not pattern.fullmatch(item) for item in value):
+        _fail(
+            "{0} must be a unique non-empty list of exact 1Password user "
+            "UUIDs.".format(name)
+        )
+    if len(value) != len(set(value)):
         _fail(
             "{0} must be a unique non-empty list of exact 1Password user "
             "UUIDs.".format(name)
@@ -120,25 +122,14 @@ def _validate_parent_chain(path, name):
         current = current.parent
 
 
-def trusted_executable(path, expected_sha256, name):
-    """Resolve, inspect, hash, and return one approved executable."""
-    expected_sha256 = normalize_sha256(expected_sha256, "{0}_sha256".format(name))
-    if not isinstance(path, str) or not path or not os.path.isabs(path):
-        _fail("{0} must be a non-empty absolute path.".format(name))
-    if os.path.normpath(path) != path or any(
-        character in path for character in "\x00\r\n"
-    ):
-        _fail("{0} must be an exact normalized path.".format(name))
-    try:
-        resolved = Path(path).resolve(strict=True)
-    except OSError:
-        _fail("{0} does not resolve to an existing controller file.".format(name))
-    _validate_parent_chain(resolved.parent, name)
+def _open_trusted_executable(path, expected_sha256, name):
+    """Open and verify one executable, retaining the validated descriptor."""
+    _validate_parent_chain(path.parent, name)
     flags = os.O_RDONLY
     flags |= getattr(os, "O_CLOEXEC", 0)
     flags |= getattr(os, "O_NOFOLLOW", 0)
     try:
-        descriptor = os.open(str(resolved), flags)
+        descriptor = os.open(str(path), flags)
     except OSError:
         _fail(
             "{0} could not be opened without following a final symbolic "
@@ -172,11 +163,58 @@ def trusted_executable(path, expected_sha256, name):
             after.st_ctime_ns,
         ):
             _fail("{0} changed while its digest was verified.".format(name))
-    finally:
+        if not hmac.compare_digest(digest.hexdigest(), expected_sha256):
+            _fail("{0} does not match its approved SHA-256 digest.".format(name))
+        os.lseek(descriptor, 0, os.SEEK_SET)
+        return descriptor
+    except BaseException:
         os.close(descriptor)
-    if not hmac.compare_digest(digest.hexdigest(), expected_sha256):
-        _fail("{0} does not match its approved SHA-256 digest.".format(name))
-    return str(resolved)
+        raise
+
+
+class _TrustedExecutable(str):
+    """Digest-bound executable that launches through its verified descriptor."""
+
+    def __new__(cls, path, expected_sha256, name):
+        instance = str.__new__(cls, path)
+        instance.expected_sha256 = expected_sha256
+        instance.validation_name = name
+        return instance
+
+    def run(self, arguments, **kwargs):
+        """Execute the already-verified descriptor, not a mutable pathname."""
+        if "pass_fds" in kwargs or "executable" in kwargs:
+            _fail("Trusted executable launch options are invalid.")
+        descriptor = _open_trusted_executable(
+            Path(str(self)), self.expected_sha256, self.validation_name
+        )
+        try:
+            descriptor_path = "/dev/fd/{0}".format(descriptor)
+            return subprocess.run(
+                [descriptor_path] + list(arguments),
+                pass_fds=(descriptor,),
+                **kwargs
+            )
+        finally:
+            os.close(descriptor)
+
+
+def trusted_executable(path, expected_sha256, name):
+    """Resolve, inspect, hash, and return one approved executable."""
+    expected_sha256 = normalize_sha256(expected_sha256, "{0}_sha256".format(name))
+    if not isinstance(path, str) or not path or not os.path.isabs(path):
+        _fail("{0} must be a non-empty absolute path.".format(name))
+    if os.path.normpath(path) != path or any(
+        character in path for character in "\x00\r\n"
+    ):
+        _fail("{0} must be an exact normalized path.".format(name))
+    try:
+        resolved = Path(path).resolve(strict=True)
+    except OSError:
+        _fail("{0} does not resolve to an existing controller file.".format(name))
+    descriptor = _open_trusted_executable(resolved, expected_sha256, name)
+    os.close(descriptor)
+    return _TrustedExecutable(str(resolved), expected_sha256, name)
 
 
 def trusted_agent_socket(path, name="agent_socket_path"):
@@ -628,9 +666,8 @@ def _verify_approval_signature(normalized, authority, payload):
             "approval_ssh_keygen_path",
         )
         try:
-            completed = subprocess.run(
+            completed = ssh_keygen_path.run(
                 [
-                    ssh_keygen_path,
                     "-Y",
                     "verify",
                     "-f",
