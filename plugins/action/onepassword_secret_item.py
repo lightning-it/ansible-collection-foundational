@@ -17,6 +17,7 @@ from ansible.plugins.action import ActionBase
 
 from ._onepassword_boundary import (
     _TRUSTED_CHILD_PATH,
+    claim_creation_lock,
     claim_approval,
     normalize_approval,
     normalize_user_uuid_list,
@@ -770,32 +771,41 @@ class _OnePasswordSecretItemStore:
 
         created = False
         if operation == "apply":
-            claim_approval(config["approval"])
-            creation_arguments = [
-                "item",
-                "create",
-                "--account",
-                config["account_id"],
-                "--vault",
-                config["vault_id"],
-                "--category",
-                config["category"],
-                "--title",
-                config["item_title"],
-                "--generate-password={0}".format(config["password_recipe"]),
-                "subject[text]={0}".format(config["subject"]),
-                "schema_version[text]={0}".format(config["schema_version"]),
-                "expected_length[text]={0}".format(config["password_length"]),
-            ]
-            if config["tags"]:
-                creation_arguments[10:10] = ["--tags", ",".join(config["tags"])]
-            self.client.discard(
-                creation_arguments,
-                "item creation",
+            lock_descriptor = claim_creation_lock(
+                config["approval"],
+                "{0}/{1}/{2}".format(
+                    config["account_id"], config["vault_id"], config["item_title"]
+                ),
             )
-            observed = self.inspect(config)
-            if not observed["exists"]:
-                _fail("1Password did not return the created item metadata.")
+            try:
+                observed = self.inspect(config)
+                if observed["exists"]:
+                    _fail("Concurrent creation found an existing Password item.")
+                claim_approval(config["approval"])
+                creation_arguments = [
+                    "item",
+                    "create",
+                    "--account",
+                    config["account_id"],
+                    "--vault",
+                    config["vault_id"],
+                    "--category",
+                    config["category"],
+                    "--title",
+                    config["item_title"],
+                    "--generate-password={0}".format(config["password_recipe"]),
+                    "subject[text]={0}".format(config["subject"]),
+                    "schema_version[text]={0}".format(config["schema_version"]),
+                    "expected_length[text]={0}".format(config["password_length"]),
+                ]
+                if config["tags"]:
+                    creation_arguments[10:10] = ["--tags", ",".join(config["tags"])]
+                self.client.discard(creation_arguments, "item creation")
+                observed = self.inspect(config)
+                if not observed["exists"]:
+                    _fail("1Password did not return the created item metadata.")
+            finally:
+                os.close(lock_descriptor)
             created = True
 
         result = {

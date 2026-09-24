@@ -10,6 +10,7 @@ __metaclass__ = type
 from datetime import datetime, timezone
 import base64
 import binascii
+import fcntl
 import hashlib
 import hmac
 import json
@@ -255,6 +256,31 @@ def run_bounded_output(executable, arguments, env, timeout, maximum_size=1048576
     finally:
         selector.close()
         process.stdout.close()
+
+
+def claim_creation_lock(normalized_approval, identity):
+    """Serialize one item identity inside the trusted approval replay directory."""
+    if not isinstance(identity, str) or not identity or not identity.isascii():
+        _fail("Creation-lock identity is invalid.")
+    directory = normalized_approval["_replay_directory"]
+    name = "create-{0}.lock".format(hashlib.sha256(identity.encode("ascii")).hexdigest())
+    flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(os.path.join(directory, name), flags, 0o600)
+    try:
+        status = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(status.st_mode)
+            or status.st_uid != os.geteuid()
+            or status.st_mode & 0o077
+            or status.st_nlink != 1
+        ):
+            _fail("Creation-lock file is outside the trusted boundary.")
+        fcntl.flock(descriptor, fcntl.LOCK_EX)
+        return descriptor
+    except Exception:
+        os.close(descriptor)
+        raise
 
 
 def trusted_executable(path, expected_sha256, name):

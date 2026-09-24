@@ -23,6 +23,7 @@ from ansible.plugins.action import ActionBase
 
 from ._onepassword_boundary import (
     _TRUSTED_CHILD_PATH,
+    claim_creation_lock,
     claim_approval,
     normalize_approval,
     normalize_user_uuid_list,
@@ -754,21 +755,14 @@ class _OnePasswordSSHKeyItemStore:
         if version != config["cli_version"]:
             _fail("The controller 1Password CLI version does not match cli_version.")
 
-        identities = self.client.metadata(
-            ["account", "list", "--format", "json"],
+        identity = self.client.metadata(
+            ["whoami", "--account", config["account_id"], "--format", "json"],
             "desktop account identity verification",
         )
-        if not isinstance(identities, list):
+        if not isinstance(identity, dict):
             _fail("1Password returned invalid desktop account metadata.")
-        matching_identities = [
-            identity
-            for identity in identities
-            if isinstance(identity, dict)
-            and identity.get("account_uuid") == config["account_id"]
-        ]
-        if len(matching_identities) != 1:
+        if identity.get("account_uuid") != config["account_id"]:
             _fail("The signed-in 1Password account does not match account_id.")
-        identity = matching_identities[0]
         if (
             _normalize_sign_in_address(str(identity.get("url", "")))
             != config["account_sign_in_address"].lower()
@@ -1098,27 +1092,39 @@ class _OnePasswordSSHKeyItemStore:
 
         created = False
         if operation == "apply":
-            claim_approval(config["approval"])
-            creation_arguments = [
-                "item",
-                "create",
-                "--account",
-                config["account_id"],
-                "--vault",
-                config["vault_id"],
-                "--category=ssh",
-                "--title",
-                config["item_title"],
-                "--generate-ssh-key=ed25519",
-                "subject[text]={0}".format(config["subject"]),
-                "schema_version[text]={0}".format(config["schema_version"]),
-            ]
-            if config["tags"]:
-                creation_arguments[9:9] = ["--tags", ",".join(config["tags"])]
-            self.client.discard(creation_arguments, "SSH item creation")
-            observed = self.inspect(config)
-            if not observed["exists"]:
-                _fail("1Password did not return the created SSH item metadata.")
+            lock_descriptor = claim_creation_lock(
+                config["approval"],
+                "{0}/{1}/{2}".format(
+                    config["account_id"], config["vault_id"], config["item_title"]
+                ),
+            )
+            try:
+                observed = self.inspect(config)
+                if observed["exists"]:
+                    _fail("Concurrent creation found an existing SSH Key item.")
+                claim_approval(config["approval"])
+                creation_arguments = [
+                    "item",
+                    "create",
+                    "--account",
+                    config["account_id"],
+                    "--vault",
+                    config["vault_id"],
+                    "--category=ssh",
+                    "--title",
+                    config["item_title"],
+                    "--generate-ssh-key=ed25519",
+                    "subject[text]={0}".format(config["subject"]),
+                    "schema_version[text]={0}".format(config["schema_version"]),
+                ]
+                if config["tags"]:
+                    creation_arguments[9:9] = ["--tags", ",".join(config["tags"])]
+                self.client.discard(creation_arguments, "SSH item creation")
+                observed = self.inspect(config)
+                if not observed["exists"]:
+                    _fail("1Password did not return the created SSH item metadata.")
+            finally:
+                os.close(lock_descriptor)
             created = True
         if not observed["exists"]:
             _fail("The exact SSH Key item is absent.")

@@ -125,14 +125,12 @@ class _FakeClient:
         self.calls.append((list(arguments), operation, False))
         assert "private" not in " ".join(arguments).lower()
         assert "--reveal" not in arguments
-        if arguments[:2] == ["account", "list"]:
-            return [
-                {
-                    "account_uuid": ACCOUNT_ID,
-                    "url": "example.1password.com",
-                    "user_uuid": USER_UUID,
-                }
-            ]
+        if arguments[0] == "whoami":
+            return {
+                "account_uuid": ACCOUNT_ID,
+                "url": "example.1password.com",
+                "user_uuid": USER_UUID,
+            }
         if arguments[:2] == ["vault", "get"]:
             return {"id": VAULT_ID}
         if arguments[:2] == ["item", "list"]:
