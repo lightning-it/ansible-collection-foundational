@@ -379,9 +379,10 @@ def test_invalid_ssh_key_contracts_fail_before_cli_use(overrides):
 
 def test_cli_environment_replaces_untrusted_path():
     environment = plugin._OnePasswordCLI._minimal_environment(
-        {"HOME": "/tmp/home", "PATH": "/tmp/attacker"}
+        {"HOME": "/tmp/home", "PATH": "/tmp/attacker", "TMPDIR": "/tmp/shared"}
     )
     assert environment["PATH"] == plugin._TRUSTED_CHILD_PATH
+    assert "TMPDIR" not in environment
 
 
 def test_tag_state_accepts_only_duplicate_instances_of_the_exact_tag_set():

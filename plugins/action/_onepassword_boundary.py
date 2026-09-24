@@ -490,6 +490,8 @@ def normalize_approval_authority(authority):
         ssh_keygen_sha256,
         "approval_ssh_keygen_path",
     )
+    if str(ssh_keygen_path) != authority["ssh_keygen_path"]:
+        _fail("approval_authority.ssh_keygen_path must be canonical.")
     return {
         "schema_version": 1,
         "identity": identity,

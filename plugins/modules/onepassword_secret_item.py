@@ -133,6 +133,14 @@ planned:
   type: bool
   returned: always
   description: Whether creation remains pending.
+operator_user_uuid:
+  type: str
+  returned: always
+  description: Allowlisted 1Password operator observed during validation.
+approval:
+  type: dict
+  returned: for apply
+  description: Non-sensitive approval evidence.
 """
 
 

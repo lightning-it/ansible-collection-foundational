@@ -247,9 +247,10 @@ def test_service_and_session_authentication_environment_is_rejected():
 
 def test_cli_environment_replaces_untrusted_path():
     environment = plugin._OnePasswordCLI._minimal_environment(
-        {"HOME": "/tmp/home", "PATH": "/tmp/attacker"}
+        {"HOME": "/tmp/home", "PATH": "/tmp/attacker", "TMPDIR": "/tmp/shared"}
     )
     assert environment["PATH"] == plugin._TRUSTED_CHILD_PATH
+    assert "TMPDIR" not in environment
 
 
 def test_observed_tags_reject_unhashable_metadata_fail_closed():

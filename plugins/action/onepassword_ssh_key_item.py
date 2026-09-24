@@ -534,7 +534,7 @@ class _OnePasswordCLI:
             )
         environment = {
             name: process_environment[name]
-            for name in ("HOME", "TMPDIR", "LANG", "LC_ALL")
+            for name in ("HOME", "LANG", "LC_ALL")
             if process_environment.get(name)
         }
         if not environment.get("HOME"):
@@ -922,25 +922,19 @@ class _OnePasswordSSHKeyItemStore:
             )
             agent_socket = trusted_agent_socket(config["agent_socket_path"])
             environment["SSH_AUTH_SOCK"] = agent_socket
-            completed = ssh_add.run(
+            returncode, output = run_bounded_output(
+                ssh_add,
                 ["-L"],
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                env=environment,
-                check=False,
-                timeout=_PROCESS_TIMEOUT_SECONDS,
+                environment,
+                _PROCESS_TIMEOUT_SECONDS,
+                maximum_size=65536,
             )
         except (OSError, subprocess.SubprocessError):
             _fail("The approved 1Password SSH Agent could not be inspected safely.")
-        if completed.returncode != 0:
+        if returncode != 0:
             _fail("The approved 1Password SSH Agent is unavailable or locked.")
-        if len(completed.stdout) > 65536:
-            _fail(
-                "The approved 1Password SSH Agent returned excessive public metadata."
-            )
         try:
-            public_rows = completed.stdout.decode("utf-8", errors="strict").splitlines()
+            public_rows = output.decode("utf-8", errors="strict").splitlines()
         except UnicodeDecodeError:
             _fail("The approved 1Password SSH Agent returned invalid public metadata.")
         matched_fingerprints = []

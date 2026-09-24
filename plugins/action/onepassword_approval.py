@@ -24,6 +24,7 @@ from ._onepassword_boundary import (
     approval_signing_payload,
     normalize_approval,
     normalize_approval_authority,
+    run_bounded_output,
     safe_approval_metadata,
     trusted_agent_socket,
     trusted_executable,
@@ -108,21 +109,19 @@ def _verified_agent_signer(config):
         "SSH_AUTH_SOCK": agent_socket,
     }
     try:
-        completed = ssh_add.run(
+        returncode, output = run_bounded_output(
+            ssh_add,
             ["-L"],
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            env=environment,
-            check=False,
-            timeout=30,
+            environment,
+            30,
+            maximum_size=65536,
         )
     except (OSError, subprocess.SubprocessError):
         _fail("The approved signing SSH Agent could not be inspected safely.")
-    if completed.returncode != 0 or len(completed.stdout) > 65536:
+    if returncode != 0:
         _fail("The approved signing SSH Agent is unavailable or locked.")
     try:
-        rows = completed.stdout.decode("ascii", errors="strict").splitlines()
+        rows = output.decode("ascii", errors="strict").splitlines()
     except UnicodeError:
         _fail("The approved signing SSH Agent returned invalid public metadata.")
     expected_public_key = config["signing_public_key"]

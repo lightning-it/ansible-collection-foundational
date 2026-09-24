@@ -499,7 +499,7 @@ class _OnePasswordCLI:
             )
         environment = {
             name: process_environment[name]
-            for name in ("HOME", "TMPDIR", "LANG", "LC_ALL")
+            for name in ("HOME", "LANG", "LC_ALL")
             if process_environment.get(name)
         }
         if not environment.get("HOME"):

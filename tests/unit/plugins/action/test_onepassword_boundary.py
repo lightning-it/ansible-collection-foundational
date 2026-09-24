@@ -351,6 +351,7 @@ def test_approval_rejects_expiry_and_insecure_replay_directory(tmp_path):
         "authority_fingerprint",
         "allowed_signers_digest",
         "verifier_digest",
+        "verifier_alias",
         "replay_directory_alias",
     ],
 )
@@ -365,6 +366,10 @@ def test_approval_authority_pins_fail_closed(tmp_path, mutation):
         changed["allowed_signers_sha256"] = "0" * 64
     elif mutation == "verifier_digest":
         changed["ssh_keygen_sha256"] = "0" * 64
+    elif mutation == "verifier_alias":
+        alias = tmp_path / "verifier-alias"
+        alias.symlink_to(authority["ssh_keygen_path"])
+        changed["ssh_keygen_path"] = str(alias)
     else:
         alias = tmp_path / "replay-alias"
         alias.symlink_to(authority["replay_directory"])
