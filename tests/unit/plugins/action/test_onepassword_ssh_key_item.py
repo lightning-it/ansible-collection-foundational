@@ -159,7 +159,7 @@ class _FakeClient:
     def discard(self, arguments, operation):
         self.calls.append((list(arguments), operation, True))
         assert "--category=ssh" in arguments
-        assert "--ssh-generate-key=ed25519" in arguments
+        assert "--generate-ssh-key=ed25519" in arguments
         assert "private" not in " ".join(arguments).lower()
         self.exists = True
 
@@ -214,6 +214,18 @@ def test_fingerprint_is_recomputed_and_mismatch_fails_closed():
                 )
             )
         )
+
+
+def test_agent_rows_reject_malformed_keys_but_allow_well_formed_unrelated_keys():
+    with pytest.raises(AnsibleActionFail, match="malformed public-key row"):
+        plugin._agent_row_identity("ssh-ed25519 not-base64")
+
+    algorithm = b"ssh-rsa"
+    unrelated_blob = struct.pack(">I", len(algorithm)) + algorithm + b"payload"
+    unrelated_row = "ssh-rsa {0} unrelated".format(
+        base64.b64encode(unrelated_blob).decode("ascii")
+    )
+    assert plugin._agent_row_identity(unrelated_row) is None
 
 
 def test_public_metadata_rejects_unrequested_sensitive_fields():

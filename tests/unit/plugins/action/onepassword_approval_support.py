@@ -133,7 +133,7 @@ def sign_approval(approval, authority, operation, target, binding):
     payload = boundary.approval_signing_payload(
         unsigned, authority, operation, target, binding
     )
-    signature = _SIGNING_KEYS[authority["allowed_signers_path"]].sign(payload)
+    signature = sign_payload(authority, payload)
     signed = dict(unsigned)
     signed["signature"] = (
         "-----BEGIN SSH SIGNATURE-----\n"
@@ -141,3 +141,8 @@ def sign_approval(approval, authority, operation, target, binding):
         + "\n-----END SSH SIGNATURE-----\n"
     )
     return signed
+
+
+def sign_payload(authority, payload):
+    """Sign exact test payload bytes with the ephemeral authority key."""
+    return _SIGNING_KEYS[authority["allowed_signers_path"]].sign(payload)

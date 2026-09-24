@@ -657,6 +657,29 @@ def _public_identity(public_key):
     return " ".join(parts), "SHA256:{0}".format(fingerprint)
 
 
+def _agent_row_identity(row):
+    """Return an Ed25519 identity or validate one unrelated OpenSSH key row."""
+    if not isinstance(row, str) or not row.isascii() or len(row) > 16384:
+        _fail("The approved SSH Agent returned a malformed public-key row.")
+    parts = row.split(maxsplit=2)
+    if len(parts) < 2 or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9@._+-]{0,127}", parts[0]):
+        _fail("The approved SSH Agent returned a malformed public-key row.")
+    if parts[0] == "ssh-ed25519":
+        try:
+            return _public_identity(row)
+        except AnsibleActionFail:
+            _fail("The approved SSH Agent returned a malformed public-key row.")
+    try:
+        blob = base64.b64decode(parts[1], validate=True)
+        algorithm_length = struct.unpack(">I", blob[:4])[0]
+        algorithm = blob[4 : 4 + algorithm_length].decode("ascii", errors="strict")
+    except (binascii.Error, UnicodeError, ValueError, struct.error):
+        _fail("The approved SSH Agent returned a malformed public-key row.")
+    if algorithm_length < 1 or algorithm != parts[0] or len(blob) <= 4 + algorithm_length:
+        _fail("The approved SSH Agent returned a malformed public-key row.")
+    return None
+
+
 def _write_controller_file(path, payload):
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
     if hasattr(os, "O_CLOEXEC"):
@@ -914,10 +937,10 @@ class _OnePasswordSSHKeyItemStore:
         for row in public_rows:
             if not row.strip():
                 continue
-            try:
-                unused_key, fingerprint = _public_identity(row.strip())
-            except AnsibleActionFail:
+            identity = _agent_row_identity(row.strip())
+            if identity is None:
                 continue
+            unused_key, fingerprint = identity
             if fingerprint == expected_fingerprint:
                 matched_fingerprints.append(fingerprint)
         if len(matched_fingerprints) != 1:
@@ -1082,7 +1105,7 @@ class _OnePasswordSSHKeyItemStore:
                 "--category=ssh",
                 "--title",
                 config["item_title"],
-                "--ssh-generate-key=ed25519",
+                "--generate-ssh-key=ed25519",
                 "subject[text]={0}".format(config["subject"]),
                 "schema_version[text]={0}".format(config["schema_version"]),
             ]

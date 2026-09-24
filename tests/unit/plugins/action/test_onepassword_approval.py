@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import base64
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -6,7 +7,10 @@ import pytest
 
 from ansible.errors import AnsibleActionFail
 from plugins.action import onepassword_approval as signer
-from tests.unit.plugins.action.onepassword_approval_support import build_authority
+from tests.unit.plugins.action.onepassword_approval_support import (
+    build_authority,
+    sign_payload,
+)
 
 
 def _arguments(tmp_path):
@@ -62,31 +66,28 @@ def test_sign_uses_exact_public_authority_contract(tmp_path, monkeypatch):
     config = signer._normalize_arguments(
         arguments, now=datetime(2026, 8, 9, 22, 0, tzinfo=timezone.utc)
     )
-    observed = {}
-
     class _FakeSigner:
         @staticmethod
         def run(arguments, **_kwargs):
             payload_path = Path(arguments[-1])
+            signature = sign_payload(expected_authority, payload_path.read_bytes())
             payload_path.with_name(payload_path.name + ".sig").write_text(
-                "synthetic-signature", encoding="ascii"
+                "-----BEGIN SSH SIGNATURE-----\n"
+                + base64.b64encode(signature).decode("ascii")
+                + "\n-----END SSH SIGNATURE-----\n",
+                encoding="ascii",
             )
             return SimpleNamespace(returncode=0)
 
-    def _normalize(approval, authority, *_args, **_kwargs):
-        observed["authority"] = authority
-        return approval
-
     monkeypatch.setattr(signer, "trusted_executable", lambda *_args: _FakeSigner())
     monkeypatch.setattr(signer, "_verified_agent_signer", lambda _config: "/agent")
-    monkeypatch.setattr(signer, "normalize_approval", _normalize)
-    monkeypatch.setattr(signer, "safe_approval_metadata", lambda _approval: {"ok": True})
 
     result = signer._sign(config)
 
-    assert result["approval"]["signature"] == "synthetic-signature"
-    assert set(observed["authority"]) == set(expected_authority)
-    assert observed["authority"] == signer._public_authority(config["authority"])
+    assert result["approval"]["signature"].startswith("-----BEGIN SSH SIGNATURE-----")
+    assert result["approval_metadata"]["authority_fingerprint"] == expected_authority[
+        "fingerprint"
+    ]
 
 
 def test_action_refuses_to_mint_approval_in_check_mode(monkeypatch):
