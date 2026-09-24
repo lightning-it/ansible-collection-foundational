@@ -187,10 +187,26 @@ def _normalize_arguments(args, now=None):
     }
 
 
+def _public_authority(authority):
+    """Return only the closed public Approval Authority contract."""
+    return {
+        "schema_version": authority["schema_version"],
+        "identity": authority["identity"],
+        "namespace": authority["namespace"],
+        "fingerprint": authority["fingerprint"],
+        "allowed_signers_path": authority["_requested_allowed_signers_path"],
+        "allowed_signers_sha256": authority["allowed_signers_sha256"],
+        "ssh_keygen_path": authority["_requested_ssh_keygen_path"],
+        "ssh_keygen_sha256": authority["ssh_keygen_sha256"],
+        "replay_directory": authority["replay_directory"],
+    }
+
+
 def _sign(config):
+    authority = _public_authority(config["authority"])
     payload = approval_signing_payload(
         config["approval"],
-        config["authority"],
+        authority,
         config["operation"],
         config["target"],
         config["binding"],
@@ -246,23 +262,7 @@ def _sign(config):
         signed["signature"] = signature
         normalized = normalize_approval(
             signed,
-            {
-                "schema_version": config["authority"]["schema_version"],
-                "identity": config["authority"]["identity"],
-                "namespace": config["authority"]["namespace"],
-                "fingerprint": config["authority"]["fingerprint"],
-                "allowed_signers_path": config["authority"][
-                    "_requested_allowed_signers_path"
-                ],
-                "allowed_signers_sha256": config["authority"][
-                    "allowed_signers_sha256"
-                ],
-                "ssh_keygen_path": config["authority"][
-                    "_requested_ssh_keygen_path"
-                ],
-                "ssh_keygen_sha256": config["authority"]["ssh_keygen_sha256"],
-                "replay_directory": config["authority"]["replay_directory"],
-            },
+            authority,
             config["operation"],
             config["target"],
             config["binding"],

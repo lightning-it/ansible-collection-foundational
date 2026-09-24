@@ -101,6 +101,23 @@ def test_agent_socket_resolves_official_style_alias_with_spaces(tmp_path):
         agent.close()
 
 
+def test_trusted_path_boundaries_reject_symlink_loops_fail_closed(tmp_path):
+    first = tmp_path / "loop-a"
+    second = tmp_path / "loop-b"
+    first.symlink_to(second)
+    second.symlink_to(first)
+
+    validations = (
+        lambda: boundary.trusted_executable(str(first), "0" * 64, "tool"),
+        lambda: boundary.trusted_agent_socket(str(first)),
+        lambda: boundary.trusted_regular_file(str(first), "file"),
+        lambda: boundary.trusted_replay_directory(str(first), "replay"),
+    )
+    for validate in validations:
+        with pytest.raises(AnsibleActionFail):
+            validate()
+
+
 def test_user_uuid_list_rejects_unhashable_elements_fail_closed():
     with pytest.raises(AnsibleActionFail, match="unique non-empty list"):
         boundary.normalize_user_uuid_list([{}], "authorized_user_uuids")

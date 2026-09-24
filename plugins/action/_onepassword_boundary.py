@@ -211,7 +211,7 @@ def trusted_executable(path, expected_sha256, name):
         _fail("{0} must be an exact normalized path.".format(name))
     try:
         resolved = Path(path).resolve(strict=True)
-    except OSError:
+    except (OSError, RuntimeError):
         _fail("{0} does not resolve to an existing controller file.".format(name))
     descriptor = _open_trusted_executable(resolved, expected_sha256, name)
     os.close(descriptor)
@@ -228,7 +228,7 @@ def trusted_agent_socket(path, name="agent_socket_path"):
         _fail("{0} must be an exact normalized path.".format(name))
     try:
         resolved = Path(path).resolve(strict=True)
-    except OSError:
+    except (OSError, RuntimeError):
         _fail("{0} does not resolve to an existing controller socket.".format(name))
     _validate_parent_chain(resolved.parent, name)
     status = os.lstat(str(resolved))
@@ -250,7 +250,7 @@ def trusted_regular_file(path, name, maximum_size=1048576):
         _fail("{0} must be an exact normalized path.".format(name))
     try:
         resolved = Path(path).resolve(strict=True)
-    except OSError:
+    except (OSError, RuntimeError):
         _fail("{0} does not resolve to an existing controller file.".format(name))
     if str(resolved) != path:
         _fail("{0} must be canonical and may not be a symbolic link.".format(name))
@@ -317,7 +317,7 @@ def trusted_replay_directory(path, name):
         _fail("{0} must be an exact normalized path.".format(name))
     try:
         resolved = Path(path).resolve(strict=True)
-    except OSError:
+    except (OSError, RuntimeError):
         _fail("{0} does not exist.".format(name))
     if str(resolved) != path:
         _fail("{0} must be canonical and may not be a symbolic link.".format(name))

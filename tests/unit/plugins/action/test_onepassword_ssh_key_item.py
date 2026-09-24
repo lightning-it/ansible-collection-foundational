@@ -111,9 +111,10 @@ def _apply_arguments(tmp_path, **overrides):
 
 
 class _FakeClient:
-    def __init__(self, exists=False, fingerprint=FINGERPRINT):
+    def __init__(self, exists=False, fingerprint=FINGERPRINT, extra_fields=None):
         self.exists = exists
         self.fingerprint = fingerprint
+        self.extra_fields = list(extra_fields or [])
         self.calls = []
 
     def _run(self, arguments, operation, discard_stdout=False):
@@ -152,7 +153,7 @@ class _FakeClient:
                 {"label": "schema_version", "value": "1"},
                 {"label": "public key", "value": PUBLIC_KEY},
                 {"label": "fingerprint", "value": self.fingerprint},
-            ]
+            ] + self.extra_fields
         raise AssertionError("unexpected metadata request")
 
     def discard(self, arguments, operation):
@@ -203,6 +204,24 @@ def test_read_public_requires_pinned_item_id_and_fingerprint():
 def test_fingerprint_is_recomputed_and_mismatch_fails_closed():
     client = _FakeClient(exists=True, fingerprint="SHA256:wrong")
     with pytest.raises(AnsibleActionFail):
+        plugin._OnePasswordSSHKeyItemStore(client).run(
+            plugin._normalize_arguments(
+                _arguments(
+                    operation="read_public",
+                    item_id=ITEM_ID,
+                    item_version=ITEM_VERSION,
+                    expected_fingerprint=FINGERPRINT,
+                )
+            )
+        )
+
+
+def test_public_metadata_rejects_unrequested_sensitive_fields():
+    client = _FakeClient(
+        exists=True,
+        extra_fields=[{"label": "private key", "value": "must-not-be-returned"}],
+    )
+    with pytest.raises(AnsibleActionFail, match="exact selected public-field set"):
         plugin._OnePasswordSSHKeyItemStore(client).run(
             plugin._normalize_arguments(
                 _arguments(

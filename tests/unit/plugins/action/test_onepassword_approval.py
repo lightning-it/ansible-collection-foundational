@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -53,6 +54,39 @@ def test_normalize_rejects_invalid_contract(tmp_path, mutation):
 def test_authority_public_key_is_derived_from_pinned_allowed_signers(tmp_path):
     normalized = signer._normalize_arguments(_arguments(tmp_path))
     assert normalized["signing_public_key"].startswith("ssh-ed25519 ")
+
+
+def test_sign_uses_exact_public_authority_contract(tmp_path, monkeypatch):
+    arguments = _arguments(tmp_path)
+    expected_authority = dict(arguments["approval_authority"])
+    config = signer._normalize_arguments(
+        arguments, now=datetime(2026, 8, 9, 22, 0, tzinfo=timezone.utc)
+    )
+    observed = {}
+
+    class _FakeSigner:
+        @staticmethod
+        def run(arguments, **_kwargs):
+            payload_path = Path(arguments[-1])
+            payload_path.with_name(payload_path.name + ".sig").write_text(
+                "synthetic-signature", encoding="ascii"
+            )
+            return SimpleNamespace(returncode=0)
+
+    def _normalize(approval, authority, *_args, **_kwargs):
+        observed["authority"] = authority
+        return approval
+
+    monkeypatch.setattr(signer, "trusted_executable", lambda *_args: _FakeSigner())
+    monkeypatch.setattr(signer, "_verified_agent_signer", lambda _config: "/agent")
+    monkeypatch.setattr(signer, "normalize_approval", _normalize)
+    monkeypatch.setattr(signer, "safe_approval_metadata", lambda _approval: {"ok": True})
+
+    result = signer._sign(config)
+
+    assert result["approval"]["signature"] == "synthetic-signature"
+    assert set(observed["authority"]) == set(expected_authority)
+    assert observed["authority"] == signer._public_authority(config["authority"])
 
 
 def test_action_refuses_to_mint_approval_in_check_mode(monkeypatch):

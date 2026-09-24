@@ -848,6 +848,9 @@ class _OnePasswordSSHKeyItemStore:
             "selected SSH public-field verification",
         )
         values = _field_values(fields)
+        expected_labels = {"subject", "schema_version", "public key", "fingerprint"}
+        if set(values) != expected_labels:
+            _fail("1Password did not return the exact selected public-field set.")
         if values.get("subject") != config["subject"]:
             _fail("The 1Password SSH item subject metadata does not match.")
         if values.get("schema_version") != str(config["schema_version"]):
