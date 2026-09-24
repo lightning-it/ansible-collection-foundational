@@ -196,7 +196,7 @@ fingerprint:
   description: Locally recomputed SHA-256 public-key fingerprint.
 agent_verified:
   type: bool
-  returned: when the item exists
+  returned: for apply and verify_agent
   description:
     - Whether the exact key was uniquely available and completed a fresh signing challenge through the approved SSH
       Agent socket.

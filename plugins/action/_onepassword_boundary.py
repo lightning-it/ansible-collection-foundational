@@ -264,10 +264,27 @@ def claim_creation_lock(normalized_approval, identity):
         _fail("Creation-lock identity is invalid.")
     directory = normalized_approval["_replay_directory"]
     name = "create-{0}.lock".format(hashlib.sha256(identity.encode("ascii")).hexdigest())
+    directory_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    directory_flags |= getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        directory_descriptor = os.open(directory, directory_flags)
+    except OSError:
+        _fail("Creation-lock directory could not be opened safely.")
     flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_CLOEXEC", 0)
     flags |= getattr(os, "O_NOFOLLOW", 0)
-    descriptor = os.open(os.path.join(directory, name), flags, 0o600)
+    descriptor = -1
     try:
+        directory_status = os.fstat(directory_descriptor)
+        _safe_owner(directory_status, "creation-lock directory", controller_only=True)
+        if directory_status.st_mode & 0o077:
+            _fail("Creation-lock directory permissions changed.")
+        if directory_status.st_dev != normalized_approval.get(
+            "_replay_directory_device"
+        ) or directory_status.st_ino != normalized_approval.get(
+            "_replay_directory_inode"
+        ):
+            _fail("Creation-lock directory identity changed.")
+        descriptor = os.open(name, flags, 0o600, dir_fd=directory_descriptor)
         status = os.fstat(descriptor)
         if (
             not stat.S_ISREG(status.st_mode)
@@ -279,8 +296,11 @@ def claim_creation_lock(normalized_approval, identity):
         fcntl.flock(descriptor, fcntl.LOCK_EX)
         return descriptor
     except Exception:
-        os.close(descriptor)
+        if descriptor >= 0:
+            os.close(descriptor)
         raise
+    finally:
+        os.close(directory_descriptor)
 
 
 def trusted_executable(path, expected_sha256, name):

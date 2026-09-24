@@ -160,10 +160,9 @@ def test_asymmetric_approval_is_verified_and_claimed_exactly_once(tmp_path):
         )
     with pytest.raises(AnsibleActionFail):
         boundary.claim_approval(normalized, now=now)
-
-
-def test_claim_rejects_replaced_replay_directory(tmp_path):
+def test_claim_rejects_replaced_replay_directory(tmp_path, monkeypatch):
     authority, approval, binding, replay, now = _approval(tmp_path)
+    monkeypatch.setattr(boundary, "_verify_approval_signature", lambda *_args: True)
     normalized = boundary.normalize_approval(
         approval, authority, "unlock", "host01.example.test", binding, now=now
     )
@@ -173,6 +172,8 @@ def test_claim_rejects_replaced_replay_directory(tmp_path):
 
     with pytest.raises(AnsibleActionFail):
         boundary.claim_approval(normalized, now=now)
+    with pytest.raises(AnsibleActionFail):
+        boundary.claim_creation_lock(normalized, "vault/item")
 
 
 def test_publicly_forged_signature_is_rejected(tmp_path):
