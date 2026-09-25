@@ -284,7 +284,10 @@ def claim_creation_lock(normalized_approval, identity):
             "_replay_directory_inode"
         ):
             _fail("Creation-lock directory identity changed.")
-        descriptor = os.open(name, flags, 0o600, dir_fd=directory_descriptor)
+        try:
+            descriptor = os.open(name, flags, 0o600, dir_fd=directory_descriptor)
+        except OSError:
+            _fail("Creation-lock file could not be opened safely.")
         status = os.fstat(descriptor)
         if (
             not stat.S_ISREG(status.st_mode)
