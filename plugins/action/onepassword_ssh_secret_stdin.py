@@ -757,9 +757,18 @@ def _revalidate_ssh_item(client, ssh_config, public_identity, operator_user_uuid
         _fail("The pinned SSH public identity changed before recovery consumption.")
 
 
-def _ssh_option_path(value):
+def _ssh_path_argument(value):
     if any(character in value for character in "\x00\r\n"):
         _fail("An SSH option path contains an invalid character.")
+    # OpenSSH expands percent tokens in IdentityFile, IdentityAgent, and
+    # UserKnownHostsFile even when their values are already separate argv
+    # entries or quoted option values.  Double every literal percent so SSH
+    # consumes the exact path that was verified by this action.
+    return value.replace("%", "%%")
+
+
+def _ssh_option_path(value):
+    value = _ssh_path_argument(value)
     return '"{0}"'.format(value.replace("\\", "\\\\").replace('"', '\\"'))
 
 
@@ -869,7 +878,7 @@ def _run_ssh(config, known_host_line, public_identity, secret):
             "-o",
             "IdentitiesOnly=yes",
             "-i",
-            public_key_path,
+            _ssh_path_argument(public_key_path),
             "-o",
             "KbdInteractiveAuthentication=no",
             "-o",

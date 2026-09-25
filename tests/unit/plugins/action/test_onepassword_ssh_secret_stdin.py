@@ -591,6 +591,14 @@ def test_macos_agent_socket_path_is_quoted_without_shell_interpolation():
     assert plugin._ssh_option_path(path) == '"{0}"'.format(path)
 
 
+def test_ssh_path_arguments_escape_all_percent_tokens_consistently():
+    path = "/private/tmp/identity-%h-%p-%%.pub"
+    escaped = "/private/tmp/identity-%%h-%%p-%%%%.pub"
+
+    assert plugin._ssh_path_argument(path) == escaped
+    assert plugin._ssh_option_path(path) == '"{0}"'.format(escaped)
+
+
 def test_ssh_identity_is_revalidated_after_secret_transport(monkeypatch):
     class _Store:
         @staticmethod
