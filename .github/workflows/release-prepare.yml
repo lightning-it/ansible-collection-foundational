@@ -101,12 +101,13 @@ jobs:
           CREATE_GITHUB_RELEASE_INPUT: ${{ github.event.inputs.create_github_release }}
           PUBLISH_GALAXY_INPUT: ${{ github.event.inputs.publish_galaxy }}
           AUTO_RELEASE_BUMP: minor
+          RELEASE_BOT_LOGIN: ${{ steps.release-bot.outputs.login }}
         run: |
           set -euo pipefail
 
-          bot_login="$(gh api "users/lightning-it-release-automation%5Bbot%5D" --jq .login)"
-          if [ "$bot_login" != "lightning-it-release-automation[bot]" ]; then
-            echo "::error::Release App identity mismatch: expected lightning-it-release-automation[bot]."
+          bot_login="$RELEASE_BOT_LOGIN"
+          if [ -z "$bot_login" ]; then
+            echo "::error::Resolved release App bot identity is empty."
             exit 1
           fi
           gh auth setup-git
@@ -347,21 +348,26 @@ jobs:
           validate_existing_release_pr() {
             local candidate="$1"
             local candidate_json
-            candidate_json="$(gh pr view "$candidate" \
-              --json author,baseRefName,baseRefOid,headRefName,headRefOid,headRepositoryOwner,isDraft)"
+            local candidate_number
+            candidate_number="$(gh pr view "$candidate" --json number --jq .number)"
+            [[ "$candidate_number" =~ ^[1-9][0-9]*$ ]]
+            candidate_json="$(
+              gh api "repos/${GITHUB_REPOSITORY}/pulls/${candidate_number}"
+            )"
             jq -e \
               --arg base "$TARGET_BRANCH" \
+              --arg bot_login "$bot_login" \
               --arg expected_base "$expected_base" \
               --arg expected_head "$expected_head" \
               --arg head "$RELEASE_BRANCH" \
               --arg owner "$GITHUB_REPOSITORY_OWNER" '
-                .author.login == "app/lightning-it-release-automation"
-                and .baseRefName == $base
-                and .baseRefOid == $expected_base
-                and .headRefName == $head
-                and .headRefOid == $expected_head
-                and .headRepositoryOwner.login == $owner
-                and .isDraft == false
+                .user.login == $bot_login
+                and .base.ref == $base
+                and .base.sha == $expected_base
+                and .head.ref == $head
+                and .head.sha == $expected_head
+                and .head.repo.owner.login == $owner
+                and .draft == false
               ' <<< "$candidate_json" >/dev/null
           }
           created_pr=false
@@ -378,29 +384,33 @@ jobs:
             )"
             created_pr=true
           fi
-          release_pr="$(gh pr view "$existing" \
-            --json author,baseRefName,baseRefOid,headRefName,headRefOid,headRepositoryOwner,isDraft,number,title)"
+          release_pr_number="$(gh pr view "$existing" --json number --jq .number)"
+          [[ "$release_pr_number" =~ ^[1-9][0-9]*$ ]]
+          release_pr="$(
+            gh api "repos/${GITHUB_REPOSITORY}/pulls/${release_pr_number}"
+          )"
           jq -e \
             --arg base "$TARGET_BRANCH" \
+            --arg bot_login "$bot_login" \
             --arg expected_base "$expected_base" \
             --arg expected_head "$expected_head" \
             --arg head "$RELEASE_BRANCH" \
             --arg owner "$GITHUB_REPOSITORY_OWNER" \
             --arg title "Release v${VERSION}" '
-              .author.login == "app/lightning-it-release-automation"
-              and .baseRefName == $base
-              and .baseRefOid == $expected_base
-              and .headRefName == $head
-              and .headRefOid == $expected_head
-              and .headRepositoryOwner.login == $owner
-              and .isDraft == false
+              .user.login == $bot_login
+              and .base.ref == $base
+              and .base.sha == $expected_base
+              and .head.ref == $head
+              and .head.sha == $expected_head
+              and .head.repo.owner.login == $owner
+              and .draft == false
               and .title == $title
             ' <<< "$release_pr" >/dev/null
           {
             echo "pr_number=$(jq -r .number <<<"$release_pr")"
-            echo "base_ref=$(jq -r .baseRefName <<<"$release_pr")"
-            echo "expected_base=$(jq -r .baseRefOid <<<"$release_pr")"
-            echo "expected_head=$(jq -r .headRefOid <<<"$release_pr")"
+            echo "base_ref=$(jq -r .base.ref <<<"$release_pr")"
+            echo "expected_base=$(jq -r .base.sha <<<"$release_pr")"
+            echo "expected_head=$(jq -r .head.sha <<<"$release_pr")"
             if [ "$branch_advanced" = true ] || [ "$created_pr" = true ]; then
               echo "dispatch_review=true"
             else
