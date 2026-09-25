@@ -78,9 +78,13 @@
       - --test-passphrase
       - --type
       - luks
+      - --key-file
+      - '-'
       - "{{ hetzner_rescue_validate_luks_root.stdout | trim }}"
     stdin: "{{ hetzner_rescue_validate_luks_passphrase }}"
-    stdin_add_newline: true
+    # Explicit key-file mode consumes exact bytes. Appending a newline changes
+    # the retained secret and creates a false-negative recovery proof.
+    stdin_add_newline: false
   changed_when: false
   no_log: true
 
