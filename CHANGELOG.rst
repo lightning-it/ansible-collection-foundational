@@ -4,6 +4,44 @@ Lightning IT Collection Release Notes Release Notes
 
 .. contents:: Topics
 
+v1.34.0
+=======
+
+Minor Changes
+-------------
+
+- Add ``onepassword_ssh_key_item`` for fail-closed Ed25519 creation, immutable ID/version/fingerprint validation, and an exact-Agent signing challenge while making private-key export structurally unavailable.
+- Add the controller-only ``onepassword_secret_item`` action for 1Password-internal generation and immutable item ID/version validation without ever reading or returning the generated Password value.
+- Add the controller-only ``onepassword_ssh_secret_stdin`` action and module contract for one-time, approval-bound, no-output SSH secret delivery.
+- onepassword_approval - add a controller-only action that creates and verifies short-lived, commit-bound SSHSIG approvals through one exact, pinned SSH Agent key for one 1Password operation without exposing signing material.
+
+Breaking Changes / Porting Guide
+--------------------------------
+
+- The two 1Password item actions now require executable SHA-256 pins and an authorized user UUID allowlist. Mutating creation operations require ``approval_authority`` plus an armored signature in the one-time ``approval`` mapping instead of static ``confirmation``. ``approval_authority.replay_directory`` is now mandatory and defines the only accepted replay domain.
+
+Security Fixes
+--------------
+
+- Bind controller executables to complete SHA-256 digests and safe owner, mode, link, and parent-directory metadata; require an allowlisted ``op whoami`` user UUID and expose only that UUID as non-secret operator evidence.
+- Preserve the exact 1Password secret bytes through stdin without appending a newline, and bind unlock execution to the approved host identity, command, item versions, signing authority, and replay claim.
+- Replace publicly computable confirmation strings with expiring Ed25519 approvals verified by a digest-pinned ``ssh-keygen -Y verify`` executable against one exact, digest-pinned allowed-signers identity and fixed signature namespace. Sign the complete normalized non-secret contract, including repository commits, target, dependency paths and digests, account boundary, item identities, and Agent socket.
+- Scope the atomic replay marker globally to Approval Authority, execution ID, and nonce, independently of action target or payload, so a re-signed cross-target or cross-binding request cannot reuse an already consumed approval. Pin the single canonical controller-only replay directory in ``approval_authority``, require the approval path to match it exactly, and fail closed if the directory identity changes between validation and atomic claim.
+- Validate 1Password account and user UUIDs using their real uppercase 26-character CLI representation while retaining the lowercase contract for vault and item IDs. This prevents valid desktop identities from being rejected or incorrectly treated as vault/item identifiers.
+
+Bugfixes
+--------
+
+- hetzner_rescue_validate - bind LUKS recovery validation explicitly to stdin and preserve the retained secret as exact bytes without an appended newline.
+
+New Modules
+-----------
+
+- lit.foundational.onepassword_approval - Sign one short\-lived controller\-local 1Password approval.
+- lit.foundational.onepassword_secret_item - Plan or create one exact 1Password Password item.
+- lit.foundational.onepassword_ssh_key_item - Plan, create, or inspect one exact 1Password SSH Key item.
+- lit.foundational.onepassword_ssh_secret_stdin - Stream one pinned 1Password secret into one pinned SSH session.
+
 v1.33.0
 =======
 
