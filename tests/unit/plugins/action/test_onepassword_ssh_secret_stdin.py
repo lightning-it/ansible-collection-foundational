@@ -441,6 +441,65 @@ def test_core_dump_boundary_sets_and_verifies_zero(monkeypatch):
     assert calls == [(0, 4096)]
 
 
+def test_ssh_consumer_is_terminated_and_reaped_after_interrupt(tmp_path, monkeypatch):
+    class _InterruptingInput:
+        @staticmethod
+        def fileno():
+            raise KeyboardInterrupt
+
+    class _Process:
+        def __init__(self):
+            self.stdin = _InterruptingInput()
+            self.returncode = None
+            self.killed = False
+            self.waited = False
+
+        def poll(self):
+            return self.returncode
+
+        def kill(self):
+            self.killed = True
+            self.returncode = -9
+
+        def wait(self, timeout=None):
+            self.waited = True
+            return self.returncode
+
+    process = _Process()
+
+    class _Executable:
+        @staticmethod
+        def popen(arguments, **kwargs):
+            assert arguments[0:2] == ["-F", "/dev/null"]
+            assert kwargs["env"]["PATH"] == plugin._TRUSTED_CHILD_PATH
+            return process
+
+    monkeypatch.setattr(plugin, "trusted_executable", lambda *unused: _Executable())
+    monkeypatch.setattr(
+        plugin, "trusted_agent_socket", lambda unused: str(tmp_path / "agent.sock")
+    )
+    config = {
+        "ssh_path": "/usr/bin/ssh",
+        "ssh_sha256": "a" * 64,
+        "ssh_key": {"agent_socket_path": str(tmp_path / "agent.sock")},
+        "destination_port": 2222,
+        "destination_user": "root",
+        "destination_host": SUBJECT,
+        "remote_command": "/bin/cryptroot-unlock",
+    }
+
+    with pytest.raises(KeyboardInterrupt):
+        plugin._run_ssh(
+            config,
+            "[{0}]:2222 {1}\n".format(SUBJECT, HOST_PUBLIC_KEY),
+            {"public_key": PUBLIC_KEY, "fingerprint": SSH_FINGERPRINT},
+            bytearray(SECRET),
+        )
+
+    assert process.killed is True
+    assert process.waited is True
+
+
 def test_macos_agent_socket_path_is_quoted_without_shell_interpolation():
     path = (
         "/Users/operator/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock"

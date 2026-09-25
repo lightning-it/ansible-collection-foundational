@@ -788,6 +788,8 @@ def _run_ssh(config, known_host_line, public_identity, secret):
     os.chmod(temporary_root, 0o700)
     public_key_path = os.path.join(temporary_root, "identity.pub")
     known_hosts_path = os.path.join(temporary_root, "known_hosts")
+    consumer = None
+    consumer_reaped = False
     try:
         _write_controller_file(
             public_key_path,
@@ -891,15 +893,10 @@ def _run_ssh(config, known_host_line, public_identity, secret):
                 offset += written
             consumer.stdin.close()
             consumer.wait(timeout=_PROCESS_TIMEOUT_SECONDS)
+            consumer_reaped = True
         except (BrokenPipeError, OSError):
-            if consumer.poll() is None:
-                consumer.kill()
-                consumer.wait()
             _fail("The pinned SSH recovery consumer rejected the protected input.")
         except subprocess.TimeoutExpired:
-            if consumer.poll() is None:
-                consumer.kill()
-                consumer.wait()
             _fail("The pinned SSH recovery consumer timed out and was terminated.")
         finally:
             if view is not None:
@@ -907,10 +904,20 @@ def _run_ssh(config, known_host_line, public_identity, secret):
         if consumer.returncode != 0:
             _fail("The pinned SSH recovery consumer failed closed.")
     finally:
+        process_cleanup_failed = False
+        if consumer is not None and not consumer_reaped:
+            try:
+                if consumer.poll() is None:
+                    consumer.kill()
+                consumer.wait()
+            except (OSError, subprocess.SubprocessError):
+                process_cleanup_failed = True
         for path in (known_hosts_path, public_key_path):
             if os.path.lexists(path):
                 os.unlink(path)
         os.rmdir(temporary_root)
+        if process_cleanup_failed:
+            _fail("The pinned SSH recovery consumer could not be reaped safely.")
 
 
 def _consume(config, check_mode=False):
