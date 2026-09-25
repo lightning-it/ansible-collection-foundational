@@ -12,6 +12,7 @@ import os
 import re
 import resource
 import selectors
+import stat
 import subprocess
 import tempfile
 import time
@@ -39,6 +40,7 @@ from ._onepassword_boundary import (
     trusted_agent_socket,
     trusted_executable,
     trusted_pinned_regular_file,
+    trusted_replay_directory,
 )
 
 
@@ -652,6 +654,8 @@ def _read_secret_bytes(client, password_config):
                     "read",
                     "--account",
                     password_config["account_id"],
+                    # Pinned 1Password CLI 2.38.1 supports --force and uses it
+                    # to prevent an interactive confirmation prompt.
                     "--force",
                     "--no-newline",
                     reference,
@@ -771,6 +775,33 @@ def _disable_core_dumps():
     return True
 
 
+def _trusted_ssh_temporary_parent(approval):
+    temporary_parent, status = trusted_replay_directory(
+        approval.get("_replay_directory"), "approval.replay_directory"
+    )
+    if status.st_dev != approval.get(
+        "_replay_directory_device"
+    ) or status.st_ino != approval.get("_replay_directory_inode"):
+        _fail("approval.replay_directory identity changed before SSH transport.")
+    return temporary_parent
+
+
+def _revalidate_ssh_temporary_directory(path, temporary_parent, approval):
+    if _trusted_ssh_temporary_parent(approval) != temporary_parent:
+        _fail("The SSH temporary parent changed before transport.")
+    try:
+        status = os.lstat(path)
+    except OSError:
+        _fail("The SSH temporary directory disappeared before transport.")
+    if (
+        not stat.S_ISDIR(status.st_mode)
+        or status.st_uid != os.getuid()
+        or stat.S_IMODE(status.st_mode) != 0o700
+        or os.path.dirname(path) != temporary_parent
+    ):
+        _fail("The SSH temporary directory is not controller-only.")
+
+
 def _run_ssh(config, known_host_line, public_identity, secret):
     ssh_path = trusted_executable(config["ssh_path"], config["ssh_sha256"], "ssh_path")
     agent_socket = trusted_agent_socket(config["ssh_key"]["agent_socket_path"])
@@ -784,7 +815,10 @@ def _run_ssh(config, known_host_line, public_identity, secret):
             environment[name] = os.environ[name]
     if not environment["HOME"]:
         _fail("HOME is required for the approved 1Password SSH Agent.")
-    temporary_root = tempfile.mkdtemp(prefix="lit-onepassword-ssh-")
+    temporary_parent = _trusted_ssh_temporary_parent(config["approval"])
+    temporary_root = tempfile.mkdtemp(
+        prefix="lit-onepassword-ssh-", dir=temporary_parent
+    )
     os.chmod(temporary_root, 0o700)
     public_key_path = os.path.join(temporary_root, "identity.pub")
     known_hosts_path = os.path.join(temporary_root, "known_hosts")
@@ -869,6 +903,9 @@ def _run_ssh(config, known_host_line, public_identity, secret):
             "{0}@{1}".format(config["destination_user"], config["destination_host"]),
             config["remote_command"],
         ]
+        _revalidate_ssh_temporary_directory(
+            temporary_root, temporary_parent, config["approval"]
+        )
         try:
             consumer = ssh_path.popen(
                 arguments,

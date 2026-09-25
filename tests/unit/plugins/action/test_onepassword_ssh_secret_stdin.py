@@ -211,6 +211,8 @@ def test_consumer_keeps_secret_out_of_result_and_process_arguments(
         "import os, sys\n"
         "if os.environ['PATH'] != {0!r} or 'TMPDIR' in os.environ:\n"
         "    raise SystemExit(6)\n"
+        "if not {{'read', '--force', '--no-newline'}}.issubset(set(sys.argv[1:])):\n"
+        "    raise SystemExit(5)\n"
         "sys.stdout.buffer.write({1!r})\n".format(
             plugin._TRUSTED_CHILD_PATH, SECRET
         ),
@@ -258,6 +260,14 @@ def test_consumer_keeps_secret_out_of_result_and_process_arguments(
     agent_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     agent_socket.bind(str(tmp_path / "agent.sock"))
     config = plugin._normalize_arguments(_arguments(tmp_path))
+    temporary_parents = []
+    real_mkdtemp = plugin.tempfile.mkdtemp
+
+    def _recording_mkdtemp(*args, **kwargs):
+        temporary_parents.append(kwargs.get("dir"))
+        return real_mkdtemp(*args, **kwargs)
+
+    monkeypatch.setattr(plugin.tempfile, "mkdtemp", _recording_mkdtemp)
     fake_client = SimpleNamespace(
         requested_binary=str(op_path),
         binary=str(op_path),
@@ -297,6 +307,7 @@ def test_consumer_keeps_secret_out_of_result_and_process_arguments(
     assert result["core_dumps_disabled"] is True
     assert marker.read_text(encoding="utf-8") == "ok"
     assert SECRET.decode("ascii") not in repr(result)
+    assert temporary_parents == [config["approval"]["_replay_directory"]]
     assert len(list((tmp_path / "replay").glob("*.used"))) == 1
 
 
@@ -478,6 +489,9 @@ def test_ssh_consumer_is_terminated_and_reaped_after_interrupt(tmp_path, monkeyp
     monkeypatch.setattr(
         plugin, "trusted_agent_socket", lambda unused: str(tmp_path / "agent.sock")
     )
+    replay_directory = tmp_path / "replay"
+    replay_directory.mkdir(mode=0o700)
+    replay_status = replay_directory.stat()
     config = {
         "ssh_path": "/usr/bin/ssh",
         "ssh_sha256": "a" * 64,
@@ -486,6 +500,11 @@ def test_ssh_consumer_is_terminated_and_reaped_after_interrupt(tmp_path, monkeyp
         "destination_user": "root",
         "destination_host": SUBJECT,
         "remote_command": "/bin/cryptroot-unlock",
+        "approval": {
+            "_replay_directory": str(replay_directory),
+            "_replay_directory_device": replay_status.st_dev,
+            "_replay_directory_inode": replay_status.st_ino,
+        },
     }
 
     with pytest.raises(KeyboardInterrupt):
