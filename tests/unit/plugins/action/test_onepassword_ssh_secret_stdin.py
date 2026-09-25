@@ -437,6 +437,71 @@ def test_secret_reader_uses_mutable_readv_and_rejects_short_or_oversized_values(
             plugin._read_secret_bytes(client, password_config)
 
 
+def test_secret_reader_terminates_and_reaps_op_after_interrupt(tmp_path, monkeypatch):
+    class _Process:
+        def __init__(self):
+            self.returncode = None
+            self.killed = False
+            self.waited = False
+
+        def poll(self):
+            return self.returncode
+
+        def kill(self):
+            self.killed = True
+            self.returncode = -9
+
+        def wait(self, timeout=None):
+            self.waited = True
+            return self.returncode
+
+    process = _Process()
+
+    class _Executable:
+        @staticmethod
+        def popen(arguments, **kwargs):
+            assert {"read", "--force", "--no-newline"}.issubset(set(arguments))
+            assert kwargs["env"]["PATH"] == plugin._TRUSTED_CHILD_PATH
+            return process
+
+    class _InterruptingSelector:
+        @staticmethod
+        def register(*unused):
+            return None
+
+        @staticmethod
+        def select(unused_timeout):
+            raise KeyboardInterrupt
+
+        @staticmethod
+        def close():
+            return None
+
+    monkeypatch.setattr(plugin, "trusted_executable", lambda *unused: _Executable())
+    monkeypatch.setattr(
+        plugin.selectors, "DefaultSelector", lambda: _InterruptingSelector()
+    )
+    client = SimpleNamespace(
+        requested_binary=str(tmp_path / "op"),
+        binary=str(tmp_path / "op"),
+        binary_sha256="a" * 64,
+        environment={"PATH": str(tmp_path / "untrusted-bin")},
+    )
+    password_config = {
+        "vault_id": VAULT_ID,
+        "item_id": PASSWORD_ITEM_ID,
+        "field_id": "password",
+        "account_id": ACCOUNT_ID,
+        "password_length": 64,
+    }
+
+    with pytest.raises(KeyboardInterrupt):
+        plugin._read_secret_bytes(client, password_config)
+
+    assert process.killed is True
+    assert process.waited is True
+
+
 def test_core_dump_boundary_sets_and_verifies_zero(monkeypatch):
     calls = []
     monkeypatch.setattr(

@@ -704,7 +704,7 @@ def _read_secret_bytes(client, password_config):
         if any(value in secret for value in (0, 10, 13)):
             _fail("1Password returned an invalid recovery-secret value.")
         return secret
-    except Exception:
+    except BaseException:
         if producer is not None and producer.poll() is None:
             producer.kill()
             producer.wait()
