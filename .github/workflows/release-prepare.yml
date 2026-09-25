@@ -113,8 +113,8 @@ jobs:
           set -euo pipefail
 
           bot_login="$RELEASE_BOT_LOGIN"
-          if [ -z "$bot_login" ]; then
-            echo "::error::Resolved release App bot identity is empty."
+          if [ "$bot_login" != "lightning-it-release-automation[bot]" ]; then
+            echo "::error::Resolved release App bot identity is not the canonical release automation App."
             exit 1
           fi
           gh auth setup-git
