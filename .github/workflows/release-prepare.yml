@@ -41,10 +41,17 @@ jobs:
     name: Prepare release PR
     runs-on: ubuntu-latest
     if: >-
-      github.event_name == 'workflow_dispatch' ||
+      github.ref_protected == true &&
       (
-        github.event_name == 'push' &&
-        !startsWith(github.event.head_commit.message, 'chore(release): prepare v')
+        github.ref == 'refs/heads/main' ||
+        github.ref == 'refs/heads/develop'
+      ) &&
+      (
+        github.event_name == 'workflow_dispatch' ||
+        (
+          github.event_name == 'push' &&
+          !startsWith(github.event.head_commit.message, 'chore(release): prepare v')
+        )
       )
     steps:
       - name: Checkout
