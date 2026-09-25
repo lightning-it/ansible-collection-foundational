@@ -105,8 +105,8 @@ def _safe_owner(status, name, controller_only=False):
     allowed = {os.getuid()} if controller_only else {0, os.getuid()}
     if status.st_uid not in allowed:
         _fail("{0} has an untrusted owner.".format(name))
-    if status.st_mode & 0o022:
-        _fail("{0} must not be group- or world-writable.".format(name))
+    if status.st_mode & (0o022 | stat.S_ISUID | stat.S_ISGID | stat.S_ISVTX):
+        _fail("{0} contains untrusted permission bits.".format(name))
 
 
 def _validate_parent_chain(path, name):

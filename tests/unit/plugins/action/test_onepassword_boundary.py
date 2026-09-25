@@ -48,6 +48,9 @@ def test_trusted_executable_requires_exact_digest_and_safe_metadata(tmp_path):
     executable.chmod(0o722)
     with pytest.raises(AnsibleActionFail):
         boundary.trusted_executable(str(executable), digest, "tool")
+    executable.chmod(0o4700)
+    with pytest.raises(AnsibleActionFail):
+        boundary.trusted_executable(str(executable), digest, "tool")
 
 
 def test_trusted_executable_rejects_mutable_parent_and_hard_link(tmp_path):
