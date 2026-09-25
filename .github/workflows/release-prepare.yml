@@ -41,10 +41,17 @@ jobs:
     name: Prepare release PR
     runs-on: ubuntu-latest
     if: >-
-      github.event_name == 'workflow_dispatch' ||
+      github.ref_protected == true &&
       (
-        github.event_name == 'push' &&
-        !startsWith(github.event.head_commit.message, 'chore(release): prepare v')
+        github.ref == 'refs/heads/main' ||
+        github.ref == 'refs/heads/develop'
+      ) &&
+      (
+        github.event_name == 'workflow_dispatch' ||
+        (
+          github.event_name == 'push' &&
+          !startsWith(github.event.head_commit.message, 'chore(release): prepare v')
+        )
       )
     steps:
       - name: Checkout
@@ -70,6 +77,9 @@ jobs:
           client-id: ${{ vars.RELEASE_AUTOMATION_APP_CLIENT_ID }}
           private-key: ${{ secrets.RELEASE_AUTOMATION_APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-pull-requests: write
 
       - name: Resolve release automation App bot identity
         id: release-bot
@@ -89,7 +99,7 @@ jobs:
           echo "email=${bot_id}+${login}@users.noreply.github.com" >>"$GITHUB_OUTPUT"
 
       - name: Prepare release branch
-        id: prepare-release
+        id: exact-review-target
         env:
           GH_TOKEN: ${{ steps.release-app.outputs.token }}
           VERSION_INPUT: ${{ github.event.inputs.version }}
@@ -98,12 +108,13 @@ jobs:
           CREATE_GITHUB_RELEASE_INPUT: ${{ github.event.inputs.create_github_release }}
           PUBLISH_GALAXY_INPUT: ${{ github.event.inputs.publish_galaxy }}
           AUTO_RELEASE_BUMP: minor
+          RELEASE_BOT_LOGIN: ${{ steps.release-bot.outputs.login }}
         run: |
           set -euo pipefail
 
-          bot_login="$(gh api "users/lightning-it-release-automation%5Bbot%5D" --jq .login)"
+          bot_login="$RELEASE_BOT_LOGIN"
           if [ "$bot_login" != "lightning-it-release-automation[bot]" ]; then
-            echo "::error::Release App identity mismatch: expected lightning-it-release-automation[bot]."
+            echo "::error::Resolved release App bot identity is not the canonical release automation App."
             exit 1
           fi
           gh auth setup-git
@@ -159,7 +170,12 @@ jobs:
 
           data = yaml.safe_load(Path("galaxy.yml").read_text()) or {}
           current = str(data.get("version", "")).removeprefix("v")
-          match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:[-.][0-9A-Za-z.-]+)?", current)
+          match = re.fullmatch(
+              r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)"
+              r"(?:-(?:(?:0|[1-9][0-9]*)|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)"
+              r"(?:\.(?:(?:0|[1-9][0-9]*)|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*)?",
+              current,
+          )
           if not match:
               raise SystemExit(f"Cannot calculate next version from galaxy.yml version: {current!r}")
           major, minor, patch = map(int, match.groups())
@@ -173,7 +189,10 @@ jobs:
           PY
             )"
           fi
-          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$ ]]; then
+          semver_number='(0|[1-9][0-9]*)'
+          semver_identifier="(${semver_number}|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)"
+          semver_pattern="^${semver_number}\.${semver_number}\.${semver_number}(-${semver_identifier}(\.${semver_identifier})*)?$"
+          if ! [[ "$VERSION" =~ $semver_pattern ]]; then
             echo "::error::Version must be semantic versioning, for example 1.2.3."
             exit 1
           fi
@@ -182,7 +201,13 @@ jobs:
           RELEASE_BRANCH="release/v${VERSION}"
           echo "Preparing release PR for v${VERSION} from ${BASE_BRANCH} to ${TARGET_BRANCH}."
 
+          remote_head_before="$(
+            git ls-remote --heads origin "refs/heads/${RELEASE_BRANCH}" \
+              | awk 'NR == 1 { print $1 }'
+          )"
           git switch -C "$RELEASE_BRANCH" "origin/$BASE_BRANCH"
+          RELEASE_BASE_SHA="$(git rev-parse HEAD)"
+          export RELEASE_BASE_SHA
 
           python - <<'PY'
           import os
@@ -239,6 +264,29 @@ jobs:
               )
           PY
 
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          payload = {
+              "schema_version": 1,
+              "repository": os.environ["GITHUB_REPOSITORY"],
+              "base_sha": os.environ["RELEASE_BASE_SHA"],
+              "next_version": os.environ["VERSION"],
+              "preparer": {
+                  "login": "lightning-it-release-automation[bot]",
+              },
+              "workflow": {
+                  "source_sha": os.environ["RELEASE_BASE_SHA"],
+              },
+          }
+          Path("changelogs/release-preparation.json").write_text(
+              json.dumps(payload, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
           ansible-galaxy collection build --force
 
           tarball="$(ls ./*.tar.gz)"
@@ -251,7 +299,22 @@ jobs:
           git add galaxy.yml changelogs CHANGELOG.rst
           git commit -m "chore(release): prepare v${VERSION}"
           gh auth setup-git
-          git push --force-with-lease origin "$RELEASE_BRANCH"
+          local_head="$(git rev-parse HEAD)"
+          git push \
+            --force-with-lease="refs/heads/${RELEASE_BRANCH}:${remote_head_before}" \
+            origin "$RELEASE_BRANCH"
+          remote_head_after="$(
+            git ls-remote --heads origin "refs/heads/${RELEASE_BRANCH}" \
+              | awk 'NR == 1 { print $1 }'
+          )"
+          if [ "$remote_head_after" != "$local_head" ]; then
+            echo "::error::Release preparation did not publish the exact local head."
+            exit 1
+          fi
+          branch_advanced=false
+          if [ "$remote_head_before" != "$remote_head_after" ]; then
+            branch_advanced=true
+          fi
 
           body_file="$(mktemp)"
           {
@@ -282,12 +345,117 @@ jobs:
               --json url \
               --jq '.[0].url'
           )"
+          expected_base="$(
+            git ls-remote --heads origin "refs/heads/${TARGET_BRANCH}" \
+              | awk 'NR == 1 { print $1 }'
+          )"
+          expected_head="$(git rev-parse HEAD)"
+          [[ "$expected_base" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$expected_head" =~ ^[0-9a-f]{40}$ ]]
+          validate_existing_release_pr() {
+            local candidate="$1"
+            local candidate_json
+            local candidate_number
+            candidate_number="$(gh pr view "$candidate" --json number --jq .number)"
+            [[ "$candidate_number" =~ ^[1-9][0-9]*$ ]]
+            candidate_json="$(
+              gh api "repos/${GITHUB_REPOSITORY}/pulls/${candidate_number}"
+            )"
+            jq -e \
+              --arg base "$TARGET_BRANCH" \
+              --arg bot_login "$bot_login" \
+              --arg expected_base "$expected_base" \
+              --arg expected_head "$expected_head" \
+              --arg head "$RELEASE_BRANCH" \
+              --arg repository "$GITHUB_REPOSITORY" '
+                .user.login == $bot_login
+                and .base.ref == $base
+                and .base.sha == $expected_base
+                and .head.ref == $head
+                and .head.sha == $expected_head
+                and .head.repo.full_name == $repository
+                and .draft == false
+              ' <<< "$candidate_json" >/dev/null
+          }
+          created_pr=false
           if [ -n "$existing" ]; then
+            validate_existing_release_pr "$existing"
             gh pr edit "$existing" --title "Release v${VERSION}" --body-file "$body_file"
           else
-            gh pr create \
-              --base "$TARGET_BRANCH" \
-              --head "$RELEASE_BRANCH" \
-              --title "Release v${VERSION}" \
-              --body-file "$body_file"
+            existing="$(
+              gh pr create \
+                --base "$TARGET_BRANCH" \
+                --head "$RELEASE_BRANCH" \
+                --title "Release v${VERSION}" \
+                --body-file "$body_file"
+            )"
+            created_pr=true
           fi
+          release_pr_number="$(gh pr view "$existing" --json number --jq .number)"
+          [[ "$release_pr_number" =~ ^[1-9][0-9]*$ ]]
+          release_pr="$(
+            gh api "repos/${GITHUB_REPOSITORY}/pulls/${release_pr_number}"
+          )"
+          jq -e \
+            --arg base "$TARGET_BRANCH" \
+            --arg bot_login "$bot_login" \
+            --arg expected_base "$expected_base" \
+            --arg expected_head "$expected_head" \
+            --arg head "$RELEASE_BRANCH" \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg title "Release v${VERSION}" '
+              .user.login == $bot_login
+              and .base.ref == $base
+              and .base.sha == $expected_base
+              and .head.ref == $head
+              and .head.sha == $expected_head
+              and .head.repo.full_name == $repository
+              and .draft == false
+              and .title == $title
+            ' <<< "$release_pr" >/dev/null
+          {
+            echo "pr_number=$(jq -r .number <<<"$release_pr")"
+            echo "base_ref=$(jq -r .base.ref <<<"$release_pr")"
+            echo "expected_base=$(jq -r .base.sha <<<"$release_pr")"
+            echo "expected_head=$(jq -r .head.sha <<<"$release_pr")"
+            if [ "$branch_advanced" = true ] || [ "$created_pr" = true ]; then
+              echo "dispatch_review=true"
+            else
+              echo "dispatch_review=false"
+            fi
+          } >>"$GITHUB_OUTPUT"
+
+      - name: Mint protected review dispatch token
+        if: >-
+          steps.exact-review-target.outputs.pr_number != '' &&
+          steps.exact-review-target.outputs.dispatch_review == 'true'
+        id: review-dispatch-app
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
+        with:
+          client-id: ${{ vars.RELEASE_AUTOMATION_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_AUTOMATION_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-actions: write
+          permission-contents: read
+
+      - name: Dispatch protected Exact-Revision review
+        if: >-
+          steps.exact-review-target.outputs.pr_number != '' &&
+          steps.exact-review-target.outputs.dispatch_review == 'true'
+        env:
+          GH_TOKEN: ${{ steps.review-dispatch-app.outputs.token }}
+          PR_NUMBER: ${{ steps.exact-review-target.outputs.pr_number }}
+          BASE_REF: ${{ steps.exact-review-target.outputs.base_ref }}
+          EXPECTED_BASE: ${{ steps.exact-review-target.outputs.expected_base }}
+          EXPECTED_HEAD: ${{ steps.exact-review-target.outputs.expected_head }}
+        run: |
+          set -euo pipefail
+          [[ "${EXPECTED_BASE}" =~ ^[0-9a-f]{40}$ ]]
+          [[ "${EXPECTED_HEAD}" =~ ^[0-9a-f]{40}$ ]]
+          gh workflow run release-bot-exact-head-review.yml \
+            --ref "${BASE_REF}" \
+            -f "pr_number=${PR_NUMBER}" \
+            -f "base_ref=${BASE_REF}" \
+            -f "expected_base=${EXPECTED_BASE}" \
+            -f "expected_head=${EXPECTED_HEAD}"
