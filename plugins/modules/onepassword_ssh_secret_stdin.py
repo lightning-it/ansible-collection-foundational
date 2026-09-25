@@ -229,6 +229,18 @@ destination:
   type: str
   returned: always
   description: Non-sensitive SSH destination identity.
+operator_user_uuid:
+  type: str
+  returned: always
+  description: Allowlisted 1Password operator observed during validation.
+approval:
+  type: dict
+  returned: always
+  description: Non-sensitive metadata for the consumed short-lived approval.
+core_dumps_disabled:
+  type: bool
+  returned: always
+  description: Whether the controller worker soft core-dump limit was set to zero before secret retrieval.
 """
 
 

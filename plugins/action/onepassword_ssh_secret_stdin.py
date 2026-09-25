@@ -31,6 +31,7 @@ from .onepassword_ssh_key_item import (
     _write_controller_file,
 )
 from ._onepassword_boundary import (
+    _TRUSTED_CHILD_PATH,
     claim_approval,
     normalize_approval,
     normalize_sha256,
@@ -285,6 +286,10 @@ operator_user_uuid:
   type: str
   returned: always
   description: Allowlisted 1Password operator observed during validation.
+approval:
+  type: dict
+  returned: always
+  description: Non-sensitive metadata for the consumed short-lived approval.
 core_dumps_disabled:
   type: bool
   returned: always
@@ -638,25 +643,24 @@ def _read_secret_bytes(client, password_config):
         client.binary = trusted_executable(
             client.requested_binary, client.binary_sha256, "cli_path"
         )
+        environment = dict(client.environment)
+        environment["PATH"] = _TRUSTED_CHILD_PATH
+        environment.pop("TMPDIR", None)
         try:
-            producer = subprocess.Popen(
+            producer = client.binary.popen(
                 [
-                    client.binary,
                     "read",
                     "--account",
                     password_config["account_id"],
                     "--force",
                     "--no-newline",
-                    "--out-file",
-                    "/dev/fd/{0}".format(write_descriptor),
                     reference,
                 ],
                 stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
+                stdout=write_descriptor,
                 stderr=subprocess.DEVNULL,
-                env=client.environment,
+                env=environment,
                 close_fds=True,
-                pass_fds=(write_descriptor,),
             )
         except (OSError, subprocess.SubprocessError):
             _fail("1Password secret transport could not be started safely.")
@@ -772,7 +776,7 @@ def _run_ssh(config, known_host_line, public_identity, secret):
     agent_socket = trusted_agent_socket(config["ssh_key"]["agent_socket_path"])
     environment = {
         "HOME": os.environ.get("HOME", ""),
-        "PATH": os.environ.get("PATH", ""),
+        "PATH": _TRUSTED_CHILD_PATH,
         "SSH_AUTH_SOCK": agent_socket,
     }
     for name in ("LANG", "LC_ALL"):
@@ -791,7 +795,6 @@ def _run_ssh(config, known_host_line, public_identity, secret):
         )
         _write_controller_file(known_hosts_path, known_host_line.encode("ascii"))
         arguments = [
-            ssh_path,
             "-F",
             "/dev/null",
             "-T",
@@ -865,7 +868,7 @@ def _run_ssh(config, known_host_line, public_identity, secret):
             config["remote_command"],
         ]
         try:
-            consumer = subprocess.Popen(
+            consumer = ssh_path.popen(
                 arguments,
                 stdin=subprocess.PIPE,
                 stdout=subprocess.DEVNULL,

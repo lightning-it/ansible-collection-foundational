@@ -209,22 +209,27 @@ def test_consumer_keeps_secret_out_of_result_and_process_arguments(
     _write_executable(
         op_path,
         "import os, sys\n"
-        "args = sys.argv[1:]\n"
-        "descriptor = int(args[args.index('--out-file') + 1].rsplit('/', 1)[1])\n"
-        "os.write(descriptor, {0!r})\n".format(SECRET),
+        "if os.environ['PATH'] != {0!r} or 'TMPDIR' in os.environ:\n"
+        "    raise SystemExit(6)\n"
+        "sys.stdout.buffer.write({1!r})\n".format(
+            plugin._TRUSTED_CHILD_PATH, SECRET
+        ),
     )
     _write_executable(
         ssh_path,
-        "import pathlib, sys\n"
+        "import os, pathlib, sys\n"
+        "if os.environ['PATH'] != {0!r} or 'TMPDIR' in os.environ:\n"
+        "    raise SystemExit(6)\n"
         "value = sys.stdin.buffer.read()\n"
-        "required = {0!r}\n"
+        "required = {1!r}\n"
         "if not required.issubset(set(sys.argv[1:])):\n"
         "    raise SystemExit(7)\n"
         "if sys.argv[-1] != '/bin/cryptroot-unlock':\n"
         "    raise SystemExit(8)\n"
-        "if value != {1!r}:\n"
+        "if value != {2!r}:\n"
         "    raise SystemExit(9)\n"
-        "pathlib.Path({2!r}).write_text('ok', encoding='utf-8')\n".format(
+        "pathlib.Path({3!r}).write_text('ok', encoding='utf-8')\n".format(
+            plugin._TRUSTED_CHILD_PATH,
             {
                 "-T",
                 "BatchMode=yes",
@@ -257,7 +262,11 @@ def test_consumer_keeps_secret_out_of_result_and_process_arguments(
         requested_binary=str(op_path),
         binary=str(op_path),
         binary_sha256=config["password"]["cli_sha256"],
-        environment={"HOME": str(tmp_path), "PATH": os.environ["PATH"]},
+        environment={
+            "HOME": str(tmp_path),
+            "PATH": str(tmp_path / "untrusted-bin"),
+            "TMPDIR": str(tmp_path / "untrusted-tmp"),
+        },
     )
     monkeypatch.setattr(
         plugin,
@@ -392,14 +401,20 @@ def test_secret_reader_uses_mutable_readv_and_rejects_short_or_oversized_values(
         "account_id": ACCOUNT_ID,
         "password_length": 64,
     }
-    environment = {"HOME": str(tmp_path), "PATH": os.environ["PATH"]}
+    environment = {
+        "HOME": str(tmp_path),
+        "PATH": str(tmp_path / "untrusted-bin"),
+        "TMPDIR": str(tmp_path / "untrusted-tmp"),
+    }
     for payload in (b"S" * 63, b"S" * 65, b"S" * 63 + b"\n"):
         _write_executable(
             op_path,
             "import os, sys\n"
-            "args = sys.argv[1:]\n"
-            "fd = int(args[args.index('--out-file') + 1].rsplit('/', 1)[1])\n"
-            "os.write(fd, {0!r})\n".format(payload),
+            "if os.environ['PATH'] != {0!r} or 'TMPDIR' in os.environ:\n"
+            "    raise SystemExit(6)\n"
+            "sys.stdout.buffer.write({1!r})\n".format(
+                plugin._TRUSTED_CHILD_PATH, payload
+            ),
         )
         client = SimpleNamespace(
             requested_binary=str(op_path),
