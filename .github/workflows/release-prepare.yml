@@ -367,13 +367,13 @@ jobs:
               --arg expected_base "$expected_base" \
               --arg expected_head "$expected_head" \
               --arg head "$RELEASE_BRANCH" \
-              --arg owner "$GITHUB_REPOSITORY_OWNER" '
+              --arg repository "$GITHUB_REPOSITORY" '
                 .user.login == $bot_login
                 and .base.ref == $base
                 and .base.sha == $expected_base
                 and .head.ref == $head
                 and .head.sha == $expected_head
-                and .head.repo.owner.login == $owner
+                and .head.repo.full_name == $repository
                 and .draft == false
               ' <<< "$candidate_json" >/dev/null
           }
@@ -402,14 +402,14 @@ jobs:
             --arg expected_base "$expected_base" \
             --arg expected_head "$expected_head" \
             --arg head "$RELEASE_BRANCH" \
-            --arg owner "$GITHUB_REPOSITORY_OWNER" \
+            --arg repository "$GITHUB_REPOSITORY" \
             --arg title "Release v${VERSION}" '
               .user.login == $bot_login
               and .base.ref == $base
               and .base.sha == $expected_base
               and .head.ref == $head
               and .head.sha == $expected_head
-              and .head.repo.owner.login == $owner
+              and .head.repo.full_name == $repository
               and .draft == false
               and .title == $title
             ' <<< "$release_pr" >/dev/null
