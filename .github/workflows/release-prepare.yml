@@ -40,19 +40,11 @@ jobs:
   prepare:
     name: Prepare release PR
     runs-on: ubuntu-latest
-    timeout-minutes: 30
     if: >-
-      github.ref_protected == true &&
+      github.event_name == 'workflow_dispatch' ||
       (
-        github.ref == 'refs/heads/main' ||
-        github.ref == 'refs/heads/develop'
-      ) &&
-      (
-        github.event_name == 'workflow_dispatch' ||
-        (
-          github.event_name == 'push' &&
-          !startsWith(github.event.head_commit.message, 'chore(release): prepare v')
-        )
+        github.event_name == 'push' &&
+        !startsWith(github.event.head_commit.message, 'chore(release): prepare v')
       )
     steps:
       - name: Checkout
@@ -109,13 +101,12 @@ jobs:
           CREATE_GITHUB_RELEASE_INPUT: ${{ github.event.inputs.create_github_release }}
           PUBLISH_GALAXY_INPUT: ${{ github.event.inputs.publish_galaxy }}
           AUTO_RELEASE_BUMP: minor
-          RELEASE_BOT_LOGIN: ${{ steps.release-bot.outputs.login }}
         run: |
           set -euo pipefail
 
-          bot_login="$RELEASE_BOT_LOGIN"
+          bot_login="$(gh api "users/lightning-it-release-automation%5Bbot%5D" --jq .login)"
           if [ "$bot_login" != "lightning-it-release-automation[bot]" ]; then
-            echo "::error::Resolved release App bot identity is not the canonical release automation App."
+            echo "::error::Release App identity mismatch: expected lightning-it-release-automation[bot]."
             exit 1
           fi
           gh auth setup-git
