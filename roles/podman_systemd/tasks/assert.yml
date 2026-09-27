@@ -18,5 +18,23 @@
       - podman_systemd_after is not string
       - podman_systemd_wants is sequence
       - podman_systemd_wants is not string
+      - podman_systemd_networks is sequence
+      - podman_systemd_networks is not string
+      - >-
+        podman_systemd_networks
+        | select('string')
+        | list
+        | length == podman_systemd_networks | length
+      - >-
+        podman_systemd_networks
+        | map('trim')
+        | reject('equalto', '')
+        | list
+        | length == podman_systemd_networks | length
+      - >-
+        podman_systemd_networks
+        | select('search', '[\r\n]')
+        | list
+        | length == 0
     fail_msg: "podman_systemd variables are missing or invalid."
   tags: always

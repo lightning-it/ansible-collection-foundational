@@ -27,3 +27,7 @@ podman_systemd_after:
   - network-online.target
 podman_systemd_wants:
   - network-online.target
+# Values are rendered as native [Kube] Network= entries. Podman accepts the
+# same network options as podman kube play, for example:
+# podman-default-kube-network:ip=10.89.0.20
+podman_systemd_networks: []
