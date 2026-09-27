@@ -40,6 +40,13 @@ class PodmanSystemdContractTests(unittest.TestCase):
         self.assertIn("select('string')", rendered)
         self.assertIn("select('search', '[\\r\\n]')", rendered)
 
+    def test_changed_quadlet_restarts_a_running_service(self) -> None:
+        tasks = (ROLE / "tasks" / "main.yml").read_text(encoding="utf-8")
+
+        self.assertIn("podman_systemd_quadlet_render.changed", tasks)
+        self.assertIn("podman_systemd_action in ['present', 'started']", tasks)
+        self.assertIn("'restarted'", tasks)
+
 
 if __name__ == "__main__":
     unittest.main()

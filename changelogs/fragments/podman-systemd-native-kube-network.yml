@@ -2,4 +2,5 @@
 minor_changes:
   - >-
     Allow podman_systemd consumers to render validated native Quadlet Network=
-    entries, including inventory-pinned static Podman addresses.
+    entries, including inventory-pinned static Podman addresses, and restart
+    active services when their rendered Quadlet configuration changes.
