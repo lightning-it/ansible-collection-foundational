@@ -1,0 +1,42 @@
+---
+- name: Verify native Podman systemd network and restart contract
+  hosts: localhost
+  gather_facts: false
+  vars:
+    podman_systemd_test_root: "{{ molecule_ephemeral_directory }}/podman-systemd"
+    podman_systemd_test_log: "{{ podman_systemd_test_root }}/systemctl.log"
+    podman_systemd_test_quadlet: "{{ podman_systemd_test_root }}/quadlet/podman-systemd-basic.kube"
+  tasks:
+    - name: Read rendered native Quadlet
+      ansible.builtin.slurp:
+        src: "{{ podman_systemd_test_quadlet }}"
+      register: podman_systemd_rendered_quadlet
+
+    - name: Read isolated systemctl calls
+      ansible.builtin.slurp:
+        src: "{{ podman_systemd_test_log }}"
+      register: podman_systemd_systemctl_log
+
+    - name: Inspect malformed-network rejection marker
+      ansible.builtin.stat:
+        path: "{{ podman_systemd_test_root }}/malformed-network-rejected"
+      register: podman_systemd_malformed_network_rejection
+
+    - name: Require exact native network and one changed-unit restart
+      ansible.builtin.assert:
+        that:
+          - >-
+            'Network=private-access:ip=10.89.0.20'
+            in (podman_systemd_rendered_quadlet.content | b64decode)
+          - >-
+            (
+              podman_systemd_systemctl_log.content
+              | b64decode
+              | regex_findall('(?m)^.* restart podman-systemd-basic\\.service$')
+              | length
+            ) == 1
+          - podman_systemd_malformed_network_rejection.stat.exists
+          - not lookup('ansible.builtin.fileglob', podman_systemd_test_root ~ '/quadlet/podman-systemd-invalid.kube')
+        fail_msg: >-
+          Native Quadlet network rendering, changed-unit restart, or
+          fail-closed malformed-input handling did not match the contract.

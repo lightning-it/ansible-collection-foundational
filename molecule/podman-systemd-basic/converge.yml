@@ -1,0 +1,94 @@
+---
+- name: Converge native Podman systemd controller against an isolated systemctl
+  hosts: localhost
+  gather_facts: true
+  vars:
+    podman_systemd_test_root: "{{ molecule_ephemeral_directory }}/podman-systemd"
+    podman_systemd_test_bin: "{{ podman_systemd_test_root }}/bin"
+    podman_systemd_test_log: "{{ podman_systemd_test_root }}/systemctl.log"
+    podman_systemd_test_manifest: "{{ podman_systemd_test_root }}/pod.yml"
+    podman_systemd_test_quadlet_dir: "{{ podman_systemd_test_root }}/quadlet"
+  environment:
+    PATH: "{{ podman_systemd_test_bin }}:{{ ansible_env.PATH }}"
+  tasks:
+    - name: Create isolated Podman systemd fixture directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0755"
+      loop:
+        - "{{ podman_systemd_test_root }}"
+        - "{{ podman_systemd_test_bin }}"
+
+    - name: Write isolated systemctl fixture
+      ansible.builtin.copy:
+        dest: "{{ podman_systemd_test_bin }}/systemctl"
+        mode: "0755"
+        content: |
+          #!/bin/sh
+          set -eu
+          printf '%s\n' "$*" >> "{{ podman_systemd_test_log }}"
+          case " $* " in
+            *" --version "*)
+              printf '%s\n' 'systemd 252 (252-46.el9)'
+              ;;
+            *" show "*)
+              printf '%s\n' 'LoadState=loaded'
+              printf '%s\n' 'ActiveState=active'
+              printf '%s\n' 'SubState=running'
+              printf '%s\n' 'UnitFileState=enabled'
+              ;;
+            *" is-active "*)
+              printf '%s\n' active
+              ;;
+            *" is-enabled "*)
+              printf '%s\n' enabled
+              ;;
+          esac
+
+    - name: Write isolated Kubernetes manifest fixture
+      ansible.builtin.copy:
+        dest: "{{ podman_systemd_test_manifest }}"
+        mode: "0600"
+        content: |
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: podman-systemd-basic
+          spec:
+            containers: []
+
+    - name: Converge valid native Quadlet network and restart contract
+      ansible.builtin.include_role:
+        name: lit.foundational.podman_systemd
+      vars:
+        podman_systemd_action: present
+        podman_systemd_unit_name: podman-systemd-basic
+        podman_systemd_manifest_path: "{{ podman_systemd_test_manifest }}"
+        podman_systemd_scope: user
+        podman_systemd_quadlet_dir: "{{ podman_systemd_test_quadlet_dir }}"
+        podman_systemd_networks:
+          - "private-access:ip=10.89.0.20"
+
+    - name: Reject a multiline Quadlet network before mutation
+      block:
+        - name: Attempt malformed native Quadlet network
+          ansible.builtin.include_role:
+            name: lit.foundational.podman_systemd
+          vars:
+            podman_systemd_action: present
+            podman_systemd_unit_name: podman-systemd-invalid
+            podman_systemd_manifest_path: "{{ podman_systemd_test_manifest }}"
+            podman_systemd_scope: user
+            podman_systemd_quadlet_dir: "{{ podman_systemd_test_quadlet_dir }}"
+            podman_systemd_networks:
+              - "private-access\nNetwork=host"
+        - name: Reject an accepted malformed network
+          ansible.builtin.fail:
+            msg: "podman_systemd accepted a multiline network entry"
+      rescue:
+        - name: Record fail-closed malformed-network rejection
+          ansible.builtin.copy:
+            dest: "{{ podman_systemd_test_root }}/malformed-network-rejected"
+            content: "rejected\n"
+            mode: "0600"
