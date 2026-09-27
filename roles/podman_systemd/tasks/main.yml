@@ -45,7 +45,19 @@
 - name: Manage Podman kube service state
   ansible.builtin.systemd:
     name: "{{ podman_systemd_service_name }}"
-    state: "{{ 'started' if podman_systemd_action == 'present' else podman_systemd_action }}"
+    state: >-
+      {{
+        'restarted'
+        if (
+          podman_systemd_quadlet_render.changed | default(false) | bool
+          and podman_systemd_action in ['present', 'started']
+        )
+        else (
+          'started'
+          if podman_systemd_action == 'present'
+          else podman_systemd_action
+        )
+      }}
     enabled: "{{ podman_systemd_enabled }}"
     scope: "{{ podman_systemd_scope }}"
   when: podman_systemd_action in ['present', 'started', 'restarted', 'stopped']
