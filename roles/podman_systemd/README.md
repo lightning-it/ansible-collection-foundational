@@ -22,6 +22,9 @@ podman_systemd_networks:
 
 Each entry must be a non-empty single-line string. Static addresses must be
 reserved by the inventory and remain inside the selected Podman network.
+When the rendered Quadlet changes while the requested action is `present` or
+`started`, the role restarts the service so changed network settings take
+effect during the same reconciliation.
 
 See `defaults/main.yml` for the remaining service, manifest, state, and
 installation inputs.
