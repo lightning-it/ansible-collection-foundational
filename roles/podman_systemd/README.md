@@ -40,8 +40,8 @@ None.
   roles:
     - role: lit.foundational.podman_systemd
       vars:
-        podman_systemd_name: keycloak
-        podman_systemd_kube_yaml: /etc/lit/keycloak/pod.yml
+        podman_systemd_unit_name: keycloak
+        podman_systemd_manifest_path: /etc/lit/keycloak/pod.yml
         podman_systemd_networks:
           - podman-default-kube-network:ip=10.89.0.20
 ```
