@@ -63,9 +63,29 @@ plugins:
       name: ansible_vault_secret_document
       namespace: ''
       version_added: 1.27.0
+    onepassword_approval:
+      description: Sign one short-lived controller-local 1Password approval
+      name: onepassword_approval
+      namespace: ''
+      version_added: 1.34.0
+    onepassword_secret_item:
+      description: Plan or create one exact 1Password Password item
+      name: onepassword_secret_item
+      namespace: ''
+      version_added: 1.34.0
+    onepassword_ssh_key_item:
+      description: Plan, create, or inspect one exact 1Password SSH Key item
+      name: onepassword_ssh_key_item
+      namespace: ''
+      version_added: 1.34.0
+    onepassword_ssh_secret_stdin:
+      description: Stream one pinned 1Password secret into one pinned SSH session
+      name: onepassword_ssh_secret_stdin
+      namespace: ''
+      version_added: 1.34.0
   netconf: {}
   shell: {}
   strategy: {}
   test: {}
   vars: {}
-version: 1.33.0
+version: 1.34.0

@@ -1,6 +1,0 @@
----
-bugfixes:
-  - >-
-    hetzner_rescue_validate - bind LUKS recovery validation explicitly to
-    stdin and preserve the retained secret as exact bytes without an appended
-    newline.
