@@ -4,6 +4,14 @@ Lightning IT Collection Release Notes Release Notes
 
 .. contents:: Topics
 
+v1.35.0
+=======
+
+Minor Changes
+-------------
+
+- Allow podman_systemd consumers to render validated native Quadlet Network= entries, including inventory-pinned static Podman addresses, and restart active services when their rendered Quadlet configuration changes.
+
 v1.34.0
 =======
 
