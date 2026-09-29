@@ -1,0 +1,11 @@
+---
+- name: Reset isolated Podman systemd fixture before convergence
+  hosts: localhost
+  gather_facts: false
+  vars:
+    podman_systemd_test_root: "{{ molecule_ephemeral_directory }}/podman-systemd"
+  tasks:
+    - name: Remove persistent fixture state from earlier scenario runs
+      ansible.builtin.file:
+        path: "{{ podman_systemd_test_root }}"
+        state: absent
