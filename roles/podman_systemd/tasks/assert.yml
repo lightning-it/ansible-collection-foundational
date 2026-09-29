@@ -20,6 +20,7 @@
       - podman_systemd_wants is not string
       - podman_systemd_networks is sequence
       - podman_systemd_networks is not string
+      - podman_systemd_networks is not mapping
       - >-
         podman_systemd_networks
         | select('string')

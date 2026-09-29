@@ -92,3 +92,26 @@
             dest: "{{ podman_systemd_test_root }}/malformed-network-rejected"
             content: "rejected\n"
             mode: "0600"
+
+    - name: Reject a mapping-shaped Quadlet network before mutation
+      block:
+        - name: Attempt mapped native Quadlet network
+          ansible.builtin.include_role:
+            name: lit.foundational.podman_systemd
+          vars:
+            podman_systemd_action: present
+            podman_systemd_unit_name: podman-systemd-mapped
+            podman_systemd_manifest_path: "{{ podman_systemd_test_manifest }}"
+            podman_systemd_scope: user
+            podman_systemd_quadlet_dir: "{{ podman_systemd_test_quadlet_dir }}"
+            podman_systemd_networks:
+              host: ignored
+        - name: Reject an accepted mapped network
+          ansible.builtin.fail:
+            msg: "podman_systemd accepted a mapping-shaped network input"
+      rescue:
+        - name: Record fail-closed mapped-network rejection
+          ansible.builtin.copy:
+            dest: "{{ podman_systemd_test_root }}/mapped-network-rejected"
+            content: "rejected\n"
+            mode: "0600"

@@ -22,6 +22,11 @@
         path: "{{ podman_systemd_test_root }}/malformed-network-rejected"
       register: podman_systemd_malformed_network_rejection
 
+    - name: Inspect mapped-network rejection marker
+      ansible.builtin.stat:
+        path: "{{ podman_systemd_test_root }}/mapped-network-rejected"
+      register: podman_systemd_mapped_network_rejection
+
     - name: Require exact native network and one changed-unit restart
       ansible.builtin.assert:
         that:
@@ -36,7 +41,9 @@
               | length
             ) == 1
           - podman_systemd_malformed_network_rejection.stat.exists
+          - podman_systemd_mapped_network_rejection.stat.exists
           - not lookup('ansible.builtin.fileglob', podman_systemd_test_root ~ '/quadlet/podman-systemd-invalid.kube')
+          - not lookup('ansible.builtin.fileglob', podman_systemd_test_root ~ '/quadlet/podman-systemd-mapped.kube')
         fail_msg: >-
           Native Quadlet network rendering, changed-unit restart, or
           fail-closed malformed-input handling did not match the contract.
