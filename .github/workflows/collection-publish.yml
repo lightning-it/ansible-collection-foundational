@@ -45,6 +45,7 @@ jobs:
       startsWith(github.event.pull_request.head.ref, 'release/v')
     name: Dispatch collection publish from main
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       actions: write
       contents: read
