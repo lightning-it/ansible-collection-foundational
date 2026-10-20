@@ -1,0 +1,96 @@
+---
+- name: Prepare a real encrypted header and remove the source fixture
+  hosts: recovery-witness
+  gather_facts: false
+  vars:
+    luks_header_restore_drill_fixture_root: "{{ lookup('ansible.builtin.env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}"
+    luks_header_restore_drill_fixture_passphrase: "{{ 'synthetic-test-passphrase-' * 3 }}"
+  tasks:
+    - name: Allocate the source fixture directory
+      ansible.builtin.tempfile:
+        state: directory
+        path: /dev/shm
+        prefix: lit-luks-drill-fixture-
+      register: luks_header_restore_drill_fixture_directory
+
+    - name: Create and encrypt the synthetic source header
+      block:
+        - name: Allocate the regular-file source
+          ansible.builtin.command:
+            argv: [truncate, --size, 32M, "{{ luks_header_restore_drill_fixture_directory.path }}/source.img"]
+          changed_when: true
+
+        - name: Format the synthetic source with a test-only key
+          ansible.builtin.command:
+            argv:
+              - /usr/sbin/cryptsetup
+              - luksFormat
+              - --type
+              - luks2
+              - --batch-mode
+              - --pbkdf
+              - pbkdf2
+              - --pbkdf-force-iterations
+              - "1000"
+              - --uuid
+              - 11111111-2222-4333-8444-555555555555
+              - --key-file=-
+              - "{{ luks_header_restore_drill_fixture_directory.path }}/source.img"
+            stdin: "{{ luks_header_restore_drill_fixture_passphrase }}"
+            stdin_add_newline: false
+          no_log: true
+          changed_when: true
+
+        - name: Capture the actual source header
+          ansible.builtin.command:
+            argv:
+              - /usr/sbin/cryptsetup
+              - luksHeaderBackup
+              - "{{ luks_header_restore_drill_fixture_directory.path }}/source.img"
+              - --header-backup-file
+              - "{{ luks_header_restore_drill_fixture_directory.path }}/header.luks"
+          no_log: true
+          changed_when: true
+
+        - name: Inspect the raw header bytes before transfer
+          ansible.builtin.stat:
+            path: "{{ luks_header_restore_drill_fixture_directory.path }}/header.luks"
+            checksum_algorithm: sha256
+          register: luks_header_restore_drill_fixture_stat
+          no_log: true
+
+        - name: Read the test header into protected memory
+          ansible.builtin.slurp:
+            src: "{{ luks_header_restore_drill_fixture_directory.path }}/header.luks"
+          register: luks_header_restore_drill_fixture_header
+          no_log: true
+
+        - name: Persist only encrypted recovery material
+          lit.foundational.ansible_vault_document:
+            path: "{{ luks_header_restore_drill_fixture_root }}/header.vault.yml"
+            document: >-
+              {{
+                {
+                  'schema_version': 1,
+                  'subject': 'host01.example.test',
+                  'luks_format': 'luks2',
+                  'luks_uuid': '11111111-2222-4333-8444-555555555555',
+                  'luks_header_b64': luks_header_restore_drill_fixture_header.content,
+                  'luks_header_raw_size_bytes': luks_header_restore_drill_fixture_stat.stat.size | int,
+                  'luks_header_sha256_raw': luks_header_restore_drill_fixture_stat.stat.checksum
+                }
+              }}
+          register: luks_header_restore_drill_fixture_encrypted
+          no_log: true
+
+        - name: Retain the public artifact checksum
+          ansible.builtin.copy:
+            dest: "{{ luks_header_restore_drill_fixture_root }}/receipt.json"
+            content: "{{ {'sha256': luks_header_restore_drill_fixture_encrypted.ciphertext_sha256} | to_json }}"
+            mode: "0600"
+      always:
+        - name: Remove the original source and raw header before witness verification
+          ansible.builtin.file:
+            path: "{{ luks_header_restore_drill_fixture_directory.path }}"
+            state: absent
+          no_log: true

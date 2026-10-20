@@ -1,0 +1,23 @@
+---
+- name: Validate the restore-drill enablement contract
+  ansible.builtin.assert:
+    that: luks_header_restore_drill_enabled is boolean
+    quiet: true
+
+- name: Require exact independent recovery inputs
+  ansible.builtin.assert:
+    that:
+      - luks_header_restore_drill_path is match('^/')
+      - luks_header_restore_drill_ciphertext_sha256 is match('^[0-9a-f]{64}$')
+      - luks_header_restore_drill_subject is match('^[A-Za-z0-9][A-Za-z0-9._-]{0,252}$')
+      - luks_header_restore_drill_luks_uuid | length == 36
+      - luks_header_restore_drill_source_machine_id is match('^[0-9a-f]{32}$')
+      - luks_header_restore_drill_witness_machine_id is match('^[0-9a-f]{32}$')
+      - luks_header_restore_drill_source_machine_id != luks_header_restore_drill_witness_machine_id
+      - luks_header_restore_drill_passphrase is string
+      - luks_header_restore_drill_passphrase | length >= 40
+      - luks_header_restore_drill_temporary_root is match('^/')
+    quiet: true
+    fail_msg: "Restore verification needs pinned source, witness, ciphertext and a protected recovery secret."
+  when: luks_header_restore_drill_enabled
+  no_log: true

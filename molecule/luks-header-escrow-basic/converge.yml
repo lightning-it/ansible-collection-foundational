@@ -4,6 +4,8 @@
   gather_facts: false
   become: false
   vars:
+    luks_header_escrow_expected_machine_id: "{{ lookup('ansible.builtin.file', '/etc/machine-id') | trim }}"
+    luks_header_escrow_expected_uuid: 11111111-2222-4333-8444-555555555555
     luks_header_escrow_molecule_root: >-
       {{ lookup('ansible.builtin.env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}
     luks_header_escrow_molecule_fixture_root: >-

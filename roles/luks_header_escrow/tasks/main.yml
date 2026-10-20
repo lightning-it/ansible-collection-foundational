@@ -12,6 +12,25 @@
   ansible.builtin.import_tasks: remote_preflight.yml
   when: luks_header_escrow_enabled | bool
 
+- name: Read the pinned source machine identity
+  ansible.builtin.slurp:
+    src: "{{ luks_header_escrow_machine_id_path }}"
+  register: _luks_header_escrow_machine_id
+  when:
+    - luks_header_escrow_enabled | bool
+    - luks_header_escrow_expected_machine_id | length > 0
+  no_log: true
+
+- name: Require the exact expected source machine before header capture
+  ansible.builtin.assert:
+    that:
+      - _luks_header_escrow_machine_id.content | b64decode | trim == luks_header_escrow_expected_machine_id
+    quiet: true
+  when:
+    - luks_header_escrow_enabled | bool
+    - luks_header_escrow_expected_machine_id | length > 0
+  no_log: true
+
 - name: Discover the installed LUKS2 source
   ansible.builtin.import_tasks: discover.yml
   when: luks_header_escrow_enabled | bool

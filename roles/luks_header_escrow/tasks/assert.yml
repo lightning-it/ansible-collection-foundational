@@ -19,6 +19,13 @@
       - luks_header_escrow_path is match('^/')
       - luks_header_escrow_subject is string
       - luks_header_escrow_subject | trim | length > 0
+      - luks_header_escrow_expected_uuid is string
+      - luks_header_escrow_expected_uuid == '' or luks_header_escrow_expected_uuid | length == 36
+      - luks_header_escrow_expected_machine_id is string
+      - >-
+        luks_header_escrow_expected_machine_id == ''
+        or luks_header_escrow_expected_machine_id is match('^[0-9a-f]{32}$')
+      - luks_header_escrow_machine_id_path is match('^/')
       - luks_header_escrow_controller_root_path is string
       - luks_header_escrow_controller_root_path is match('^/')
       - luks_header_escrow_vault_id is string

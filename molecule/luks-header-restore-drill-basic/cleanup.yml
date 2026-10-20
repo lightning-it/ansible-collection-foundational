@@ -1,0 +1,10 @@
+---
+- name: Remove only the isolated ciphertext fixture
+  hosts: recovery-witness
+  gather_facts: false
+  tasks:
+    - name: Remove owned fixture artifacts
+      ansible.builtin.file:
+        path: "{{ lookup('ansible.builtin.env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/{{ item }}"
+        state: absent
+      loop: [header.vault.yml, receipt.json]

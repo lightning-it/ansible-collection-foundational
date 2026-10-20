@@ -4,6 +4,9 @@ luks_header_escrow_schema_version: 1
 luks_header_escrow_max_raw_bytes: 20971520
 luks_header_escrow_path: ""
 luks_header_escrow_subject: "{{ inventory_hostname }}"
+luks_header_escrow_expected_uuid: ""
+luks_header_escrow_expected_machine_id: ""
+luks_header_escrow_machine_id_path: /etc/machine-id
 
 luks_header_escrow_controller_root_path: ""
 luks_header_escrow_vault_id: default
