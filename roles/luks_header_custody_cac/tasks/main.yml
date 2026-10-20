@@ -1,0 +1,8 @@
+---
+- name: Prechecks
+  ansible.builtin.import_tasks: assert.yml
+  tags: always
+
+- name: Manage immutable provider custody
+  ansible.builtin.include_tasks: cac_custody.yml
+  when: luks_header_custody_cac_enabled

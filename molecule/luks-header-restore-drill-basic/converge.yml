@@ -1,0 +1,20 @@
+---
+- name: Verify the independent encrypted header on the witness
+  hosts: recovery-witness
+  gather_facts: false
+  vars:
+    luks_header_restore_drill_fixture_root: "{{ lookup('ansible.builtin.env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}"
+    luks_header_restore_drill_enabled: true
+    luks_header_restore_drill_path: "{{ luks_header_restore_drill_fixture_root }}/header.vault.yml"
+    luks_header_restore_drill_ciphertext_sha256: >-
+      {{
+        (lookup('ansible.builtin.file', luks_header_restore_drill_fixture_root ~ '/receipt.json') | from_json).sha256
+      }}
+    luks_header_restore_drill_subject: host01.example.test
+    luks_header_restore_drill_luks_uuid: 11111111-2222-4333-8444-555555555555
+    luks_header_restore_drill_source_machine_id: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    luks_header_restore_drill_witness_machine_id: "{{ lookup('ansible.builtin.file', '/etc/machine-id') | trim }}"
+    luks_header_restore_drill_passphrase: "{{ 'synthetic-test-passphrase-' * 3 }}"
+    luks_header_restore_drill_temporary_root: "{{ luks_header_restore_drill_fixture_root }}"
+  roles:
+    - role: lit.foundational.luks_header_restore_drill

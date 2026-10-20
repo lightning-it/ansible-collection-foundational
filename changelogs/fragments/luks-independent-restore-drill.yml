@@ -1,0 +1,5 @@
+---
+minor_changes:
+  - >-
+    Add a checksum-bound encrypted header reader and isolated LUKS2 regular-file recovery drill
+    with distinct witness identity, correct/wrong-key tests and tmpfs cleanup.

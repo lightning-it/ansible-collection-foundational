@@ -24,6 +24,12 @@ policy before invoking it.
 
 ## Variables
 
+For an installed source, set `luks_header_escrow_expected_machine_id` and
+`luks_header_escrow_expected_uuid` from the independently retained inventory
+identity. Both checks run before raw-header capture. Their defaults are empty
+for compatibility with existing first-install discovery; independent day-2
+acceptance entrypoints must require both explicitly.
+
 See `defaults/main.yml` for the complete interface. Important inputs are:
 
 - `luks_header_escrow_enabled`: explicit opt-in; defaults to `false`.

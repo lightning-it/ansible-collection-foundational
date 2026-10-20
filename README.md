@@ -107,6 +107,14 @@ The current collection compatibility baseline is `ansible-core` 2.18.0 or newer.
   - keeps raw header bytes off controller storage and always removes the
     protected managed-host temporary copy.
 
+- [`lit.foundational.luks_header_custody_cac`](roles/luks_header_custody_cac/README.md)
+  Publishes immutable ciphertext-only header packages to scoped Vault KV2 and,
+  when explicitly enabled, an additional native 1Password Document. It verifies
+  complete provider readback, uses create-only/CAS and one-time approval
+  boundaries, and keeps the password-free credential phase separate from
+  header decryption. It neither changes keyslots nor substitutes a provider
+  checksum test for independent recovery acceptance.
+
 - `lit.foundational.terragrunt`
   Terragrunt wrapper that:
   - prepares a per-cluster working directory on the control host,
