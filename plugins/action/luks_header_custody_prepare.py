@@ -6,7 +6,7 @@ from ansible.errors import AnsibleActionFail
 from ansible.utils.unsafe_proxy import wrap_var
 from .luks_header_escrow_read import ActionModule as HeaderReader
 from .ansible_vault_secret_document import _VaultDocumentStore
-from ..module_utils.luks_header_custody import digest, validate_package
+from ..module_utils.luks_header_custody import MAX_CIPHER, digest, validate_package
 
 
 class ActionModule(HeaderReader):
@@ -30,7 +30,7 @@ class ActionModule(HeaderReader):
             self._task.args = args
         document = read["document"]
         ciphertext = _VaultDocumentStore(
-            self._loader._vault, max_ciphertext_bytes=64 * 1024 * 1024
+            self._loader._vault, max_ciphertext_bytes=MAX_CIPHER
         )._read_existing(args["path"])
         if ciphertext is None or digest(ciphertext) != args["ciphertext_sha256"]:
             raise AnsibleActionFail(

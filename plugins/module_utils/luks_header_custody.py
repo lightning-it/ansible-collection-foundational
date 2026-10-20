@@ -12,8 +12,11 @@ import urllib.parse
 import urllib.request
 import uuid
 
-MAX_CIPHER = 64 * 1024 * 1024
-MAX_PACKAGE = MAX_CIPHER + 1024 * 1024
+# Match the protected header reader: a default16MiB LUKS2 header expands to
+# about86MiB after base64/YAML and real Ansible Vault encryption. Retain a
+# finite132MiB package bound for JSON newline escaping and custody metadata.
+MAX_CIPHER = 128 * 1024 * 1024
+MAX_PACKAGE = MAX_CIPHER + 4 * 1024 * 1024
 CHUNK_SIZE = 256 * 1024
 MANIFEST_FIELDS = {
     "schema_version",

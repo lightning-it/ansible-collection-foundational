@@ -167,6 +167,7 @@ def serve(root):
 
     server = HTTPServer(("127.0.0.1", 0), Handler)
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
     context.load_cert_chain(str(root / "ca.pem"), str(root / "key.pem"))
     server.socket = context.wrap_socket(server.socket, server_side=True)
     (root / "endpoint.json").write_text(

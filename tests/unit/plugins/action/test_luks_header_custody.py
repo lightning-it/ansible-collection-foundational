@@ -15,6 +15,8 @@ from ansible.errors import AnsibleActionFail
 from plugins.module_utils import luks_header_custody as custody
 from plugins.module_utils import luks_header_onepassword as native
 from tests.unit.plugins.action import test_luks_header_escrow_read as reader_tests
+from tests.unit.plugins.action import test_luks_header_recovery as recovery_tests
+import yaml
 from plugins.action import luks_header_custody_prepare as prepare_action
 from plugins.action import luks_header_custody_package as package_action
 from plugins.action import luks_header_escrow_read as reader_action
@@ -127,6 +129,42 @@ class FakeNative:
 
 
 class CustodyTests(unittest.TestCase):
+    def test_real_default_luks2_header_fits_authenticated_ciphertext_handoff(self):
+        recovery_tests.RealHeaderTests.setUpClass()
+        self.addCleanup(recovery_tests.RealHeaderTests.tearDownClass)
+        fixture = reader_tests.HeaderReaderTests()
+        fixture.setUp()
+        self.addCleanup(fixture.doCleanups)
+        document = recovery_tests.RealHeaderTests.document
+        self.assertEqual(document["luks_header_raw_size_bytes"], 16 * 1024 * 1024)
+        ciphertext = fixture.vault.encrypt(yaml.safe_dump(document))
+        self.assertGreater(len(ciphertext), 64 * 1024 * 1024)
+        self.assertLessEqual(len(ciphertext), custody.MAX_CIPHER)
+        fixture.path.write_bytes(ciphertext)
+        action = prepare_action.ActionModule.__new__(prepare_action.ActionModule)
+        action._task = SimpleNamespace(
+            no_log=True,
+            args=dict(
+                fixture.arguments,
+                ciphertext_sha256=custody.digest(ciphertext),
+                source_machine_id="a" * 32,
+                owner="fixture-owner",
+                retention="fixture-retention",
+                key_retrieval_reference="fixture-independent-key",
+            ),
+        )
+        action._loader = SimpleNamespace(_vault=fixture.vault)
+        with patch.object(reader_action.ActionBase, "run", return_value={}):
+            result = action.run()
+        self.assertEqual(result["package"]["ciphertext"].encode(), ciphertext)
+        self.assertEqual(
+            result["package"]["manifest"]["luks_header_sha256_raw"],
+            document["luks_header_sha256_raw"],
+        )
+        encoded = custody.validate_package(result["package"])
+        self.assertEqual(result["package_sha256"], custody.digest(encoded))
+        self.assertLessEqual(len(encoded), custody.MAX_PACKAGE)
+
     def test_both_providers_retrieve_from_only_independent_receipts(self):
         p, cfg = package(), config()
         raw = custody.validate_package(p)

@@ -36,6 +36,12 @@ decryption identity, or `*_package_path` plus the independently retained
 machine ID, disk UUID, owner, retention and independent envelope-key reference.
 The input package is ciphertext, not a secret password transport.
 
+The protected reader and provider preparation both allow up to128MiB of
+ciphertext, with a132MiB canonical-package limit for JSON overhead. A normal
+16MiB LUKS2 header becomes approximately86MiB through real Ansible Vault
+encryption; the raw-header bound remains20MiB. Provider-specific upload and
+retrieval must still be qualified with the actual accepted artifact.
+
 `*_vault` contains exactly `auth`, `mount` and `prefix`. Auth accepts `url`,
 `namespace`, `ca_cert`, `timeout`, `auth_method`, and either `token` or
 `role_id`/`secret_id`/`auth_mount_point`. Use a dedicated prefix: this format is
