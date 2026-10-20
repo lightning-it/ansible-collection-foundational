@@ -1,0 +1,34 @@
+---
+dependency:
+  name: shell
+  command: |-
+    set -eu
+    install -d -m 0700 "${MOLECULE_EPHEMERAL_DIRECTORY}"
+    if [ ! -s "${MOLECULE_EPHEMERAL_DIRECTORY}/vault-password" ]; then
+      umask 077
+      head -c 48 /dev/urandom | base64 > "${MOLECULE_EPHEMERAL_DIRECTORY}/vault-password"
+    fi
+driver:
+  name: default
+platforms:
+  - name: custody-controller
+    managed: false
+provisioner:
+  name: ansible
+  env:
+    ANSIBLE_VAULT_PASSWORD_FILE: "${MOLECULE_EPHEMERAL_DIRECTORY}/vault-password"
+  inventory:
+    host_vars:
+      custody-controller:
+        ansible_connection: local
+        ansible_python_interpreter: /usr/bin/python3
+  playbooks:
+    prepare: prepare.yml
+    converge: converge.yml
+    verify: verify.yml
+    cleanup: cleanup.yml
+scenario:
+  name: luks-header-custody-cac-basic
+  test_sequence: [dependency, cleanup, syntax, prepare, converge, idempotence, verify, cleanup]
+verifier:
+  name: ansible

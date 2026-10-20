@@ -1,0 +1,192 @@
+---
+- name: Publish only after complete source and provider preflight
+  block:
+    - name: Authenticate the source header and prepare ciphertext-only data
+      lit.foundational.luks_header_custody_prepare:
+        path: "{{ luks_header_custody_cac_path }}"
+        subject: "{{ luks_header_custody_cac_subject }}"
+        luks_uuid: "{{ luks_header_custody_cac_luks_uuid }}"
+        ciphertext_sha256: "{{ luks_header_custody_cac_ciphertext_sha256 }}"
+        source_machine_id: "{{ luks_header_custody_cac_source_machine_id }}"
+        owner: "{{ luks_header_custody_cac_owner }}"
+        retention: "{{ luks_header_custody_cac_retention }}"
+        key_retrieval_reference: "{{ luks_header_custody_cac_key_retrieval_reference }}"
+      register: _luks_header_custody_cac_prepared
+      when: luks_header_custody_cac_package_path | length == 0
+      no_log: true
+
+    - name: Read a pinned ciphertext-only handoff without a decryption identity
+      lit.foundational.luks_header_custody_package:
+        operation: read
+        path: "{{ luks_header_custody_cac_package_path }}"
+        package_sha256: "{{ luks_header_custody_cac_package_sha256 }}"
+        subject: "{{ luks_header_custody_cac_subject }}"
+        source_machine_id: "{{ luks_header_custody_cac_source_machine_id }}"
+        luks_uuid: "{{ luks_header_custody_cac_luks_uuid }}"
+      register: _luks_header_custody_cac_handoff
+      when: luks_header_custody_cac_package_path | length > 0
+      no_log: true
+
+    - name: Select the verified handoff and match its custody contract
+      ansible.builtin.set_fact:
+        _luks_header_custody_cac_prepared: "{{ _luks_header_custody_cac_handoff }}"
+      changed_when: false
+      when: luks_header_custody_cac_package_path | length > 0
+      no_log: true
+
+    - name: Require the declared custodian, retention and independent key reference
+      ansible.builtin.assert:
+        that:
+          - _luks_header_custody_cac_prepared.package.manifest.owner == luks_header_custody_cac_owner
+          - _luks_header_custody_cac_prepared.package.manifest.retention == luks_header_custody_cac_retention
+          - >-
+            _luks_header_custody_cac_prepared.package.manifest.key_retrieval_reference
+            == luks_header_custody_cac_key_retrieval_reference
+        quiet: true
+      no_log: true
+
+    - name: Bind the additional Document title to this immutable package
+      ansible.builtin.set_fact:
+        _luks_header_custody_cac_native_config: >-
+          {{ luks_header_custody_cac_onepassword | combine({
+            'item_title': luks_header_custody_cac_onepassword_title_prefix
+                          ~ ' ' ~ _luks_header_custody_cac_prepared.package_sha256
+          }) }}
+        cacheable: false
+      changed_when: false
+      when: luks_header_custody_cac_onepassword_enabled
+      no_log: true
+
+    - name: Preflight the independent native provider before any writes
+      lit.foundational.luks_header_custody:
+        provider: onepassword
+        provider_config: "{{ _luks_header_custody_cac_native_config }}"
+        package: "{{ _luks_header_custody_cac_prepared.package }}"
+        operation: plan
+      delegate_to: >-
+        {{ luks_header_custody_cac_onepassword_executor
+           if luks_header_custody_cac_onepassword_enabled else 'localhost' }}
+      become: false
+      vars:
+        ansible_become: false
+      register: _luks_header_custody_cac_native_plan
+      when: luks_header_custody_cac_onepassword_enabled
+      no_log: true
+
+    - name: Preflight every Vault chunk and manifest before writes
+      lit.foundational.luks_header_custody:
+        provider: hashicorp_vault
+        provider_config:
+          mount: "{{ luks_header_custody_cac_vault.mount }}"
+          prefix: "{{ luks_header_custody_cac_vault.prefix }}"
+        vault_auth: "{{ luks_header_custody_cac_vault.auth }}"
+        package: "{{ _luks_header_custody_cac_prepared.package }}"
+        operation: plan
+      delegate_to: localhost
+      become: false
+      register: _luks_header_custody_cac_vault_plan
+      no_log: true
+
+    - name: Create the additional native copy with its one-time approval
+      lit.foundational.luks_header_custody:
+        provider: onepassword
+        provider_config: "{{ _luks_header_custody_cac_native_config }}"
+        package: "{{ _luks_header_custody_cac_prepared.package }}"
+        operation: apply
+        allow_create: "{{ luks_header_custody_cac_allow_create }}"
+        approval_authority: "{{ luks_header_custody_cac_approval_authority }}"
+        approval: "{{ luks_header_custody_cac_approval }}"
+      delegate_to: >-
+        {{ luks_header_custody_cac_onepassword_executor
+           if luks_header_custody_cac_onepassword_enabled else 'localhost' }}
+      become: false
+      vars:
+        ansible_become: false
+      when:
+        - luks_header_custody_cac_onepassword_enabled
+        - luks_header_custody_cac_operation == 'apply'
+        - not (_luks_header_custody_cac_native_plan.verified | default(false))
+      no_log: true
+
+    - name: Create missing immutable Vault chunks and commit its manifest last
+      lit.foundational.luks_header_custody:
+        provider: hashicorp_vault
+        provider_config:
+          mount: "{{ luks_header_custody_cac_vault.mount }}"
+          prefix: "{{ luks_header_custody_cac_vault.prefix }}"
+        vault_auth: "{{ luks_header_custody_cac_vault.auth }}"
+        package: "{{ _luks_header_custody_cac_prepared.package }}"
+        operation: apply
+        allow_create: "{{ luks_header_custody_cac_allow_create }}"
+      delegate_to: localhost
+      become: false
+      when:
+        - luks_header_custody_cac_operation == 'apply'
+        - not _luks_header_custody_cac_vault_plan.verified
+      no_log: true
+
+    - name: Read and verify the complete native copy again
+      lit.foundational.luks_header_custody:
+        provider: onepassword
+        provider_config: "{{ _luks_header_custody_cac_native_config }}"
+        package: "{{ _luks_header_custody_cac_prepared.package }}"
+        operation: "{{ 'plan' if luks_header_custody_cac_operation == 'plan' or ansible_check_mode else 'verify' }}"
+      delegate_to: >-
+        {{ luks_header_custody_cac_onepassword_executor
+           if luks_header_custody_cac_onepassword_enabled else 'localhost' }}
+      become: false
+      vars:
+        ansible_become: false
+      register: _luks_header_custody_cac_native_verified
+      when: luks_header_custody_cac_onepassword_enabled
+      no_log: true
+
+    - name: Read and reassemble every Vault chunk and manifest again
+      lit.foundational.luks_header_custody:
+        provider: hashicorp_vault
+        provider_config:
+          mount: "{{ luks_header_custody_cac_vault.mount }}"
+          prefix: "{{ luks_header_custody_cac_vault.prefix }}"
+        vault_auth: "{{ luks_header_custody_cac_vault.auth }}"
+        package: "{{ _luks_header_custody_cac_prepared.package }}"
+        operation: "{{ 'plan' if luks_header_custody_cac_operation == 'plan' or ansible_check_mode else 'verify' }}"
+      delegate_to: localhost
+      become: false
+      register: _luks_header_custody_cac_vault_verified
+      no_log: true
+
+    - name: Publish only the bound non-secret provider receipts
+      ansible.builtin.set_fact:
+        luks_header_custody_cac_result:
+          verified: >-
+            {{ _luks_header_custody_cac_vault_verified.verified
+               and (not luks_header_custody_cac_onepassword_enabled
+                    or _luks_header_custody_cac_native_verified.verified | default(false)) }}
+          package_sha256: "{{ _luks_header_custody_cac_prepared.package_sha256 }}"
+          vault:
+            verified: "{{ _luks_header_custody_cac_vault_verified.verified }}"
+            manifest_path: "{{ _luks_header_custody_cac_vault_verified.manifest_path }}"
+            manifest_version: "{{ _luks_header_custody_cac_vault_verified.manifest_version }}"
+          onepassword:
+            required: "{{ luks_header_custody_cac_onepassword_enabled }}"
+            verified: "{{ _luks_header_custody_cac_native_verified.verified | default(false) }}"
+            item_id: "{{ _luks_header_custody_cac_native_verified.item_id | default(none) }}"
+            item_version: "{{ _luks_header_custody_cac_native_verified.item_version | default(none) }}"
+          onepassword_approval_binding: >-
+            {{ {'config': _luks_header_custody_cac_native_config,
+                'package_sha256': _luks_header_custody_cac_prepared.package_sha256,
+                'allow_create': true} if luks_header_custody_cac_onepassword_enabled else {} }}
+        cacheable: false
+      changed_when: false
+  always:
+    - name: Release active package and provider working facts
+      ansible.builtin.set_fact:
+        _luks_header_custody_cac_prepared: null
+        _luks_header_custody_cac_handoff: null
+        _luks_header_custody_cac_native_config: null
+        _luks_header_custody_cac_native_plan: null
+        _luks_header_custody_cac_vault_plan: null
+        _luks_header_custody_cac_native_verified: null
+        _luks_header_custody_cac_vault_verified: null
+      changed_when: false
+      no_log: true
