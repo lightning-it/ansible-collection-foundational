@@ -274,3 +274,103 @@ releases:
     fragments:
       - ltn274-release-backsync-preserve-develop.yml
     release_date: '2026-10-21'
+  1.37.0:
+    changes:
+      bugfixes:
+        - onepassword_approval and onepassword_ssh_key_import - accept their complete
+          controller action argument schemas in the remote fallback stubs so a missing
+          action plugin always fails with the intended explicit safety message instead
+          of an unsupported-parameter error.
+      minor_changes:
+        - Add a checksum-bound encrypted header reader and isolated LUKS2 regular-file
+          recovery drill with distinct witness identity, correct/wrong-key tests and
+          tmpfs cleanup.
+        - Add a ciphertext-only EE/native-desktop header custody handoff that reuses
+          the pinned 1Password client without requiring SSH access to the desktop
+          or running Ansible outside its execution environment.
+        - Add the controller-only ``onepassword_vault_co_manager`` action to verify
+          and idempotently grant one exact user the fixed ``allow_viewing``, ``allow_editing``,
+          and ``allow_managing`` permission set on one exact vault, with executable
+          pinning, desktop-only authentication, one-time approval, check mode, and
+          post-change readback.
+        - Allow podman_systemd consumers to render validated native Quadlet Network=
+          entries, including inventory-pinned static Podman addresses, and restart
+          active services when their rendered Quadlet configuration changes.
+        - Update the ``hetzner.hcloud`` collection dependency to version 6.11.0.
+        - hetzner_robot_cac - allow read-only Robot audits to pin the positive numeric
+          server identity in addition to the public IP and server name.
+        - luks_header_custody_cac - publish immutable encrypted header packages to
+          Vault KV2 and an explicitly enabled native 1Password executor, with full
+          provider readback and no overwrite or fallback.
+        - onepassword trust boundary - share the unchanged signature and replay protections
+          between controller actions and packaged managed-node provider code.
+        - onepassword_ssh_key_import - add a controller-only, target-confirmed path
+          for importing an exact existing Ed25519 key through standard input and verifying
+          it through the pinned 1Password SSH Agent.
+        - onepassword_ssh_key_import - support immutable verification of a pinned
+          SSH Key imported through the 1Password desktop application, including exact
+          source fingerprint, item-version, and SSH Agent checks without reading native
+          private-key fields.
+        - root_of_trust_validate - add generic G0 read-only Robot observation and
+          controller-local G2 plan entrypoints with exact single-root selection, fleet
+          ordering, ready/non-cancelled lifecycle enforcement, and strict active IPv4
+          bootstrap/hardened firewall safety contracts.
+        - terragrunt - add an explicit opt-in provider lock upgrade for pinned module
+          migrations whose provider constraints no longer match the cached lock.
+        - terragrunt - add an optional private Vault CA path to certificate-validated
+          token preflight and every Terraform/Terragrunt subprocess via VAULT_CACERT.
+        - terragrunt - add idempotent, collision-checked state-only moves and guarded
+          removals for pinned module upgrades without deleting remote resources.
+        - terragrunt - support validated per-resource import arguments so existing
+          resources can be adopted when unrelated module inputs require static values.
+    fragments:
+      - hetzner-hcloud-6.11.0.yml
+      - luks-header-native-desktop-handoff.yml
+      - luks-header-provider-custody.yml
+      - luks-independent-restore-drill.yml
+      - onepassword-controller-fallback-schema.yml
+      - onepassword-ssh-key-import.yml
+      - onepassword-vault-co-manager.yml
+      - podman-systemd-native-kube-network.yml
+      - robot-audit-server-number.yml
+      - root-of-trust-validation.yml
+      - shared-assets-sync-33596548890.yml
+      - shared-assets-sync-33598491846.yml
+      - shared-assets-sync-33649255083.yml
+      - shared-assets-sync-33662957940.yml
+      - shared-assets-sync-33702830342.yml
+      - shared-assets-sync-33719652134.yml
+      - shared-assets-sync-33724840858.yml
+      - shared-assets-sync-33731631342.yml
+      - shared-assets-sync-33751650589.yml
+      - shared-assets-sync-33758126535.yml
+      - shared-assets-sync-33769633098.yml
+      - shared-assets-sync-33787829675.yml
+      - shared-assets-sync-33795661465.yml
+      - shared-assets-sync-33802454599.yml
+      - shared-assets-sync-33865501767.yml
+      - shared-assets-sync-33893919183.yml
+      - shared-assets-sync-33942846336.yml
+      - shared-assets-sync-33944679429.yml
+      - shared-assets-sync-33946613199.yml
+      - shared-assets-sync-33952599308.yml
+      - shared-assets-sync-33959233524.yml
+      - shared-assets-sync-33962198683.yml
+      - shared-assets-sync-33963696264.yml
+      - shared-assets-sync-33965647026.yml
+      - shared-assets-sync-33968153620.yml
+      - shared-assets-sync-33979792609.yml
+      - shared-assets-sync-34542401941.yml
+      - shared-assets-sync-34682319453.yml
+      - shared-assets-sync-34691001501.yml
+      - shared-assets-sync-34691721320.yml
+      - shared-assets-sync-34765679169.yml
+      - shared-assets-sync-34778441533.yml
+      - shared-assets-sync-35166107371.yml
+      - shared-assets-sync-35182824806.yml
+      - shared-assets-sync-35956692033.yml
+      - shared-assets-sync-36598566307.yml
+      - shared-assets-sync-36752940932.yml
+      - shared-assets-sync.yml
+      - terragrunt-vault-private-ca.yml
+    release_date: '2026-10-21'

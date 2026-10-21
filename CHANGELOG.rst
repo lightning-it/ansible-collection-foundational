@@ -4,6 +4,33 @@ Lightning IT Collection Release Notes Release Notes
 
 .. contents:: Topics
 
+v1.37.0
+=======
+
+Minor Changes
+-------------
+
+- Add a checksum-bound encrypted header reader and isolated LUKS2 regular-file recovery drill with distinct witness identity, correct/wrong-key tests and tmpfs cleanup.
+- Add a ciphertext-only EE/native-desktop header custody handoff that reuses the pinned 1Password client without requiring SSH access to the desktop or running Ansible outside its execution environment.
+- Add the controller-only ``onepassword_vault_co_manager`` action to verify and idempotently grant one exact user the fixed ``allow_viewing``, ``allow_editing``, and ``allow_managing`` permission set on one exact vault, with executable pinning, desktop-only authentication, one-time approval, check mode, and post-change readback.
+- Allow podman_systemd consumers to render validated native Quadlet Network= entries, including inventory-pinned static Podman addresses, and restart active services when their rendered Quadlet configuration changes.
+- Update the ``hetzner.hcloud`` collection dependency to version 6.11.0.
+- hetzner_robot_cac - allow read-only Robot audits to pin the positive numeric server identity in addition to the public IP and server name.
+- luks_header_custody_cac - publish immutable encrypted header packages to Vault KV2 and an explicitly enabled native 1Password executor, with full provider readback and no overwrite or fallback.
+- onepassword trust boundary - share the unchanged signature and replay protections between controller actions and packaged managed-node provider code.
+- onepassword_ssh_key_import - add a controller-only, target-confirmed path for importing an exact existing Ed25519 key through standard input and verifying it through the pinned 1Password SSH Agent.
+- onepassword_ssh_key_import - support immutable verification of a pinned SSH Key imported through the 1Password desktop application, including exact source fingerprint, item-version, and SSH Agent checks without reading native private-key fields.
+- root_of_trust_validate - add generic G0 read-only Robot observation and controller-local G2 plan entrypoints with exact single-root selection, fleet ordering, ready/non-cancelled lifecycle enforcement, and strict active IPv4 bootstrap/hardened firewall safety contracts.
+- terragrunt - add an explicit opt-in provider lock upgrade for pinned module migrations whose provider constraints no longer match the cached lock.
+- terragrunt - add an optional private Vault CA path to certificate-validated token preflight and every Terraform/Terragrunt subprocess via VAULT_CACERT.
+- terragrunt - add idempotent, collision-checked state-only moves and guarded removals for pinned module upgrades without deleting remote resources.
+- terragrunt - support validated per-resource import arguments so existing resources can be adopted when unrelated module inputs require static values.
+
+Bugfixes
+--------
+
+- onepassword_approval and onepassword_ssh_key_import - accept their complete controller action argument schemas in the remote fallback stubs so a missing action plugin always fails with the intended explicit safety message instead of an unsupported-parameter error.
+
 v1.36.0
 =======
 
