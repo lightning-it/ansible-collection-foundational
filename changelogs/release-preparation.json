@@ -1,12 +1,12 @@
 {
-  "base_sha": "d497aefb4cc7d68646415e27ae552300dcc7933b",
-  "next_version": "1.35.0",
+  "base_sha": "45dd1a85c2ab9b7ba5278c2de5ba086dba04c752",
+  "next_version": "1.36.0",
   "preparer": {
     "login": "lightning-it-release-automation[bot]"
   },
   "repository": "lightning-it/ansible-collection-foundational",
   "schema_version": 1,
   "workflow": {
-    "source_sha": "d497aefb4cc7d68646415e27ae552300dcc7933b"
+    "source_sha": "45dd1a85c2ab9b7ba5278c2de5ba086dba04c752"
   }
 }
