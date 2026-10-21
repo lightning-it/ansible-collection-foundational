@@ -257,3 +257,20 @@ releases:
         name: onepassword_ssh_secret_stdin
         namespace: ''
     release_date: '2026-09-25'
+  1.35.0:
+    changes:
+      minor_changes:
+        - Allow podman_systemd consumers to render validated native Quadlet Network=
+          entries, including inventory-pinned static Podman addresses, and restart
+          active services when their rendered Quadlet configuration changes.
+    fragments:
+      - podman-systemd-native-kube-network.yml
+    release_date: '2026-09-29'
+  1.36.0:
+    changes:
+      bugfixes:
+        - Release back-sync now updates only the collection version in galaxy.yml,
+          preserving dependency and other manifest changes already integrated on develop.
+    fragments:
+      - ltn274-release-backsync-preserve-develop.yml
+    release_date: '2026-10-21'

@@ -4,6 +4,22 @@ Lightning IT Collection Release Notes Release Notes
 
 .. contents:: Topics
 
+v1.36.0
+=======
+
+Bugfixes
+--------
+
+- Release back-sync now updates only the collection version in galaxy.yml, preserving dependency and other manifest changes already integrated on develop.
+
+v1.35.0
+=======
+
+Minor Changes
+-------------
+
+- Allow podman_systemd consumers to render validated native Quadlet Network= entries, including inventory-pinned static Podman addresses, and restart active services when their rendered Quadlet configuration changes.
+
 v1.34.0
 =======
 
