@@ -1,0 +1,205 @@
+---
+- name: Query the root-of-trust Robot firewall by numeric server identity
+  community.hrobot.firewall_info:
+    hetzner_user: "{{ root_of_trust_validate_robot_user }}"
+    hetzner_password: "{{ root_of_trust_validate_robot_password }}"
+    rate_limit_retry_timeout: "{{ root_of_trust_validate_robot_rate_limit_retry_timeout }}"
+    server_number: "{{ root_of_trust_validate_target.server_number }}"
+    wait_for_configured: false
+  register: _root_of_trust_validate_g0_firewall_info
+  changed_when: false
+  no_log: true
+
+- name: Require the firewall response to retain the selected server identity
+  ansible.builtin.assert:
+    that:
+      - >-
+        _root_of_trust_validate_g0_firewall_info.firewall.server_number | int
+        == root_of_trust_validate_target.server_number | int
+      - >-
+        _root_of_trust_validate_g0_firewall_info.firewall.server_ip
+        == root_of_trust_validate_target.server_ip
+    fail_msg: >-
+      G0 cannot continue because the firewall API response is not bound to the
+      uniquely selected Robot server identity.
+    quiet: true
+  changed_when: false
+  no_log: true
+
+- name: Initialize normalized G0 firewall rule sets
+  ansible.builtin.set_fact:
+    _root_of_trust_validate_g0_expected_input: []
+    _root_of_trust_validate_g0_expected_output: []
+    _root_of_trust_validate_g0_actual_input: []
+    _root_of_trust_validate_g0_actual_output: []
+    cacheable: false
+  changed_when: false
+  no_log: true
+
+- name: Normalize the expected G0 Robot firewall input rules
+  ansible.builtin.set_fact:
+    _root_of_trust_validate_g0_expected_input: >-
+      {{
+        _root_of_trust_validate_g0_expected_input
+        + [
+            {
+              'ip_version': item.ip_version | default(none, true),
+              'name': item.name | default(none, true),
+              'dst_ip': (
+                item.dst_ip ~ '/32'
+                if item.ip_version | default(none) == 'ipv4'
+                   and item.dst_ip is defined
+                   and item.dst_ip is string
+                   and item.dst_ip | length > 0
+                   and '/' not in item.dst_ip
+                else item.dst_ip | default(none, true)
+              ),
+              'src_ip': (
+                item.src_ip ~ '/32'
+                if item.ip_version | default(none) == 'ipv4'
+                   and item.src_ip is defined
+                   and item.src_ip is string
+                   and item.src_ip | length > 0
+                   and '/' not in item.src_ip
+                else item.src_ip | default(none, true)
+              ),
+              'dst_port': item.dst_port | default(none, true),
+              'src_port': item.src_port | default(none, true),
+              'protocol': item.protocol | default(none, true),
+              'tcp_flags': item.tcp_flags | default(none, true),
+              'action': item.action
+            }
+          ]
+      }}
+    cacheable: false
+  loop: "{{ root_of_trust_validate_expected_firewall.rules.input }}"
+  loop_control:
+    label: "{{ item.name | default(item.action) }}"
+  changed_when: false
+  no_log: true
+
+- name: Normalize the expected G0 Robot firewall output rules
+  ansible.builtin.set_fact:
+    _root_of_trust_validate_g0_expected_output: >-
+      {{
+        _root_of_trust_validate_g0_expected_output
+        + [
+            {
+              'ip_version': item.ip_version | default(none, true),
+              'name': item.name | default(none, true),
+              'dst_ip': (
+                item.dst_ip ~ '/32'
+                if item.ip_version | default(none) == 'ipv4'
+                   and item.dst_ip is defined
+                   and item.dst_ip is string
+                   and item.dst_ip | length > 0
+                   and '/' not in item.dst_ip
+                else item.dst_ip | default(none, true)
+              ),
+              'src_ip': (
+                item.src_ip ~ '/32'
+                if item.ip_version | default(none) == 'ipv4'
+                   and item.src_ip is defined
+                   and item.src_ip is string
+                   and item.src_ip | length > 0
+                   and '/' not in item.src_ip
+                else item.src_ip | default(none, true)
+              ),
+              'dst_port': item.dst_port | default(none, true),
+              'src_port': item.src_port | default(none, true),
+              'protocol': item.protocol | default(none, true),
+              'tcp_flags': item.tcp_flags | default(none, true),
+              'action': item.action
+            }
+          ]
+      }}
+    cacheable: false
+  loop: "{{ root_of_trust_validate_expected_firewall.rules.output }}"
+  loop_control:
+    label: "{{ item.name | default(item.action) }}"
+  changed_when: false
+  no_log: true
+
+- name: Normalize the observed G0 Robot firewall input rules
+  ansible.builtin.set_fact:
+    _root_of_trust_validate_g0_actual_input: >-
+      {{
+        _root_of_trust_validate_g0_actual_input
+        + [
+            {
+              'ip_version': item.ip_version | default(none, true),
+              'name': item.name | default(none, true),
+              'dst_ip': (
+                item.dst_ip ~ '/32'
+                if item.ip_version | default(none) == 'ipv4'
+                   and item.dst_ip is defined
+                   and item.dst_ip is string
+                   and item.dst_ip | length > 0
+                   and '/' not in item.dst_ip
+                else item.dst_ip | default(none, true)
+              ),
+              'src_ip': (
+                item.src_ip ~ '/32'
+                if item.ip_version | default(none) == 'ipv4'
+                   and item.src_ip is defined
+                   and item.src_ip is string
+                   and item.src_ip | length > 0
+                   and '/' not in item.src_ip
+                else item.src_ip | default(none, true)
+              ),
+              'dst_port': item.dst_port | default(none, true),
+              'src_port': item.src_port | default(none, true),
+              'protocol': item.protocol | default(none, true),
+              'tcp_flags': item.tcp_flags | default(none, true),
+              'action': item.action
+            }
+          ]
+      }}
+    cacheable: false
+  loop: "{{ _root_of_trust_validate_g0_firewall_info.firewall.rules.input | default([]) }}"
+  loop_control:
+    label: "{{ item.name | default(item.action) }}"
+  changed_when: false
+  no_log: true
+
+- name: Normalize the observed G0 Robot firewall output rules
+  ansible.builtin.set_fact:
+    _root_of_trust_validate_g0_actual_output: >-
+      {{
+        _root_of_trust_validate_g0_actual_output
+        + [
+            {
+              'ip_version': item.ip_version | default(none, true),
+              'name': item.name | default(none, true),
+              'dst_ip': (
+                item.dst_ip ~ '/32'
+                if item.ip_version | default(none) == 'ipv4'
+                   and item.dst_ip is defined
+                   and item.dst_ip is string
+                   and item.dst_ip | length > 0
+                   and '/' not in item.dst_ip
+                else item.dst_ip | default(none, true)
+              ),
+              'src_ip': (
+                item.src_ip ~ '/32'
+                if item.ip_version | default(none) == 'ipv4'
+                   and item.src_ip is defined
+                   and item.src_ip is string
+                   and item.src_ip | length > 0
+                   and '/' not in item.src_ip
+                else item.src_ip | default(none, true)
+              ),
+              'dst_port': item.dst_port | default(none, true),
+              'src_port': item.src_port | default(none, true),
+              'protocol': item.protocol | default(none, true),
+              'tcp_flags': item.tcp_flags | default(none, true),
+              'action': item.action
+            }
+          ]
+      }}
+    cacheable: false
+  loop: "{{ _root_of_trust_validate_g0_firewall_info.firewall.rules.output | default([]) }}"
+  loop_control:
+    label: "{{ item.name | default(item.action) }}"
+  changed_when: false
+  no_log: true

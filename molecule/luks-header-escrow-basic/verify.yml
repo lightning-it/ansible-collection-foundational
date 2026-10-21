@@ -21,6 +21,62 @@
       {{ luks_header_escrow_molecule_controller_root }}/header.vault.yml
 
   tasks:
+    - name: Initialize the identity-rejection receipt
+      ansible.builtin.set_fact:
+        luks_header_escrow_molecule_identity_rejected: false
+
+    - name: Reject the wrong source machine before capture
+      block:
+        - name: Exercise the exact-source guard
+          ansible.builtin.include_role:
+            name: lit.foundational.luks_header_escrow
+          vars:
+            luks_header_escrow_enabled: true
+            luks_header_escrow_path: "{{ luks_header_escrow_molecule_path }}"
+            luks_header_escrow_controller_root_path: "{{ luks_header_escrow_molecule_controller_root }}"
+            luks_header_escrow_crypttab_path: "{{ luks_header_escrow_molecule_fixture_root }}/crypttab"
+            luks_header_escrow_findfs_path: "{{ luks_header_escrow_molecule_fixture_root }}/findfs"
+            luks_header_escrow_remote_temporary_root: "{{ luks_header_escrow_molecule_runtime_root }}"
+            luks_header_escrow_allow_regular_file_device: true
+            luks_header_escrow_expected_machine_id: "{{ '0' * 32 }}"
+      rescue:
+        - name: Record expected source-identity rejection
+          ansible.builtin.set_fact:
+            luks_header_escrow_molecule_identity_rejected: true
+
+    - name: Require source-identity rejection
+      ansible.builtin.assert:
+        that: luks_header_escrow_molecule_identity_rejected
+        quiet: true
+
+    - name: Initialize the wrong-disk receipt
+      ansible.builtin.set_fact:
+        luks_header_escrow_molecule_disk_rejected: false
+
+    - name: Reject the wrong disk UUID before capture
+      block:
+        - name: Exercise the exact-disk guard
+          ansible.builtin.include_role:
+            name: lit.foundational.luks_header_escrow
+          vars:
+            luks_header_escrow_enabled: true
+            luks_header_escrow_path: "{{ luks_header_escrow_molecule_path }}"
+            luks_header_escrow_controller_root_path: "{{ luks_header_escrow_molecule_controller_root }}"
+            luks_header_escrow_crypttab_path: "{{ luks_header_escrow_molecule_fixture_root }}/crypttab"
+            luks_header_escrow_findfs_path: "{{ luks_header_escrow_molecule_fixture_root }}/findfs"
+            luks_header_escrow_remote_temporary_root: "{{ luks_header_escrow_molecule_runtime_root }}"
+            luks_header_escrow_allow_regular_file_device: true
+            luks_header_escrow_expected_uuid: 22222222-2222-4333-8444-555555555555
+      rescue:
+        - name: Record expected source-disk rejection
+          ansible.builtin.set_fact:
+            luks_header_escrow_molecule_disk_rejected: true
+
+    - name: Require source-disk rejection
+      ansible.builtin.assert:
+        that: luks_header_escrow_molecule_disk_rejected
+        quiet: true
+
     - name: Inspect the encrypted controller document
       ansible.builtin.stat:
         path: "{{ luks_header_escrow_molecule_path }}"

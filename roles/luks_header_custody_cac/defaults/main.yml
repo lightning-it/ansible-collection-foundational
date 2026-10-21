@@ -1,0 +1,25 @@
+---
+luks_header_custody_cac_enabled: false
+luks_header_custody_cac_operation: verify
+luks_header_custody_cac_allow_create: false
+luks_header_custody_cac_path: ""
+luks_header_custody_cac_package_path: ""
+luks_header_custody_cac_package_sha256: ""
+luks_header_custody_cac_ciphertext_sha256: ""
+luks_header_custody_cac_subject: ""
+luks_header_custody_cac_source_machine_id: ""
+luks_header_custody_cac_luks_uuid: ""
+luks_header_custody_cac_owner: ""
+luks_header_custody_cac_retention: ""
+luks_header_custody_cac_key_retrieval_reference: ""
+luks_header_custody_cac_vault: {}
+luks_header_custody_cac_onepassword_enabled: false
+luks_header_custody_cac_onepassword_transport: ssh
+luks_header_custody_cac_onepassword_executor: ""
+luks_header_custody_cac_onepassword_native_request_path: ""
+luks_header_custody_cac_onepassword_native_response_path: ""
+luks_header_custody_cac_onepassword_native_exchange: {}
+luks_header_custody_cac_onepassword: {}
+luks_header_custody_cac_onepassword_title_prefix: ""
+luks_header_custody_cac_approval_authority: {}
+luks_header_custody_cac_approval: {}

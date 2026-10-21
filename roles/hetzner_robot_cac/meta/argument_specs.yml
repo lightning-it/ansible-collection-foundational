@@ -295,6 +295,9 @@ argument_specs:
             description: Public main IP that must uniquely resolve in Robot.
             type: str
             required: true
+          server_number:
+            description: Exact positive numeric Robot server identity; omitted values are not checked.
+            type: int
           server_name:
             description: Exact expected Robot server name; omitted values are not checked.
             type: str

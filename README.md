@@ -82,6 +82,16 @@ The current collection compatibility baseline is `ansible-core` 2.18.0 or newer.
     configuration reconciliation,
   - uses only the official Robot boot and reset modules.
 
+- `lit.foundational.root_of_trust_validate`
+  Validates one generic infrastructure root-of-trust boundary:
+  - observes Robot server identity, firewall, and vSwitch state without
+    mutation and reports unsafe drift as sanitized findings,
+  - fails live observation only for provider API errors or ambiguous server
+    identity,
+  - validates an exact single-target, complete-fleet G2 installation and
+    ready/non-cancelled lifecycle plus a strict active eight-/ten-rule
+    IPv4-only firewall plan entirely on the controller.
+
 - `lit.foundational.secret_resolver`
   Resolves controller-side secret requests into provider-independent values:
   - supports HashiCorp Vault/HCP Vault, Ansible Vault, 1Password, environment,
@@ -96,6 +106,14 @@ The current collection compatibility baseline is `ansible-core` 2.18.0 or newer.
     controller path containment,
   - keeps raw header bytes off controller storage and always removes the
     protected managed-host temporary copy.
+
+- [`lit.foundational.luks_header_custody_cac`](roles/luks_header_custody_cac/README.md)
+  Publishes immutable ciphertext-only header packages to scoped Vault KV2 and,
+  when explicitly enabled, an additional native 1Password Document. It verifies
+  complete provider readback, uses create-only/CAS and one-time approval
+  boundaries, and keeps the password-free credential phase separate from
+  header decryption. It neither changes keyslots nor substitutes a provider
+  checksum test for independent recovery acceptance.
 
 - `lit.foundational.terragrunt`
   Terragrunt wrapper that:

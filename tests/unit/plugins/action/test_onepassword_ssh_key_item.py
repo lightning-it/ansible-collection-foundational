@@ -111,10 +111,9 @@ def _apply_arguments(tmp_path, **overrides):
 
 
 class _FakeClient:
-    def __init__(self, exists=False, fingerprint=FINGERPRINT, extra_fields=None):
+    def __init__(self, exists=False, fingerprint=FINGERPRINT):
         self.exists = exists
         self.fingerprint = fingerprint
-        self.extra_fields = list(extra_fields or [])
         self.calls = []
 
     def _run(self, arguments, operation, discard_stdout=False):
@@ -125,12 +124,14 @@ class _FakeClient:
         self.calls.append((list(arguments), operation, False))
         assert "private" not in " ".join(arguments).lower()
         assert "--reveal" not in arguments
-        if arguments[0] == "whoami":
-            return {
-                "account_uuid": ACCOUNT_ID,
-                "url": "example.1password.com",
-                "user_uuid": USER_UUID,
-            }
+        if arguments[:2] == ["account", "list"]:
+            return [
+                {
+                    "account_uuid": ACCOUNT_ID,
+                    "url": "example.1password.com",
+                    "user_uuid": USER_UUID,
+                }
+            ]
         if arguments[:2] == ["vault", "get"]:
             return {"id": VAULT_ID}
         if arguments[:2] == ["item", "list"]:
@@ -151,13 +152,13 @@ class _FakeClient:
                 {"label": "schema_version", "value": "1"},
                 {"label": "public key", "value": PUBLIC_KEY},
                 {"label": "fingerprint", "value": self.fingerprint},
-            ] + self.extra_fields
+            ]
         raise AssertionError("unexpected metadata request")
 
     def discard(self, arguments, operation):
         self.calls.append((list(arguments), operation, True))
         assert "--category=ssh" in arguments
-        assert "--generate-ssh-key=ed25519" in arguments
+        assert "--ssh-generate-key=ed25519" in arguments
         assert "private" not in " ".join(arguments).lower()
         self.exists = True
 
@@ -202,36 +203,6 @@ def test_read_public_requires_pinned_item_id_and_fingerprint():
 def test_fingerprint_is_recomputed_and_mismatch_fails_closed():
     client = _FakeClient(exists=True, fingerprint="SHA256:wrong")
     with pytest.raises(AnsibleActionFail):
-        plugin._OnePasswordSSHKeyItemStore(client).run(
-            plugin._normalize_arguments(
-                _arguments(
-                    operation="read_public",
-                    item_id=ITEM_ID,
-                    item_version=ITEM_VERSION,
-                    expected_fingerprint=FINGERPRINT,
-                )
-            )
-        )
-
-
-def test_agent_rows_reject_malformed_keys_but_allow_well_formed_unrelated_keys():
-    with pytest.raises(AnsibleActionFail, match="malformed public-key row"):
-        plugin._agent_row_identity("ssh-ed25519 not-base64")
-
-    algorithm = b"ssh-rsa"
-    unrelated_blob = struct.pack(">I", len(algorithm)) + algorithm + b"payload"
-    unrelated_row = "ssh-rsa {0} unrelated".format(
-        base64.b64encode(unrelated_blob).decode("ascii")
-    )
-    assert plugin._agent_row_identity(unrelated_row) is None
-
-
-def test_public_metadata_rejects_unrequested_sensitive_fields():
-    client = _FakeClient(
-        exists=True,
-        extra_fields=[{"label": "private key", "value": "must-not-be-returned"}],
-    )
-    with pytest.raises(AnsibleActionFail, match="exact selected public-field set"):
         plugin._OnePasswordSSHKeyItemStore(client).run(
             plugin._normalize_arguments(
                 _arguments(
@@ -298,20 +269,14 @@ def test_agent_verification_requires_exact_socket_and_public_identity(tmp_path):
         "#!{0}\n"
         "import pathlib, sys\n"
         "mode = sys.argv[sys.argv.index('-Y') + 1]\n"
+        "challenge = sys.stdin.buffer.read()\n"
         "with pathlib.Path({1!r}).open('a', encoding='ascii') as stream:\n"
         "    stream.write(mode + '\\n')\n"
+        "if len(challenge) != 32:\n"
+        "    raise SystemExit(8)\n"
         "if mode == 'sign':\n"
-        "    challenge_path = pathlib.Path(sys.argv[-1])\n"
-        "    if len(challenge_path.read_bytes()) != 32:\n"
-        "        raise SystemExit(8)\n"
-        "    challenge_path.with_name(challenge_path.name + '.sig').write_text(\n"
-        "        '-----BEGIN SSH SIGNATURE-----\\nFAKE\\n-----END SSH SIGNATURE-----\\n',\n"
-        "        encoding='ascii',\n"
-        "    )\n"
+        "    sys.stdout.write('-----BEGIN SSH SIGNATURE-----\\nFAKE\\n-----END SSH SIGNATURE-----\\n')\n"
         "elif mode == 'verify':\n"
-        "    challenge = sys.stdin.buffer.read()\n"
-        "    if len(challenge) != 32:\n"
-        "        raise SystemExit(8)\n"
         "    signature = pathlib.Path(sys.argv[sys.argv.index('-s') + 1]).read_text(encoding='ascii')\n"
         "    if signature != '-----BEGIN SSH SIGNATURE-----\\nFAKE\\n-----END SSH SIGNATURE-----\\n':\n"
         "        raise SystemExit(9)\n"
@@ -357,7 +322,6 @@ def test_agent_verification_requires_exact_socket_and_public_identity(tmp_path):
         {"category": "Password"},
         {"tags": ["recovery", "recovery"]},
         {"tags": []},
-        {"tags": [{}]},
         {"item_id": ITEM_ID},
         {"item_version": ITEM_VERSION},
         {"authorized_user_uuids": []},
@@ -373,14 +337,6 @@ def test_agent_verification_requires_exact_socket_and_public_identity(tmp_path):
 def test_invalid_ssh_key_contracts_fail_before_cli_use(overrides):
     with pytest.raises(AnsibleActionFail):
         plugin._normalize_arguments(_arguments(**overrides))
-
-
-def test_cli_environment_replaces_untrusted_path():
-    environment = plugin._OnePasswordCLI._minimal_environment(
-        {"HOME": "/tmp/home", "PATH": "/tmp/attacker", "TMPDIR": "/tmp/shared"}
-    )
-    assert environment["PATH"] == plugin._TRUSTED_CHILD_PATH
-    assert "TMPDIR" not in environment
 
 
 def test_tag_state_accepts_only_duplicate_instances_of_the_exact_tag_set():

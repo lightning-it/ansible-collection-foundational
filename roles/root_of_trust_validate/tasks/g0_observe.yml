@@ -1,0 +1,23 @@
+---
+- name: Validate the G0 observation contract
+  ansible.builtin.import_tasks: g0_assert.yml
+  tags: always
+
+- name: Publish the secret-free G0 observation plan
+  ansible.builtin.set_fact:
+    root_of_trust_validate_result:
+      changed: false
+      entrypoint: g0_observe
+      selection_scope: "{{ root_of_trust_validate_selection_scope }}"
+      api_queried: false
+      observation_complete: false
+      compliance_evaluated: false
+      compliant: false
+      finding_count: 0
+      findings: []
+    cacheable: false
+  changed_when: false
+
+- name: Observe the selected root of trust through Hetzner Robot
+  ansible.builtin.include_tasks: g0_live.yml
+  when: not (root_of_trust_validate_g0_validate_only | bool)

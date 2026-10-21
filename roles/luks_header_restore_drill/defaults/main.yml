@@ -1,0 +1,10 @@
+---
+luks_header_restore_drill_enabled: false
+luks_header_restore_drill_path: ""
+luks_header_restore_drill_ciphertext_sha256: ""
+luks_header_restore_drill_subject: ""
+luks_header_restore_drill_luks_uuid: ""
+luks_header_restore_drill_source_machine_id: ""
+luks_header_restore_drill_witness_machine_id: ""
+luks_header_restore_drill_passphrase: ""
+luks_header_restore_drill_temporary_root: /run

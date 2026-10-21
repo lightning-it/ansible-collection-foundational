@@ -1,0 +1,28 @@
+---
+# Invoke the dedicated g0_observe or g2_plan entrypoint directly. The main
+# entrypoint is inert by default so including the role cannot trigger API work.
+root_of_trust_validate_action: none
+
+# Shared exact-selection contract.
+root_of_trust_validate_selection_scope: ""
+root_of_trust_validate_target: {}
+
+# G0 observes Hetzner Robot without mutating provider state. Validation-only
+# mode exists for local schema tests and performs no API calls.
+root_of_trust_validate_g0_validate_only: false
+root_of_trust_validate_robot_user: ""
+root_of_trust_validate_robot_password: ""
+root_of_trust_validate_robot_rate_limit_retry_timeout: 120
+root_of_trust_validate_expected_firewall: {}
+root_of_trust_validate_expected_vswitch: {}
+
+# G2 validates one rendered, controller-local root-of-trust plan.
+root_of_trust_validate_selected_hosts: []
+root_of_trust_validate_expected_fleet: []
+root_of_trust_validate_install_order: []
+root_of_trust_validate_prerequisite_hosts: []
+root_of_trust_validate_root_host: ""
+root_of_trust_validate_tang_host: ""
+root_of_trust_validate_vault_host: ""
+root_of_trust_validate_controller_ipv4_cidr: ""
+root_of_trust_validate_firewall: {}

@@ -1,0 +1,10 @@
+---
+galaxy_info:
+  author: Lightning IT
+  description: Independently verify a pinned encrypted LUKS2 header on a scratch witness
+  license: MIT
+  min_ansible_version: "2.18"
+  platforms:
+    - name: Ubuntu
+      versions: [noble]
+dependencies: []

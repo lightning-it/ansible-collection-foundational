@@ -1,0 +1,13 @@
+---
+- name: Stop only the owned isolated provider process
+  hosts: custody-controller
+  gather_facts: false
+  tasks:
+    - name: Stop the owned fixture
+      ansible.builtin.command:
+        argv:
+          - python3
+          - "{{ lookup('ansible.builtin.env', 'MOLECULE_PROJECT_DIRECTORY') }}/tests/fixtures/luks_header_custody.py"
+          - stop
+          - "{{ lookup('ansible.builtin.env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}"
+      changed_when: false

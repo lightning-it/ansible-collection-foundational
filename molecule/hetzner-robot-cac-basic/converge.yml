@@ -47,6 +47,7 @@
         state: absent
     hetzner_robot_cac_audit_servers:
       - server_ip: 192.0.2.10
+        server_number: 1234567
         server_name: robot01.example.com
         firewall:
           status: active

@@ -1,0 +1,8 @@
+---
+- name: Prechecks
+  ansible.builtin.import_tasks: assert.yml
+  tags: always
+
+- name: Run the selected root-of-trust validation entrypoint
+  ansible.builtin.include_tasks: "{{ root_of_trust_validate_action }}.yml"
+  when: root_of_trust_validate_action != 'none'

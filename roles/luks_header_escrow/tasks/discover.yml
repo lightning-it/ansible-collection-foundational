@@ -108,3 +108,10 @@
     fail_msg: "The installed LUKS2 source did not return a UUID."
     quiet: true
   no_log: true
+
+- name: Require the exact expected source UUID before header capture
+  ansible.builtin.assert:
+    that: _luks_header_escrow_uuid.stdout | trim == luks_header_escrow_expected_uuid
+    quiet: true
+  when: luks_header_escrow_expected_uuid | length > 0
+  no_log: true

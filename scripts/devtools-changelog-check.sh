@@ -19,15 +19,19 @@ bash scripts/wunder-devtools-ee.sh bash -lc '
   }
 
   changed=""
+  comparison_base=""
   if [ -n "${BASE_SHA:-}" ] && [ -n "${HEAD_SHA:-}" ]; then
+    comparison_base="$BASE_SHA"
     changed="$(diff_names "$BASE_SHA" "$HEAD_SHA")"
   elif [ -n "${PRE_COMMIT_FROM_REF:-}" ] && [ -n "${PRE_COMMIT_TO_REF:-}" ]; then
+    comparison_base="$PRE_COMMIT_FROM_REF"
     changed="$(diff_names "$PRE_COMMIT_FROM_REF" "$PRE_COMMIT_TO_REF")"
   else
     base_ref="${CHANGELOG_BASE_REF:-origin/develop}"
     if git rev-parse --verify "$base_ref" >/dev/null 2>&1; then
       merge_base="$(git merge-base "$base_ref" HEAD)"
       if [ -n "${merge_base:-}" ]; then
+        comparison_base="$merge_base"
         changed="$(diff_names "$merge_base" HEAD)"
       fi
     fi
@@ -58,6 +62,7 @@ bash scripts/wunder-devtools-ee.sh bash -lc '
   generated_re="^(CHANGELOG\\.(md|rst)|changelogs/(changelog|\\.plugin-cache)\\.yaml)$"
   is_release_branch=false
   is_release_promotion=false
+  is_initial_collection_bootstrap=false
   head_ref="${GITHUB_HEAD_REF:-$(git rev-parse --abbrev-ref HEAD)}"
   base_ref="${GITHUB_BASE_REF:-}"
 
@@ -67,12 +72,27 @@ bash scripts/wunder-devtools-ee.sh bash -lc '
   if [[ "$head_ref" == develop && "$base_ref" == main ]]; then
     is_release_promotion=true
   fi
+  if [ -n "$comparison_base" ] \
+    && ! git cat-file -e "$comparison_base:galaxy.yml" 2>/dev/null \
+    && grep -Fxq "galaxy.yml" <<<"$changed" \
+    && grep -Fxq "changelogs/changelog.yaml" <<<"$changed"; then
+    is_initial_collection_bootstrap=true
+  fi
 
-  if grep -E "$generated_re" <<<"$changed"; then
-    if [ "$is_release_branch" != "true" ] && [ "$is_release_promotion" != "true" ]; then
+  generated_changes="$(grep -E "$generated_re" <<<"$changed" || true)"
+  if [ "$is_initial_collection_bootstrap" = "true" ]; then
+    generated_changes="$(grep -Fxv "changelogs/changelog.yaml" <<<"$generated_changes" || true)"
+  fi
+  if [ -n "$generated_changes" ]; then
+    if [ "$is_release_branch" != "true" ] \
+      && [ "$is_release_promotion" != "true" ]; then
       echo "::error::Generated changelog files may only be changed by release/vX.Y.Z or release back-sync PRs."
       exit 1
     fi
+  fi
+
+  if [ "$is_initial_collection_bootstrap" = "true" ]; then
+    echo "Initial collection bootstrap may initialize the generated changelog index."
   fi
 
   if [ "$is_release_branch" = "true" ]; then
@@ -80,9 +100,15 @@ bash scripts/wunder-devtools-ee.sh bash -lc '
     exit 0
   fi
 
-  if [ "${REQUIRE_FRAGMENT:-true}" != "true" ]; then
-    exit 0
-  fi
+  fragment_policy="${REQUIRE_FRAGMENT:-true}"
+  case "$fragment_policy" in
+    true | renovate-galaxy-metadata) ;;
+    false) exit 0 ;;
+    *)
+      echo "::error::Unsupported REQUIRE_FRAGMENT policy: ${fragment_policy}"
+      exit 1
+      ;;
+  esac
 
   non_user_visible_re="^(\\.github/|\\.releaserc|\\.pre-commit-config\\.yaml|\\.ansible-lint|"
   non_user_visible_re+="\\.yamllint|renovate|README\\.md|docs/|molecule/|tests/|scripts/|"
@@ -116,6 +142,14 @@ bash scripts/wunder-devtools-ee.sh bash -lc '
   if [ -z "$user_visible" ]; then
     echo "Only documentation, CI, tests, metadata, or changelog files changed."
     exit 0
+  fi
+
+  if [ "$fragment_policy" = "renovate-galaxy-metadata" ]; then
+    unexpected_user_visible="$(grep -Fxv "galaxy.yml" <<<"$user_visible" || true)"
+    if [ -z "$unexpected_user_visible" ]; then
+      echo "Trusted non-major Renovate galaxy.yml metadata updates do not require a changelog fragment."
+      exit 0
+    fi
   fi
 
   if ! grep -Eq "^changelogs/fragments/[^/]+\\.ya?ml$" <<<"$changed"; then

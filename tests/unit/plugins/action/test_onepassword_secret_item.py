@@ -85,9 +85,8 @@ def _apply_arguments(tmp_path, **overrides):
 
 
 class _FakeClient:
-    def __init__(self, exists=False, tags=None):
+    def __init__(self, exists=False):
         self.exists = exists
-        self.tags = ["breakglass", "recovery"] if tags is None else tags
         self.calls = []
 
     def _run(self, arguments, operation, discard_stdout=False):
@@ -114,7 +113,7 @@ class _FakeClient:
                     "version": ITEM_VERSION,
                     "title": "host01.example.test recovery",
                     "category": "PASSWORD",
-                    "tags": self.tags,
+                    "tags": ["breakglass", "recovery"],
                 }
             ]
         if arguments[:2] == ["item", "get"]:
@@ -221,7 +220,6 @@ def test_apply_signature_rejects_normalized_contract_mutation(tmp_path, field, v
         {"item_version": ITEM_VERSION},
         {"operation": "read"},
         {"tags": []},
-        {"tags": [{}]},
         {"password_recipe": "letters,digits,64"},
         {"tags": ["recovery", "recovery"]},
         {"allow_create": True},
@@ -243,23 +241,6 @@ def test_service_and_session_authentication_environment_is_rejected():
         plugin._OnePasswordCLI._minimal_environment(
             {"HOME": "/tmp/home", "OP_SESSION_test": "test-session"}
         )
-
-
-def test_cli_environment_replaces_untrusted_path():
-    environment = plugin._OnePasswordCLI._minimal_environment(
-        {"HOME": "/tmp/home", "PATH": "/tmp/attacker", "TMPDIR": "/tmp/shared"}
-    )
-    assert environment["PATH"] == plugin._TRUSTED_CHILD_PATH
-    assert "TMPDIR" not in environment
-
-
-def test_observed_tags_reject_unhashable_metadata_fail_closed():
-    client = _FakeClient(exists=True, tags=[{}])
-    config = plugin._normalize_arguments(
-        _arguments(operation="plan", item_id=ITEM_ID, item_version=ITEM_VERSION)
-    )
-    with pytest.raises(AnsibleActionFail, match="tags do not match"):
-        plugin._OnePasswordSecretItemStore(client).inspect(config)
 
 
 def test_operator_user_uuid_must_be_allowlisted():

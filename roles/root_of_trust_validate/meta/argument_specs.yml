@@ -1,0 +1,224 @@
+---
+argument_specs:
+  main:
+    short_description: Select an inert or explicit root-of-trust validation action.
+    options:
+      root_of_trust_validate_action:
+        description: Dedicated entrypoint selected through the role main task.
+        type: str
+        choices: [none, g0_observe, g2_plan]
+        default: none
+
+  g0_observe:
+    short_description: Observe one root-of-trust target through read-only Hetzner Robot operations.
+    description:
+      - Resolves one exact server by both public IPv4 and numeric Robot identity.
+      - Reads its firewall and probes its vSwitch in forced check mode.
+      - Reports lifecycle, firewall, and vSwitch drift as sanitized findings.
+      - Fails live observation only when an API operation fails or provider identity is ambiguous.
+    options:
+      root_of_trust_validate_selection_scope:
+        description: Exact target-selection semantic for this contract.
+        type: str
+        choices: [single_root_of_trust]
+        required: true
+      root_of_trust_validate_g0_validate_only:
+        description: Validate declarations without calling the Robot API.
+        type: bool
+        default: false
+      root_of_trust_validate_robot_user:
+        description: Resolved Hetzner Robot web-service username.
+        type: str
+        default: ""
+        no_log: true
+      root_of_trust_validate_robot_password:
+        description: Resolved Hetzner Robot web-service password.
+        type: str
+        default: ""
+        no_log: true
+      root_of_trust_validate_robot_rate_limit_retry_timeout:
+        description: Non-negative maximum seconds to retry Robot rate limits.
+        type: int
+        default: 120
+      root_of_trust_validate_target:
+        description: Exact expected root-of-trust server identity and lifecycle state.
+        type: dict
+        required: true
+        options:
+          inventory_hostname:
+            type: str
+            required: true
+          server_number:
+            type: int
+            required: true
+          server_ip:
+            type: str
+            required: true
+          server_name:
+            type: str
+            required: true
+          status:
+            type: str
+            choices: [ready, in process]
+            required: true
+          cancelled:
+            type: bool
+            required: true
+      root_of_trust_validate_expected_firewall:
+        description: Exact expected Robot firewall state used only for drift findings.
+        type: dict
+        required: true
+        options:
+          status:
+            type: str
+            choices: [active, disabled]
+            required: true
+          port:
+            type: str
+            choices: [main, kvm]
+            required: true
+          filter_ipv6:
+            type: bool
+            required: true
+          allowlist_hos:
+            type: bool
+            required: true
+          rules:
+            type: dict
+            required: true
+            options:
+              input: &root_of_trust_firewall_rule_list
+                type: list
+                elements: dict
+                required: true
+                options:
+                  name:
+                    type: str
+                  ip_version:
+                    type: str
+                    choices: [ipv4, ipv6]
+                  dst_ip:
+                    type: str
+                  dst_port:
+                    type: str
+                  src_ip:
+                    type: str
+                  src_port:
+                    type: str
+                  protocol:
+                    type: str
+                  tcp_flags:
+                    type: str
+                  action:
+                    type: str
+                    choices: [accept, discard]
+                    required: true
+              output:
+                <<: *root_of_trust_firewall_rule_list
+      root_of_trust_validate_expected_vswitch:
+        description: Exact expected active vSwitch identity and membership.
+        type: dict
+        required: true
+        options:
+          name:
+            type: str
+            required: true
+          vlan:
+            type: int
+            required: true
+          servers:
+            type: list
+            elements: str
+            required: true
+
+  g2_plan:
+    short_description: Validate one complete root-of-trust installation and firewall plan locally.
+    description:
+      - Performs only controller-local assertions and fact derivations.
+      - Requires one exact target while retaining the complete unique fleet and install order.
+      - Enforces exact eight-rule bootstrap and ten-rule hardened firewall contracts.
+    options:
+      root_of_trust_validate_selection_scope:
+        description: Exact target-selection semantic for this contract.
+        type: str
+        choices: [single_root_of_trust]
+        required: true
+      root_of_trust_validate_target:
+        description: Exact selected root-of-trust identity.
+        type: dict
+        required: true
+        options:
+          inventory_hostname:
+            type: str
+            required: true
+          server_number:
+            type: int
+            required: true
+          public_ipv4:
+            type: str
+            required: true
+          status:
+            type: str
+            choices: [ready]
+            required: true
+          cancelled:
+            type: bool
+            required: true
+      root_of_trust_validate_selected_hosts:
+        description: Hosts rendered by the current exact limit.
+        type: list
+        elements: str
+        required: true
+      root_of_trust_validate_expected_fleet:
+        description: Complete inventory fleet governed by the install order.
+        type: list
+        elements: str
+        required: true
+      root_of_trust_validate_install_order:
+        description: Complete unique installation order for the governed fleet.
+        type: list
+        elements: str
+        required: true
+      root_of_trust_validate_prerequisite_hosts:
+        description: Ordered prerequisite prefix of the installation order.
+        type: list
+        elements: str
+        required: true
+      root_of_trust_validate_root_host:
+        description: Inventory hostname of the single root-of-trust target.
+        type: str
+        required: true
+      root_of_trust_validate_tang_host:
+        description: Inventory hostname providing Tang during the installation workflow.
+        type: str
+        required: true
+      root_of_trust_validate_vault_host:
+        description: Inventory hostname providing Vault during the installation workflow.
+        type: str
+        required: true
+      root_of_trust_validate_controller_ipv4_cidr:
+        description: Exact approved controller source as one canonical IPv4 /32.
+        type: str
+        required: true
+      root_of_trust_validate_firewall:
+        description: Complete active bootstrap and hardened Robot firewall policy.
+        type: dict
+        required: true
+        options:
+          enabled: {type: bool, required: true}
+          port:
+            type: str
+            choices: [main]
+            required: true
+          filter_ipv6: {type: bool, required: true}
+          allowlist_hos: {type: bool, required: true}
+          bootstrap: &root_of_trust_firewall_phase
+            type: dict
+            required: true
+            options:
+              input:
+                <<: *root_of_trust_firewall_rule_list
+              output:
+                <<: *root_of_trust_firewall_rule_list
+          hardened:
+            <<: *root_of_trust_firewall_phase

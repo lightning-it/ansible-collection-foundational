@@ -85,7 +85,10 @@ are cleared after reconciliation and are never logged.
 Invoke `tasks_from: audit` to replace ad hoc Robot server, firewall, and vSwitch
 GET/assert blocks. The entrypoint queries `community.hrobot.server_info` once per
 inventory-host role invocation, resolves every declared public IP to exactly one
-numeric server number, and then queries firewalls using that number.
+numeric server number, and then queries firewalls using that number. Supply
+`server_number` whenever the provider asset identity is known; the audit then
+requires the live IP-to-number mapping to match instead of treating the public
+IP as the only identity guard.
 
 Firewall audit fields default to `status: active`, `port: main`,
 `filter_ipv6: false`, and `allowlist_hos: false`. If `rules` is provided, both
@@ -180,6 +183,7 @@ Use the audit entrypoint from a validation runbook:
         hetzner_robot_cac_password: "{{ resolved_robot_password }}"
         hetzner_robot_cac_audit_servers:
           - server_ip: "{{ ansible_host }}"
+            server_number: "{{ hetzner_robot_server_number }}"
             server_name: "{{ inventory_hostname }}"
             firewall:
               rules:

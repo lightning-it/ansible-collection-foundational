@@ -45,6 +45,7 @@ jobs:
       startsWith(github.event.pull_request.head.ref, 'release/v')
     name: Dispatch collection publish from main
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       actions: write
       contents: read
@@ -177,7 +178,10 @@ jobs:
           PY
           )"
           IFS=$'\t' read -r namespace collection version <<<"$metadata"
-          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$ ]]; then
+          semver_number='(0|[1-9][0-9]*)'
+          semver_identifier="(${semver_number}|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)"
+          semver_pattern="^${semver_number}\.${semver_number}\.${semver_number}(-${semver_identifier}(\.${semver_identifier})*)?$"
+          if ! [[ "$version" =~ $semver_pattern ]]; then
             echo "::error::galaxy.yml contains an invalid release version: ${version}"
             exit 1
           fi
@@ -342,6 +346,12 @@ jobs:
           fi
 
           assets=("$TARBALL" dist/SHA256SUMS dist/release-evidence.json dist/release-evidence.md)
+          expected_prerelease=false
+          prerelease_arguments=()
+          if [[ "$TAG" == *-* ]]; then
+            expected_prerelease=true
+            prerelease_arguments=(--prerelease)
+          fi
           if gh release view "$TAG" >/dev/null 2>&1; then
             expected_assets="$(printf '%s\n' "${assets[@]##*/}" | sort)"
             actual_assets="$(gh release view "$TAG" --json assets --jq '.assets[].name' | sort)"
@@ -358,12 +368,20 @@ jobs:
                 exit 1
               fi
             done
+            actual_prerelease="$(
+              gh release view "$TAG" --json isPrerelease --jq '.isPrerelease'
+            )"
+            if [ "$actual_prerelease" != "$expected_prerelease" ]; then
+              echo "::error::Existing ${TAG} release prerelease state differs from its SemVer tag."
+              exit 1
+            fi
             echo "GitHub release $TAG already exists with the exact SHA and assets."
           else
             assert_remote_main
             gh release create "$TAG" "${assets[@]}" \
               --target "$RELEASE_SHA" \
               --title "$TAG" \
+              "${prerelease_arguments[@]}" \
               --notes-file dist/release-notes.rst
           fi
 
@@ -460,3 +478,32 @@ jobs:
               exit 1
               ;;
           esac
+
+      - name: Mint central validation dispatch token
+        id: transition-app
+        if: inputs.publish_galaxy == 'true'
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
+        with:
+          client-id: ${{ vars.RELEASE_AUTOMATION_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_AUTOMATION_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: modulix-validation
+          permission-actions: write
+
+      - name: Dispatch transitional central validation
+        if: inputs.publish_galaxy == 'true'
+        env:
+          GH_TOKEN: ${{ steps.transition-app.outputs.token }}
+          SOURCE_REPOSITORY: ${{ github.repository }}
+          SOURCE_SHA: ${{ steps.candidate.outputs.release_sha }}
+          VERSION: ${{ steps.candidate.outputs.version }}
+          ARTIFACT_NAME: ${{ steps.candidate.outputs.tarball }}
+          ARTIFACT_SHA256: ${{ steps.candidate.outputs.tarball_sha256 }}
+        run: |
+          python scripts/dispatch-transition-validation.py \
+            --source-repository "$SOURCE_REPOSITORY" \
+            --source-sha "$SOURCE_SHA" \
+            --version "$VERSION" \
+            --artifact-name "${ARTIFACT_NAME##*/}" \
+            --artifact-sha256 "$ARTIFACT_SHA256" \
+            --ref main

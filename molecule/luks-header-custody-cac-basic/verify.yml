@@ -1,0 +1,41 @@
+---
+- name: Verify disabled and wrong-provider safety boundaries
+  hosts: custody-controller
+  gather_facts: false
+  tasks:
+    - name: Verify the native exchange and real role without desktop SSH
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -m
+          - unittest
+          - tests.unit.plugins.action.test_luks_header_native_handoff
+          - tests.unit.plugins.action.test_luks_header_native_role
+          - -v
+        chdir: "{{ lookup('ansible.builtin.env', 'MOLECULE_PROJECT_DIRECTORY') }}"
+      environment:
+        HOME: "{{ lookup('ansible.builtin.env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}"
+      changed_when: false
+      no_log: true
+
+    - name: Verify disabled mode requires no provider credentials
+      ansible.builtin.include_role:
+        name: lit.foundational.luks_header_custody_cac
+      vars:
+        luks_header_custody_cac_enabled: false
+
+    - name: Reject malformed source metadata before any provider connection
+      lit.foundational.luks_header_custody:
+        provider: hashicorp_vault
+        provider_config: {}
+        package: {}
+        operation: apply
+        allow_create: true
+      register: luks_header_custody_cac_fixture_rejected
+      ignore_errors: true
+      no_log: true
+
+    - name: Require fail-closed malformed-input rejection
+      ansible.builtin.assert:
+        that: luks_header_custody_cac_fixture_rejected is failed
+        quiet: true

@@ -16,12 +16,9 @@ from ansible.errors import AnsibleActionFail
 from ansible.plugins.action import ActionBase
 
 from ._onepassword_boundary import (
-    _TRUSTED_CHILD_PATH,
-    claim_creation_lock,
     claim_approval,
     normalize_approval,
     normalize_user_uuid_list,
-    run_bounded_output,
     normalize_sha256,
     safe_approval_metadata,
     trusted_executable,
@@ -372,14 +369,16 @@ def _normalize_arguments(args):
         _fail("category must be exactly Password.")
 
     tags = args.get("tags", [])
-    if not isinstance(tags, list) or not tags or len(tags) > 10:
-        _fail("tags must be a unique list of safe non-sensitive values.")
-    if any(
-        not isinstance(tag, str) or not _TAG_PATTERN.fullmatch(_plain_text(tag))
-        for tag in tags
+    if (
+        not isinstance(tags, list)
+        or not tags
+        or len(tags) > 10
+        or len(tags) != len(set(tags))
+        or any(
+            not isinstance(tag, str) or not _TAG_PATTERN.fullmatch(_plain_text(tag))
+            for tag in tags
+        )
     ):
-        _fail("tags must be a unique list of safe non-sensitive values.")
-    if len(tags) != len(set(tags)):
         _fail("tags must be a unique list of safe non-sensitive values.")
     tags = [_plain_text(tag) for tag in tags]
 
@@ -500,12 +499,11 @@ class _OnePasswordCLI:
             )
         environment = {
             name: process_environment[name]
-            for name in ("HOME", "LANG", "LC_ALL")
+            for name in ("HOME", "PATH", "TMPDIR", "LANG", "LC_ALL")
             if process_environment.get(name)
         }
         if not environment.get("HOME"):
             _fail("HOME is required for the 1Password desktop CLI integration.")
-        environment["PATH"] = _TRUSTED_CHILD_PATH
         return environment
 
     def _run(self, arguments, operation, discard_stdout=False):
@@ -513,34 +511,25 @@ class _OnePasswordCLI:
             self.requested_binary, self.binary_sha256, "cli_path"
         )
         try:
-            if discard_stdout:
-                completed = self.binary.run(
-                    arguments,
-                    stdin=subprocess.DEVNULL,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    env=self.environment,
-                    check=False,
-                    timeout=_PROCESS_TIMEOUT_SECONDS,
-                )
-                returncode, output = completed.returncode, b""
-            else:
-                returncode, output = run_bounded_output(
-                    self.binary,
-                    arguments,
-                    self.environment,
-                    _PROCESS_TIMEOUT_SECONDS,
-                )
+            completed = subprocess.run(
+                [self.binary] + list(arguments),
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL if discard_stdout else subprocess.PIPE,
+                stderr=subprocess.DEVNULL if discard_stdout else subprocess.PIPE,
+                env=self.environment,
+                check=False,
+                timeout=_PROCESS_TIMEOUT_SECONDS,
+            )
         except (OSError, subprocess.SubprocessError):
             _fail("1Password {0} could not be executed safely.".format(operation))
-        if returncode != 0:
+        if completed.returncode != 0:
             _fail(
                 "1Password {0} failed closed with exit code {1}.".format(
                     operation,
-                    returncode,
+                    completed.returncode,
                 )
             )
-        return output
+        return b"" if discard_stdout else completed.stdout
 
     def metadata(self, arguments, operation):
         payload = self._run(arguments, operation)
@@ -710,10 +699,8 @@ class _OnePasswordSecretItemStore:
         if str(item.get("category", "")).lower() != config["category"].lower():
             _fail("The 1Password item category does not match.")
         observed_tags = item.get("tags", [])
-        if (
-            not isinstance(observed_tags, list)
-            or any(not isinstance(tag, str) for tag in observed_tags)
-            or sorted(observed_tags) != sorted(config["tags"])
+        if not isinstance(observed_tags, list) or sorted(observed_tags) != sorted(
+            config["tags"]
         ):
             _fail("The 1Password item tags do not match.")
 
@@ -771,41 +758,32 @@ class _OnePasswordSecretItemStore:
 
         created = False
         if operation == "apply":
-            lock_descriptor = claim_creation_lock(
-                config["approval"],
-                "{0}/{1}/{2}".format(
-                    config["account_id"], config["vault_id"], config["item_title"]
-                ),
+            claim_approval(config["approval"])
+            creation_arguments = [
+                "item",
+                "create",
+                "--account",
+                config["account_id"],
+                "--vault",
+                config["vault_id"],
+                "--category",
+                config["category"],
+                "--title",
+                config["item_title"],
+                "--generate-password={0}".format(config["password_recipe"]),
+                "subject[text]={0}".format(config["subject"]),
+                "schema_version[text]={0}".format(config["schema_version"]),
+                "expected_length[text]={0}".format(config["password_length"]),
+            ]
+            if config["tags"]:
+                creation_arguments[10:10] = ["--tags", ",".join(config["tags"])]
+            self.client.discard(
+                creation_arguments,
+                "item creation",
             )
-            try:
-                observed = self.inspect(config)
-                if observed["exists"]:
-                    _fail("Concurrent creation found an existing Password item.")
-                claim_approval(config["approval"])
-                creation_arguments = [
-                    "item",
-                    "create",
-                    "--account",
-                    config["account_id"],
-                    "--vault",
-                    config["vault_id"],
-                    "--category",
-                    config["category"],
-                    "--title",
-                    config["item_title"],
-                    "--generate-password={0}".format(config["password_recipe"]),
-                    "subject[text]={0}".format(config["subject"]),
-                    "schema_version[text]={0}".format(config["schema_version"]),
-                    "expected_length[text]={0}".format(config["password_length"]),
-                ]
-                if config["tags"]:
-                    creation_arguments[10:10] = ["--tags", ",".join(config["tags"])]
-                self.client.discard(creation_arguments, "item creation")
-                observed = self.inspect(config)
-                if not observed["exists"]:
-                    _fail("1Password did not return the created item metadata.")
-            finally:
-                os.close(lock_descriptor)
+            observed = self.inspect(config)
+            if not observed["exists"]:
+                _fail("1Password did not return the created item metadata.")
             created = True
 
         result = {

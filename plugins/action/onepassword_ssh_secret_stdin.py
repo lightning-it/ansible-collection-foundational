@@ -12,7 +12,6 @@ import os
 import re
 import resource
 import selectors
-import stat
 import subprocess
 import tempfile
 import time
@@ -32,7 +31,6 @@ from .onepassword_ssh_key_item import (
     _write_controller_file,
 )
 from ._onepassword_boundary import (
-    _TRUSTED_CHILD_PATH,
     claim_approval,
     normalize_approval,
     normalize_sha256,
@@ -40,7 +38,6 @@ from ._onepassword_boundary import (
     trusted_agent_socket,
     trusted_executable,
     trusted_pinned_regular_file,
-    trusted_replay_directory,
 )
 
 
@@ -288,10 +285,6 @@ operator_user_uuid:
   type: str
   returned: always
   description: Allowlisted 1Password operator observed during validation.
-approval:
-  type: dict
-  returned: always
-  description: Non-sensitive metadata for the consumed short-lived approval.
 core_dumps_disabled:
   type: bool
   returned: always
@@ -645,26 +638,25 @@ def _read_secret_bytes(client, password_config):
         client.binary = trusted_executable(
             client.requested_binary, client.binary_sha256, "cli_path"
         )
-        environment = dict(client.environment)
-        environment["PATH"] = _TRUSTED_CHILD_PATH
-        environment.pop("TMPDIR", None)
         try:
-            producer = client.binary.popen(
+            producer = subprocess.Popen(
                 [
+                    client.binary,
                     "read",
                     "--account",
                     password_config["account_id"],
-                    # Pinned 1Password CLI 2.38.1 supports --force and uses it
-                    # to prevent an interactive confirmation prompt.
                     "--force",
                     "--no-newline",
+                    "--out-file",
+                    "/dev/fd/{0}".format(write_descriptor),
                     reference,
                 ],
                 stdin=subprocess.DEVNULL,
-                stdout=write_descriptor,
+                stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
-                env=environment,
+                env=client.environment,
                 close_fds=True,
+                pass_fds=(write_descriptor,),
             )
         except (OSError, subprocess.SubprocessError):
             _fail("1Password secret transport could not be started safely.")
@@ -704,7 +696,7 @@ def _read_secret_bytes(client, password_config):
         if any(value in secret for value in (0, 10, 13)):
             _fail("1Password returned an invalid recovery-secret value.")
         return secret
-    except BaseException:
+    except Exception:
         if producer is not None and producer.poll() is None:
             producer.kill()
             producer.wait()
@@ -757,18 +749,9 @@ def _revalidate_ssh_item(client, ssh_config, public_identity, operator_user_uuid
         _fail("The pinned SSH public identity changed before recovery consumption.")
 
 
-def _ssh_path_argument(value):
+def _ssh_option_path(value):
     if any(character in value for character in "\x00\r\n"):
         _fail("An SSH option path contains an invalid character.")
-    # OpenSSH expands percent tokens in IdentityFile, IdentityAgent, and
-    # UserKnownHostsFile even when their values are already separate argv
-    # entries or quoted option values.  Double every literal percent so SSH
-    # consumes the exact path that was verified by this action.
-    return value.replace("%", "%%")
-
-
-def _ssh_option_path(value):
-    value = _ssh_path_argument(value)
     return '"{0}"'.format(value.replace("\\", "\\\\").replace('"', '\\"'))
 
 
@@ -784,39 +767,12 @@ def _disable_core_dumps():
     return True
 
 
-def _trusted_ssh_temporary_parent(approval):
-    temporary_parent, status = trusted_replay_directory(
-        approval.get("_replay_directory"), "approval.replay_directory"
-    )
-    if status.st_dev != approval.get(
-        "_replay_directory_device"
-    ) or status.st_ino != approval.get("_replay_directory_inode"):
-        _fail("approval.replay_directory identity changed before SSH transport.")
-    return temporary_parent
-
-
-def _revalidate_ssh_temporary_directory(path, temporary_parent, approval):
-    if _trusted_ssh_temporary_parent(approval) != temporary_parent:
-        _fail("The SSH temporary parent changed before transport.")
-    try:
-        status = os.lstat(path)
-    except OSError:
-        _fail("The SSH temporary directory disappeared before transport.")
-    if (
-        not stat.S_ISDIR(status.st_mode)
-        or status.st_uid != os.getuid()
-        or stat.S_IMODE(status.st_mode) != 0o700
-        or os.path.dirname(path) != temporary_parent
-    ):
-        _fail("The SSH temporary directory is not controller-only.")
-
-
 def _run_ssh(config, known_host_line, public_identity, secret):
     ssh_path = trusted_executable(config["ssh_path"], config["ssh_sha256"], "ssh_path")
     agent_socket = trusted_agent_socket(config["ssh_key"]["agent_socket_path"])
     environment = {
         "HOME": os.environ.get("HOME", ""),
-        "PATH": _TRUSTED_CHILD_PATH,
+        "PATH": os.environ.get("PATH", ""),
         "SSH_AUTH_SOCK": agent_socket,
     }
     for name in ("LANG", "LC_ALL"):
@@ -824,15 +780,10 @@ def _run_ssh(config, known_host_line, public_identity, secret):
             environment[name] = os.environ[name]
     if not environment["HOME"]:
         _fail("HOME is required for the approved 1Password SSH Agent.")
-    temporary_parent = _trusted_ssh_temporary_parent(config["approval"])
-    temporary_root = tempfile.mkdtemp(
-        prefix="lit-onepassword-ssh-", dir=temporary_parent
-    )
+    temporary_root = tempfile.mkdtemp(prefix="lit-onepassword-ssh-")
     os.chmod(temporary_root, 0o700)
     public_key_path = os.path.join(temporary_root, "identity.pub")
     known_hosts_path = os.path.join(temporary_root, "known_hosts")
-    consumer = None
-    consumer_reaped = False
     try:
         _write_controller_file(
             public_key_path,
@@ -840,6 +791,7 @@ def _run_ssh(config, known_host_line, public_identity, secret):
         )
         _write_controller_file(known_hosts_path, known_host_line.encode("ascii"))
         arguments = [
+            ssh_path,
             "-F",
             "/dev/null",
             "-T",
@@ -878,7 +830,7 @@ def _run_ssh(config, known_host_line, public_identity, secret):
             "-o",
             "IdentitiesOnly=yes",
             "-i",
-            _ssh_path_argument(public_key_path),
+            public_key_path,
             "-o",
             "KbdInteractiveAuthentication=no",
             "-o",
@@ -912,11 +864,8 @@ def _run_ssh(config, known_host_line, public_identity, secret):
             "{0}@{1}".format(config["destination_user"], config["destination_host"]),
             config["remote_command"],
         ]
-        _revalidate_ssh_temporary_directory(
-            temporary_root, temporary_parent, config["approval"]
-        )
         try:
-            consumer = ssh_path.popen(
+            consumer = subprocess.Popen(
                 arguments,
                 stdin=subprocess.PIPE,
                 stdout=subprocess.DEVNULL,
@@ -939,10 +888,15 @@ def _run_ssh(config, known_host_line, public_identity, secret):
                 offset += written
             consumer.stdin.close()
             consumer.wait(timeout=_PROCESS_TIMEOUT_SECONDS)
-            consumer_reaped = True
         except (BrokenPipeError, OSError):
+            if consumer.poll() is None:
+                consumer.kill()
+                consumer.wait()
             _fail("The pinned SSH recovery consumer rejected the protected input.")
         except subprocess.TimeoutExpired:
+            if consumer.poll() is None:
+                consumer.kill()
+                consumer.wait()
             _fail("The pinned SSH recovery consumer timed out and was terminated.")
         finally:
             if view is not None:
@@ -950,20 +904,10 @@ def _run_ssh(config, known_host_line, public_identity, secret):
         if consumer.returncode != 0:
             _fail("The pinned SSH recovery consumer failed closed.")
     finally:
-        process_cleanup_failed = False
-        if consumer is not None and not consumer_reaped:
-            try:
-                if consumer.poll() is None:
-                    consumer.kill()
-                consumer.wait()
-            except (OSError, subprocess.SubprocessError):
-                process_cleanup_failed = True
         for path in (known_hosts_path, public_key_path):
             if os.path.lexists(path):
                 os.unlink(path)
         os.rmdir(temporary_root)
-        if process_cleanup_failed:
-            _fail("The pinned SSH recovery consumer could not be reaped safely.")
 
 
 def _consume(config, check_mode=False):

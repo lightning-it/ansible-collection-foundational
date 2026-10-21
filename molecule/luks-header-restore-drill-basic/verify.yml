@@ -1,0 +1,29 @@
+---
+- name: Verify rejected artifact identity and disabled no-op
+  hosts: recovery-witness
+  gather_facts: false
+  vars:
+    luks_header_restore_drill_fixture_root: "{{ lookup('ansible.builtin.env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}"
+  tasks:
+    - name: Exercise the disabled role without credentials
+      ansible.builtin.include_role:
+        name: lit.foundational.luks_header_restore_drill
+      vars:
+        luks_header_restore_drill_enabled: false
+
+    - name: Reject a changed ciphertext checksum
+      lit.foundational.luks_header_escrow_read:
+        path: "{{ luks_header_restore_drill_fixture_root }}/header.vault.yml"
+        subject: host01.example.test
+        luks_uuid: 11111111-2222-4333-8444-555555555555
+        ciphertext_sha256: "{{ '0' * 64 }}"
+      register: luks_header_restore_drill_fixture_rejection
+      ignore_errors: true
+      no_log: true
+
+    - name: Require failure without a decrypted result
+      ansible.builtin.assert:
+        that:
+          - luks_header_restore_drill_fixture_rejection is failed
+          - luks_header_restore_drill_fixture_rejection.document is not defined
+        quiet: true

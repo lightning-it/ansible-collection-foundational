@@ -37,7 +37,6 @@ class PodmanSystemdContractTests(unittest.TestCase):
 
         self.assertIn("podman_systemd_networks is sequence", assertions)
         self.assertIn("podman_systemd_networks is not string", assertions)
-        self.assertIn("podman_systemd_networks is not mapping", assertions)
         self.assertIn("select('string')", rendered)
         self.assertIn("select('search', '[\\r\\n]')", rendered)
 

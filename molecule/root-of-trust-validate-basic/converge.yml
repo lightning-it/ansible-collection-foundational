@@ -1,0 +1,61 @@
+---
+- name: Converge generic root-of-trust validation entrypoints
+  hosts: all
+  gather_facts: false
+  vars_files:
+    - resources
+  tasks:
+    - name: Validate the exact local G2 plan
+      ansible.builtin.include_role:
+        name: lit.foundational.root_of_trust_validate
+        tasks_from: g2_plan
+
+    - name: Revalidate the exact local G2 plan
+      ansible.builtin.include_role:
+        name: lit.foundational.root_of_trust_validate
+        tasks_from: g2_plan
+      register: root_of_trust_validate_g2_second_run
+
+    - name: Require local G2 idempotence and exact cardinalities
+      ansible.builtin.assert:
+        that:
+          - not (root_of_trust_validate_g2_second_run.changed | bool)
+          - root_of_trust_validate_result.validated | bool
+          - root_of_trust_validate_result.local_only | bool
+          - root_of_trust_validate_result.selection_scope == 'single_root_of_trust'
+          - root_of_trust_validate_result.target_host_count | int == 1
+          - root_of_trust_validate_result.fleet_host_count | int == 2
+          - root_of_trust_validate_result.bootstrap_rule_count | int == 8
+          - root_of_trust_validate_result.hardened_rule_count | int == 10
+          - root_of_trust_validate_result.output_rule_count | int == 1
+          - root_of_trust_validate_result.tang_source_count | int == 3
+          - root_of_trust_validate_result.provider_firewall_enabled | bool
+          - root_of_trust_validate_result.ipv6_filter_enabled | bool
+        quiet: true
+      changed_when: false
+
+    - name: Validate the G0 declaration without Robot API calls
+      ansible.builtin.include_role:
+        name: lit.foundational.root_of_trust_validate
+        tasks_from: g0_observe
+      vars:
+        root_of_trust_validate_target: "{{ root_of_trust_validate_target_g0 }}"
+
+    - name: Revalidate the G0 declaration without Robot API calls
+      ansible.builtin.include_role:
+        name: lit.foundational.root_of_trust_validate
+        tasks_from: g0_observe
+      vars:
+        root_of_trust_validate_target: "{{ root_of_trust_validate_target_g0 }}"
+      register: root_of_trust_validate_g0_second_run
+
+    - name: Require observation-free G0 idempotence
+      ansible.builtin.assert:
+        that:
+          - not (root_of_trust_validate_g0_second_run.changed | bool)
+          - root_of_trust_validate_result.entrypoint == 'g0_observe'
+          - not (root_of_trust_validate_result.api_queried | bool)
+          - not (root_of_trust_validate_result.observation_complete | bool)
+          - root_of_trust_validate_result.finding_count | int == 0
+        quiet: true
+      changed_when: false

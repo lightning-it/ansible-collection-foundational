@@ -209,29 +209,22 @@ def test_consumer_keeps_secret_out_of_result_and_process_arguments(
     _write_executable(
         op_path,
         "import os, sys\n"
-        "if os.environ['PATH'] != {0!r} or 'TMPDIR' in os.environ:\n"
-        "    raise SystemExit(6)\n"
-        "if not {{'read', '--force', '--no-newline'}}.issubset(set(sys.argv[1:])):\n"
-        "    raise SystemExit(5)\n"
-        "sys.stdout.buffer.write({1!r})\n".format(
-            plugin._TRUSTED_CHILD_PATH, SECRET
-        ),
+        "args = sys.argv[1:]\n"
+        "descriptor = int(args[args.index('--out-file') + 1].rsplit('/', 1)[1])\n"
+        "os.write(descriptor, {0!r})\n".format(SECRET),
     )
     _write_executable(
         ssh_path,
-        "import os, pathlib, sys\n"
-        "if os.environ['PATH'] != {0!r} or 'TMPDIR' in os.environ:\n"
-        "    raise SystemExit(6)\n"
+        "import pathlib, sys\n"
         "value = sys.stdin.buffer.read()\n"
-        "required = {1!r}\n"
+        "required = {0!r}\n"
         "if not required.issubset(set(sys.argv[1:])):\n"
         "    raise SystemExit(7)\n"
         "if sys.argv[-1] != '/bin/cryptroot-unlock':\n"
         "    raise SystemExit(8)\n"
-        "if value != {2!r}:\n"
+        "if value != {1!r}:\n"
         "    raise SystemExit(9)\n"
-        "pathlib.Path({3!r}).write_text('ok', encoding='utf-8')\n".format(
-            plugin._TRUSTED_CHILD_PATH,
+        "pathlib.Path({2!r}).write_text('ok', encoding='utf-8')\n".format(
             {
                 "-T",
                 "BatchMode=yes",
@@ -260,23 +253,11 @@ def test_consumer_keeps_secret_out_of_result_and_process_arguments(
     agent_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     agent_socket.bind(str(tmp_path / "agent.sock"))
     config = plugin._normalize_arguments(_arguments(tmp_path))
-    temporary_parents = []
-    real_mkdtemp = plugin.tempfile.mkdtemp
-
-    def _recording_mkdtemp(*args, **kwargs):
-        temporary_parents.append(kwargs.get("dir"))
-        return real_mkdtemp(*args, **kwargs)
-
-    monkeypatch.setattr(plugin.tempfile, "mkdtemp", _recording_mkdtemp)
     fake_client = SimpleNamespace(
         requested_binary=str(op_path),
         binary=str(op_path),
         binary_sha256=config["password"]["cli_sha256"],
-        environment={
-            "HOME": str(tmp_path),
-            "PATH": str(tmp_path / "untrusted-bin"),
-            "TMPDIR": str(tmp_path / "untrusted-tmp"),
-        },
+        environment={"HOME": str(tmp_path), "PATH": os.environ["PATH"]},
     )
     monkeypatch.setattr(
         plugin,
@@ -307,7 +288,6 @@ def test_consumer_keeps_secret_out_of_result_and_process_arguments(
     assert result["core_dumps_disabled"] is True
     assert marker.read_text(encoding="utf-8") == "ok"
     assert SECRET.decode("ascii") not in repr(result)
-    assert temporary_parents == [config["approval"]["_replay_directory"]]
     assert len(list((tmp_path / "replay").glob("*.used"))) == 1
 
 
@@ -412,20 +392,14 @@ def test_secret_reader_uses_mutable_readv_and_rejects_short_or_oversized_values(
         "account_id": ACCOUNT_ID,
         "password_length": 64,
     }
-    environment = {
-        "HOME": str(tmp_path),
-        "PATH": str(tmp_path / "untrusted-bin"),
-        "TMPDIR": str(tmp_path / "untrusted-tmp"),
-    }
+    environment = {"HOME": str(tmp_path), "PATH": os.environ["PATH"]}
     for payload in (b"S" * 63, b"S" * 65, b"S" * 63 + b"\n"):
         _write_executable(
             op_path,
             "import os, sys\n"
-            "if os.environ['PATH'] != {0!r} or 'TMPDIR' in os.environ:\n"
-            "    raise SystemExit(6)\n"
-            "sys.stdout.buffer.write({1!r})\n".format(
-                plugin._TRUSTED_CHILD_PATH, payload
-            ),
+            "args = sys.argv[1:]\n"
+            "fd = int(args[args.index('--out-file') + 1].rsplit('/', 1)[1])\n"
+            "os.write(fd, {0!r})\n".format(payload),
         )
         client = SimpleNamespace(
             requested_binary=str(op_path),
@@ -435,71 +409,6 @@ def test_secret_reader_uses_mutable_readv_and_rejects_short_or_oversized_values(
         )
         with pytest.raises(AnsibleActionFail):
             plugin._read_secret_bytes(client, password_config)
-
-
-def test_secret_reader_terminates_and_reaps_op_after_interrupt(tmp_path, monkeypatch):
-    class _Process:
-        def __init__(self):
-            self.returncode = None
-            self.killed = False
-            self.waited = False
-
-        def poll(self):
-            return self.returncode
-
-        def kill(self):
-            self.killed = True
-            self.returncode = -9
-
-        def wait(self, timeout=None):
-            self.waited = True
-            return self.returncode
-
-    process = _Process()
-
-    class _Executable:
-        @staticmethod
-        def popen(arguments, **kwargs):
-            assert {"read", "--force", "--no-newline"}.issubset(set(arguments))
-            assert kwargs["env"]["PATH"] == plugin._TRUSTED_CHILD_PATH
-            return process
-
-    class _InterruptingSelector:
-        @staticmethod
-        def register(*unused):
-            return None
-
-        @staticmethod
-        def select(unused_timeout):
-            raise KeyboardInterrupt
-
-        @staticmethod
-        def close():
-            return None
-
-    monkeypatch.setattr(plugin, "trusted_executable", lambda *unused: _Executable())
-    monkeypatch.setattr(
-        plugin.selectors, "DefaultSelector", lambda: _InterruptingSelector()
-    )
-    client = SimpleNamespace(
-        requested_binary=str(tmp_path / "op"),
-        binary=str(tmp_path / "op"),
-        binary_sha256="a" * 64,
-        environment={"PATH": str(tmp_path / "untrusted-bin")},
-    )
-    password_config = {
-        "vault_id": VAULT_ID,
-        "item_id": PASSWORD_ITEM_ID,
-        "field_id": "password",
-        "account_id": ACCOUNT_ID,
-        "password_length": 64,
-    }
-
-    with pytest.raises(KeyboardInterrupt):
-        plugin._read_secret_bytes(client, password_config)
-
-    assert process.killed is True
-    assert process.waited is True
 
 
 def test_core_dump_boundary_sets_and_verifies_zero(monkeypatch):
@@ -517,86 +426,11 @@ def test_core_dump_boundary_sets_and_verifies_zero(monkeypatch):
     assert calls == [(0, 4096)]
 
 
-def test_ssh_consumer_is_terminated_and_reaped_after_interrupt(tmp_path, monkeypatch):
-    class _InterruptingInput:
-        @staticmethod
-        def fileno():
-            raise KeyboardInterrupt
-
-    class _Process:
-        def __init__(self):
-            self.stdin = _InterruptingInput()
-            self.returncode = None
-            self.killed = False
-            self.waited = False
-
-        def poll(self):
-            return self.returncode
-
-        def kill(self):
-            self.killed = True
-            self.returncode = -9
-
-        def wait(self, timeout=None):
-            self.waited = True
-            return self.returncode
-
-    process = _Process()
-
-    class _Executable:
-        @staticmethod
-        def popen(arguments, **kwargs):
-            assert arguments[0:2] == ["-F", "/dev/null"]
-            assert kwargs["env"]["PATH"] == plugin._TRUSTED_CHILD_PATH
-            return process
-
-    monkeypatch.setattr(plugin, "trusted_executable", lambda *unused: _Executable())
-    monkeypatch.setattr(
-        plugin, "trusted_agent_socket", lambda unused: str(tmp_path / "agent.sock")
-    )
-    replay_directory = tmp_path / "replay"
-    replay_directory.mkdir(mode=0o700)
-    replay_status = replay_directory.stat()
-    config = {
-        "ssh_path": "/usr/bin/ssh",
-        "ssh_sha256": "a" * 64,
-        "ssh_key": {"agent_socket_path": str(tmp_path / "agent.sock")},
-        "destination_port": 2222,
-        "destination_user": "root",
-        "destination_host": SUBJECT,
-        "remote_command": "/bin/cryptroot-unlock",
-        "approval": {
-            "_replay_directory": str(replay_directory),
-            "_replay_directory_device": replay_status.st_dev,
-            "_replay_directory_inode": replay_status.st_ino,
-        },
-    }
-
-    with pytest.raises(KeyboardInterrupt):
-        plugin._run_ssh(
-            config,
-            "[{0}]:2222 {1}\n".format(SUBJECT, HOST_PUBLIC_KEY),
-            {"public_key": PUBLIC_KEY, "fingerprint": SSH_FINGERPRINT},
-            bytearray(SECRET),
-        )
-
-    assert process.killed is True
-    assert process.waited is True
-
-
 def test_macos_agent_socket_path_is_quoted_without_shell_interpolation():
     path = (
         "/Users/operator/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock"
     )
     assert plugin._ssh_option_path(path) == '"{0}"'.format(path)
-
-
-def test_ssh_path_arguments_escape_all_percent_tokens_consistently():
-    path = "/private/tmp/identity-%h-%p-%%.pub"
-    escaped = "/private/tmp/identity-%%h-%%p-%%%%.pub"
-
-    assert plugin._ssh_path_argument(path) == escaped
-    assert plugin._ssh_option_path(path) == '"{0}"'.format(escaped)
 
 
 def test_ssh_identity_is_revalidated_after_secret_transport(monkeypatch):

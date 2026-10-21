@@ -1,0 +1,71 @@
+---
+- name: Validate custody enablement and operation
+  ansible.builtin.assert:
+    that:
+      - luks_header_custody_cac_enabled is boolean
+      - luks_header_custody_cac_onepassword_enabled is boolean
+      - luks_header_custody_cac_allow_create is boolean
+      - luks_header_custody_cac_operation in ['plan', 'apply', 'verify']
+      - luks_header_custody_cac_onepassword_transport in ['ssh', 'native_handoff']
+    quiet: true
+
+- name: Require pinned source and approved custody inputs
+  ansible.builtin.assert:
+    that:
+      - >-
+        (luks_header_custody_cac_path | length > 0)
+        != (luks_header_custody_cac_package_path | length > 0)
+      - >-
+        (luks_header_custody_cac_package_path is match('^/')
+         and luks_header_custody_cac_package_sha256 is match('^[0-9a-f]{64}$'))
+        or
+        (luks_header_custody_cac_path is match('^/')
+         and luks_header_custody_cac_ciphertext_sha256 is match('^[0-9a-f]{64}$'))
+      - luks_header_custody_cac_subject is match('^[A-Za-z0-9][A-Za-z0-9._-]{0,252}$')
+      - luks_header_custody_cac_source_machine_id is match('^[0-9a-f]{32}$')
+      - luks_header_custody_cac_luks_uuid | length == 36
+      - luks_header_custody_cac_owner | trim | length > 0
+      - luks_header_custody_cac_retention | trim | length > 0
+      - luks_header_custody_cac_key_retrieval_reference | trim | length > 0
+      - luks_header_custody_cac_vault is mapping
+      - luks_header_custody_cac_vault.keys() | sort == ['auth', 'mount', 'prefix']
+      - luks_header_custody_cac_operation != 'apply' or luks_header_custody_cac_allow_create
+    fail_msg: "Custody requires a pinned header, explicit owner/retention/key retrieval and a closed Vault contract."
+    quiet: true
+  when: luks_header_custody_cac_enabled
+  no_log: true
+
+- name: Require an explicit SSH executor when that transport is selected
+  ansible.builtin.assert:
+    that:
+      - luks_header_custody_cac_onepassword_executor | length > 0
+      - luks_header_custody_cac_onepassword_executor != inventory_hostname
+      - luks_header_custody_cac_onepassword_executor in hostvars
+      - hostvars[luks_header_custody_cac_onepassword_executor].ansible_connection | default('ssh') == 'ssh'
+      - >-
+        'StrictHostKeyChecking=yes' in
+        (hostvars[luks_header_custody_cac_onepassword_executor].ansible_ssh_common_args | default(''))
+      - luks_header_custody_cac_onepassword is mapping
+      - luks_header_custody_cac_onepassword_title_prefix | trim | length > 0
+    fail_msg: "Additional custody requires an inventory-pinned native SSH executor with strict host-key verification."
+    quiet: true
+  when:
+    - luks_header_custody_cac_enabled and luks_header_custody_cac_onepassword_enabled
+    - luks_header_custody_cac_onepassword_transport == 'ssh'
+
+- name: Require distinct protected paths for the native desktop exchange
+  ansible.builtin.assert:
+    that:
+      - luks_header_custody_cac_onepassword_executor | length == 0
+      - luks_header_custody_cac_onepassword_native_request_path is match('^/')
+      - luks_header_custody_cac_onepassword_native_response_path is match('^/')
+      - >-
+        luks_header_custody_cac_onepassword_native_request_path
+        != luks_header_custody_cac_onepassword_native_response_path
+      - luks_header_custody_cac_onepassword is mapping
+      - luks_header_custody_cac_onepassword_title_prefix | trim | length > 0
+    fail_msg: "Native custody requires a trusted desktop exchange; it does not require an SSH executor."
+    quiet: true
+  when:
+    - luks_header_custody_cac_enabled and luks_header_custody_cac_onepassword_enabled
+    - luks_header_custody_cac_onepassword_transport == 'native_handoff'

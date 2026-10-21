@@ -1,0 +1,24 @@
+---
+- name: Require one unambiguous Robot server identity
+  ansible.builtin.assert:
+    that:
+      - _root_of_trust_validate_g0_servers_by_ip | length == 1
+      - _root_of_trust_validate_g0_servers_by_number | length == 1
+      - >-
+        _root_of_trust_validate_g0_servers_by_ip[0].server_ip
+        == _root_of_trust_validate_g0_servers_by_number[0].server_ip
+      - >-
+        _root_of_trust_validate_g0_servers_by_ip[0].server_number | int
+        == _root_of_trust_validate_g0_servers_by_number[0].server_number | int
+      - >-
+        _root_of_trust_validate_g0_servers_by_ip[0].server_ip
+        == root_of_trust_validate_target.server_ip
+      - >-
+        _root_of_trust_validate_g0_servers_by_ip[0].server_number | int
+        == root_of_trust_validate_target.server_number | int
+    fail_msg: >-
+      G0 cannot continue because the public IPv4 and numeric Robot identity do
+      not resolve to exactly the same single server.
+    quiet: true
+  changed_when: false
+  no_log: true

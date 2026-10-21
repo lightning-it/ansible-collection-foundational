@@ -1,0 +1,46 @@
+---
+- name: Prechecks
+  ansible.builtin.import_tasks: assert.yml
+  tags: always
+
+- name: Verify the independently retained encrypted header
+  when: luks_header_restore_drill_enabled
+  block:
+    - name: Read only the exact pinned ciphertext into protected memory
+      lit.foundational.luks_header_escrow_read:
+        path: "{{ luks_header_restore_drill_path }}"
+        subject: "{{ luks_header_restore_drill_subject }}"
+        luks_uuid: "{{ luks_header_restore_drill_luks_uuid }}"
+        ciphertext_sha256: "{{ luks_header_restore_drill_ciphertext_sha256 }}"
+      register: _luks_header_restore_drill_envelope
+      no_log: true
+
+    - name: Restore only into a newly allocated witness tmpfs regular file
+      lit.foundational.luks_header_restore_drill:
+        document: "{{ _luks_header_restore_drill_envelope.document }}"
+        subject: "{{ luks_header_restore_drill_subject }}"
+        luks_uuid: "{{ luks_header_restore_drill_luks_uuid }}"
+        source_machine_id: "{{ luks_header_restore_drill_source_machine_id }}"
+        witness_machine_id: "{{ luks_header_restore_drill_witness_machine_id }}"
+        passphrase: "{{ luks_header_restore_drill_passphrase }}"
+        temporary_root: "{{ luks_header_restore_drill_temporary_root }}"
+      register: _luks_header_restore_drill_checked
+      no_log: true
+
+    - name: Publish the secret-free recovery result
+      ansible.builtin.set_fact:
+        luks_header_restore_drill_result:
+          verified: "{{ _luks_header_restore_drill_checked.verified }}"
+          check_mode: "{{ ansible_check_mode }}"
+          ciphertext_sha256: "{{ luks_header_restore_drill_ciphertext_sha256 }}"
+          luks_uuid: "{{ luks_header_restore_drill_luks_uuid }}"
+          witness_machine_id: "{{ luks_header_restore_drill_witness_machine_id }}"
+        cacheable: false
+      changed_when: false
+  always:
+    - name: Release the decrypted header from active role facts
+      ansible.builtin.set_fact:
+        _luks_header_restore_drill_envelope: null
+        _luks_header_restore_drill_checked: null
+      no_log: true
+      changed_when: false

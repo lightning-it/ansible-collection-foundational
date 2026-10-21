@@ -1,0 +1,122 @@
+---
+- name: Run the read-only G0 provider observation
+  delegate_to: localhost
+  become: false
+  block:
+    - name: Query the Robot server inventory once for G0
+      community.hrobot.server_info:
+        hetzner_user: "{{ root_of_trust_validate_robot_user }}"
+        hetzner_password: "{{ root_of_trust_validate_robot_password }}"
+        rate_limit_retry_timeout: "{{ root_of_trust_validate_robot_rate_limit_retry_timeout }}"
+        full_info: false
+      register: _root_of_trust_validate_g0_server_info
+      changed_when: false
+      no_log: true
+
+    - name: Resolve G0 server candidates by both immutable identities
+      ansible.builtin.set_fact:
+        _root_of_trust_validate_g0_servers_by_ip: >-
+          {{
+            _root_of_trust_validate_g0_server_info.servers
+            | selectattr('server_ip', 'equalto', root_of_trust_validate_target.server_ip)
+            | list
+          }}
+        _root_of_trust_validate_g0_servers_by_number: >-
+          {{
+            _root_of_trust_validate_g0_server_info.servers
+            | selectattr('server_number', 'equalto', root_of_trust_validate_target.server_number)
+            | list
+          }}
+        cacheable: false
+      changed_when: false
+      no_log: true
+
+    - name: Enforce unambiguous G0 server identity
+      ansible.builtin.include_tasks: g0_identity_assert.yml
+
+    - name: Retain only the uniquely selected G0 server observation
+      ansible.builtin.set_fact:
+        _root_of_trust_validate_g0_server: >-
+          {{ _root_of_trust_validate_g0_servers_by_ip[0] }}
+        cacheable: false
+      changed_when: false
+      no_log: true
+
+    - name: Observe and normalize the selected Robot firewall
+      ansible.builtin.include_tasks: g0_firewall_observe.yml
+
+    - name: Probe the expected Robot vSwitch without mutation
+      community.hrobot.v_switch:
+        hetzner_user: "{{ root_of_trust_validate_robot_user }}"
+        hetzner_password: "{{ root_of_trust_validate_robot_password }}"
+        rate_limit_retry_timeout: "{{ root_of_trust_validate_robot_rate_limit_retry_timeout }}"
+        name: "{{ root_of_trust_validate_expected_vswitch.name }}"
+        vlan: "{{ root_of_trust_validate_expected_vswitch.vlan }}"
+        servers: "{{ root_of_trust_validate_expected_vswitch.servers }}"
+        wait: false
+        state: present
+      check_mode: true
+      register: _root_of_trust_validate_g0_vswitch_probe
+      changed_when: false
+      no_log: true
+
+    - name: Normalize G0 vSwitch member identities
+      ansible.builtin.set_fact:
+        _root_of_trust_validate_g0_vswitch_members: >-
+          {{ _root_of_trust_validate_g0_vswitch_probe.v_switch.server | default([]) }}
+        _root_of_trust_validate_g0_vswitch_identity_tokens: >-
+          {{
+            (
+              _root_of_trust_validate_g0_vswitch_probe.v_switch.server
+              | default([])
+              | selectattr('server_ip', 'defined')
+              | map(attribute='server_ip') | map('string') | list
+            )
+            +
+            (
+              _root_of_trust_validate_g0_vswitch_probe.v_switch.server
+              | default([])
+              | selectattr('server_number', 'defined')
+              | map(attribute='server_number') | map('string') | list
+            )
+          }}
+        cacheable: false
+      changed_when: false
+      no_log: true
+
+    - name: Evaluate G0 state as sanitized non-failing findings
+      ansible.builtin.include_tasks: g0_evaluate.yml
+
+    - name: Publish the sanitized G0 observation result
+      ansible.builtin.set_fact:
+        root_of_trust_validate_result:
+          changed: false
+          entrypoint: g0_observe
+          selection_scope: "{{ root_of_trust_validate_selection_scope }}"
+          api_queried: true
+          observation_complete: true
+          compliance_evaluated: true
+          compliant: "{{ _root_of_trust_validate_g0_findings | length == 0 }}"
+          finding_count: "{{ _root_of_trust_validate_g0_findings | length }}"
+          findings: "{{ _root_of_trust_validate_g0_findings }}"
+        cacheable: false
+      changed_when: false
+
+  always:
+    - name: Remove raw G0 Robot observations from controller facts
+      ansible.builtin.set_fact:
+        _root_of_trust_validate_g0_server_info: {}
+        _root_of_trust_validate_g0_servers_by_ip: []
+        _root_of_trust_validate_g0_servers_by_number: []
+        _root_of_trust_validate_g0_server: {}
+        _root_of_trust_validate_g0_firewall_info: {}
+        _root_of_trust_validate_g0_vswitch_probe: {}
+        _root_of_trust_validate_g0_vswitch_members: []
+        _root_of_trust_validate_g0_vswitch_identity_tokens: []
+        _root_of_trust_validate_g0_expected_input: []
+        _root_of_trust_validate_g0_expected_output: []
+        _root_of_trust_validate_g0_actual_input: []
+        _root_of_trust_validate_g0_actual_output: []
+        cacheable: false
+      changed_when: false
+      no_log: true

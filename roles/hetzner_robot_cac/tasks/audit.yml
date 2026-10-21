@@ -46,6 +46,13 @@
               | first
             ).server_name == item.server_name
           - >-
+            item.server_number is not defined
+            or (
+              hetzner_robot_cac_audit_server_info.servers
+              | selectattr('server_ip', 'equalto', item.server_ip)
+              | first
+            ).server_number | int == item.server_number | int
+          - >-
             (
               hetzner_robot_cac_audit_server_info.servers
               | selectattr('server_ip', 'equalto', item.server_ip)
@@ -57,7 +64,9 @@
               | selectattr('server_ip', 'equalto', item.server_ip)
               | first
             ).cancelled | bool == (item.cancelled | default(false) | bool)
-        fail_msg: A declared Robot server is missing, ambiguous, or differs from its expected state.
+        fail_msg: >-
+          A declared Robot server is missing, ambiguous, or differs from its
+          expected numeric identity, name, or lifecycle state.
         quiet: true
       loop: "{{ hetzner_robot_cac_audit_servers }}"
       loop_control:

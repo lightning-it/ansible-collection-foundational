@@ -19,12 +19,10 @@ from ansible.errors import AnsibleActionFail
 from ansible.plugins.action import ActionBase
 
 from ._onepassword_boundary import (
-    _TRUSTED_CHILD_PATH,
     _write_private_file,
     approval_signing_payload,
     normalize_approval,
     normalize_approval_authority,
-    run_bounded_output,
     safe_approval_metadata,
     trusted_agent_socket,
     trusted_executable,
@@ -105,23 +103,24 @@ def _verified_agent_signer(config):
     environment = {
         "LANG": "C",
         "LC_ALL": "C",
-        "PATH": _TRUSTED_CHILD_PATH,
         "SSH_AUTH_SOCK": agent_socket,
     }
     try:
-        returncode, output = run_bounded_output(
-            ssh_add,
-            ["-L"],
-            environment,
-            30,
-            maximum_size=65536,
+        completed = subprocess.run(
+            [ssh_add, "-L"],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            env=environment,
+            check=False,
+            timeout=30,
         )
     except (OSError, subprocess.SubprocessError):
         _fail("The approved signing SSH Agent could not be inspected safely.")
-    if returncode != 0:
+    if completed.returncode != 0 or len(completed.stdout) > 65536:
         _fail("The approved signing SSH Agent is unavailable or locked.")
     try:
-        rows = output.decode("ascii", errors="strict").splitlines()
+        rows = completed.stdout.decode("ascii", errors="strict").splitlines()
     except UnicodeError:
         _fail("The approved signing SSH Agent returned invalid public metadata.")
     expected_public_key = config["signing_public_key"]
@@ -186,26 +185,10 @@ def _normalize_arguments(args, now=None):
     }
 
 
-def _public_authority(authority):
-    """Return only the closed public Approval Authority contract."""
-    return {
-        "schema_version": authority["schema_version"],
-        "identity": authority["identity"],
-        "namespace": authority["namespace"],
-        "fingerprint": authority["fingerprint"],
-        "allowed_signers_path": authority["_requested_allowed_signers_path"],
-        "allowed_signers_sha256": authority["allowed_signers_sha256"],
-        "ssh_keygen_path": authority["_requested_ssh_keygen_path"],
-        "ssh_keygen_sha256": authority["ssh_keygen_sha256"],
-        "replay_directory": authority["replay_directory"],
-    }
-
-
 def _sign(config):
-    authority = _public_authority(config["authority"])
     payload = approval_signing_payload(
         config["approval"],
-        authority,
+        config["authority"],
         config["operation"],
         config["target"],
         config["binding"],
@@ -227,8 +210,9 @@ def _sign(config):
         )
         agent_socket = _verified_agent_signer(config)
         try:
-            completed = ssh_keygen.run(
+            completed = subprocess.run(
                 [
+                    ssh_keygen,
                     "-Y",
                     "sign",
                     "-f",
@@ -243,7 +227,6 @@ def _sign(config):
                 env={
                     "LANG": "C",
                     "LC_ALL": "C",
-                    "PATH": _TRUSTED_CHILD_PATH,
                     "SSH_AUTH_SOCK": agent_socket,
                 },
                 check=False,
@@ -261,7 +244,23 @@ def _sign(config):
         signed["signature"] = signature
         normalized = normalize_approval(
             signed,
-            authority,
+            {
+                "schema_version": config["authority"]["schema_version"],
+                "identity": config["authority"]["identity"],
+                "namespace": config["authority"]["namespace"],
+                "fingerprint": config["authority"]["fingerprint"],
+                "allowed_signers_path": config["authority"][
+                    "_requested_allowed_signers_path"
+                ],
+                "allowed_signers_sha256": config["authority"][
+                    "allowed_signers_sha256"
+                ],
+                "ssh_keygen_path": config["authority"][
+                    "_requested_ssh_keygen_path"
+                ],
+                "ssh_keygen_sha256": config["authority"]["ssh_keygen_sha256"],
+                "replay_directory": config["authority"]["replay_directory"],
+            },
             config["operation"],
             config["target"],
             config["binding"],
@@ -284,7 +283,7 @@ class ActionModule(ActionBase):
 
     TRANSFERS_FILES = False
     _requires_connection = False
-    _supports_check_mode = False
+    _supports_check_mode = True
     _VALID_ARGS = _EXPECTED_ARGS
 
     def run(self, tmp=None, task_vars=None):
@@ -292,6 +291,4 @@ class ActionModule(ActionBase):
             task_vars = {}
         self._task.no_log = True
         super(ActionModule, self).run(tmp, task_vars)
-        if self._task.check_mode:
-            _fail("onepassword_approval cannot mint approvals in check mode.")
         return _sign(_normalize_arguments(dict(self._task.args)))

@@ -12,7 +12,6 @@ import binascii
 import hashlib
 import json
 import os
-from pathlib import Path
 import re
 import struct
 import subprocess
@@ -22,12 +21,9 @@ from ansible.errors import AnsibleActionFail
 from ansible.plugins.action import ActionBase
 
 from ._onepassword_boundary import (
-    _TRUSTED_CHILD_PATH,
-    claim_creation_lock,
     claim_approval,
     normalize_approval,
     normalize_user_uuid_list,
-    run_bounded_output,
     normalize_sha256,
     safe_approval_metadata,
     trusted_agent_socket,
@@ -196,7 +192,7 @@ fingerprint:
   description: Locally recomputed SHA-256 public-key fingerprint.
 agent_verified:
   type: bool
-  returned: for apply and verify_agent
+  returned: when the item exists
   description:
     - Whether the exact key was uniquely available and completed a fresh signing challenge through the approved SSH
       Agent socket.
@@ -354,14 +350,16 @@ def _normalize_arguments(args):
         _fail("key_type must be exactly ed25519.")
 
     tags = args.get("tags", [])
-    if not isinstance(tags, list) or not tags or len(tags) > 10:
-        _fail("tags must be a unique list of safe non-sensitive values.")
-    if any(
-        not isinstance(tag, str) or not _TAG_PATTERN.fullmatch(_plain_text(tag))
-        for tag in tags
+    if (
+        not isinstance(tags, list)
+        or not tags
+        or len(tags) > 10
+        or len(tags) != len(set(tags))
+        or any(
+            not isinstance(tag, str) or not _TAG_PATTERN.fullmatch(_plain_text(tag))
+            for tag in tags
+        )
     ):
-        _fail("tags must be a unique list of safe non-sensitive values.")
-    if len(tags) != len(set(tags)):
         _fail("tags must be a unique list of safe non-sensitive values.")
     tags = [_plain_text(tag) for tag in tags]
 
@@ -535,12 +533,11 @@ class _OnePasswordCLI:
             )
         environment = {
             name: process_environment[name]
-            for name in ("HOME", "LANG", "LC_ALL")
+            for name in ("HOME", "PATH", "TMPDIR", "LANG", "LC_ALL")
             if process_environment.get(name)
         }
         if not environment.get("HOME"):
             _fail("HOME is required for the 1Password desktop CLI integration.")
-        environment["PATH"] = _TRUSTED_CHILD_PATH
         return environment
 
     def _run(self, arguments, operation, discard_stdout=False, stdin_payload=None):
@@ -548,34 +545,25 @@ class _OnePasswordCLI:
             self.requested_binary, self.binary_sha256, "cli_path"
         )
         try:
-            if discard_stdout:
-                completed = self.binary.run(
-                    arguments,
-                    input=stdin_payload,
-                    stdin=subprocess.DEVNULL if stdin_payload is None else None,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    env=self.environment,
-                    check=False,
-                    timeout=_PROCESS_TIMEOUT_SECONDS,
-                )
-                returncode, output = completed.returncode, b""
-            else:
-                returncode, output = run_bounded_output(
-                    self.binary,
-                    arguments,
-                    self.environment,
-                    _PROCESS_TIMEOUT_SECONDS,
-                )
+            completed = subprocess.run(
+                [self.binary] + list(arguments),
+                input=stdin_payload,
+                stdin=subprocess.DEVNULL if stdin_payload is None else None,
+                stdout=subprocess.DEVNULL if discard_stdout else subprocess.PIPE,
+                stderr=subprocess.DEVNULL if discard_stdout else subprocess.PIPE,
+                env=self.environment,
+                check=False,
+                timeout=_PROCESS_TIMEOUT_SECONDS,
+            )
         except (OSError, subprocess.SubprocessError):
             _fail("1Password {0} could not be executed safely.".format(operation))
-        if returncode != 0:
+        if completed.returncode != 0:
             _fail(
                 "1Password {0} failed closed with exit code {1}.".format(
-                    operation, returncode
+                    operation, completed.returncode
                 )
             )
-        return output
+        return b"" if discard_stdout else completed.stdout
 
     def metadata(self, arguments, operation):
         payload = self._run(arguments, operation)
@@ -668,29 +656,6 @@ def _public_identity(public_key):
     return " ".join(parts), "SHA256:{0}".format(fingerprint)
 
 
-def _agent_row_identity(row):
-    """Return an Ed25519 identity or validate one unrelated OpenSSH key row."""
-    if not isinstance(row, str) or not row.isascii() or len(row) > 16384:
-        _fail("The approved SSH Agent returned a malformed public-key row.")
-    parts = row.split(maxsplit=2)
-    if len(parts) < 2 or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9@._+-]{0,127}", parts[0]):
-        _fail("The approved SSH Agent returned a malformed public-key row.")
-    if parts[0] == "ssh-ed25519":
-        try:
-            return _public_identity(row)
-        except AnsibleActionFail:
-            _fail("The approved SSH Agent returned a malformed public-key row.")
-    try:
-        blob = base64.b64decode(parts[1], validate=True)
-        algorithm_length = struct.unpack(">I", blob[:4])[0]
-        algorithm = blob[4 : 4 + algorithm_length].decode("ascii", errors="strict")
-    except (binascii.Error, UnicodeError, ValueError, struct.error):
-        _fail("The approved SSH Agent returned a malformed public-key row.")
-    if algorithm_length < 1 or algorithm != parts[0] or len(blob) <= 4 + algorithm_length:
-        _fail("The approved SSH Agent returned a malformed public-key row.")
-    return None
-
-
 def _write_controller_file(path, payload):
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
     if hasattr(os, "O_CLOEXEC"):
@@ -755,14 +720,21 @@ class _OnePasswordSSHKeyItemStore:
         if version != config["cli_version"]:
             _fail("The controller 1Password CLI version does not match cli_version.")
 
-        identity = self.client.metadata(
-            ["whoami", "--account", config["account_id"], "--format", "json"],
+        identities = self.client.metadata(
+            ["account", "list", "--format", "json"],
             "desktop account identity verification",
         )
-        if not isinstance(identity, dict):
+        if not isinstance(identities, list):
             _fail("1Password returned invalid desktop account metadata.")
-        if identity.get("account_uuid") != config["account_id"]:
+        matching_identities = [
+            identity
+            for identity in identities
+            if isinstance(identity, dict)
+            and identity.get("account_uuid") == config["account_id"]
+        ]
+        if len(matching_identities) != 1:
             _fail("The signed-in 1Password account does not match account_id.")
+        identity = matching_identities[0]
         if (
             _normalize_sign_in_address(str(identity.get("url", "")))
             != config["account_sign_in_address"].lower()
@@ -875,9 +847,6 @@ class _OnePasswordSSHKeyItemStore:
             "selected SSH public-field verification",
         )
         values = _field_values(fields)
-        expected_labels = {"subject", "schema_version", "public key", "fingerprint"}
-        if set(values) != expected_labels:
-            _fail("1Password did not return the exact selected public-field set.")
         if values.get("subject") != config["subject"]:
             _fail("The 1Password SSH item subject metadata does not match.")
         if values.get("schema_version") != str(config["schema_version"]):
@@ -901,7 +870,7 @@ class _OnePasswordSSHKeyItemStore:
         expected_public_key = public_identity["public_key"]
         environment = {
             "HOME": os.environ.get("HOME", ""),
-            "PATH": _TRUSTED_CHILD_PATH,
+            "PATH": os.environ.get("PATH", ""),
         }
         for name in ("LANG", "LC_ALL"):
             if os.environ.get(name):
@@ -916,29 +885,35 @@ class _OnePasswordSSHKeyItemStore:
             )
             agent_socket = trusted_agent_socket(config["agent_socket_path"])
             environment["SSH_AUTH_SOCK"] = agent_socket
-            returncode, output = run_bounded_output(
-                ssh_add,
-                ["-L"],
-                environment,
-                _PROCESS_TIMEOUT_SECONDS,
-                maximum_size=65536,
+            completed = subprocess.run(
+                [ssh_add, "-L"],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=environment,
+                check=False,
+                timeout=_PROCESS_TIMEOUT_SECONDS,
             )
         except (OSError, subprocess.SubprocessError):
             _fail("The approved 1Password SSH Agent could not be inspected safely.")
-        if returncode != 0:
+        if completed.returncode != 0:
             _fail("The approved 1Password SSH Agent is unavailable or locked.")
+        if len(completed.stdout) > 65536:
+            _fail(
+                "The approved 1Password SSH Agent returned excessive public metadata."
+            )
         try:
-            public_rows = output.decode("utf-8", errors="strict").splitlines()
+            public_rows = completed.stdout.decode("utf-8", errors="strict").splitlines()
         except UnicodeDecodeError:
             _fail("The approved 1Password SSH Agent returned invalid public metadata.")
         matched_fingerprints = []
         for row in public_rows:
             if not row.strip():
                 continue
-            identity = _agent_row_identity(row.strip())
-            if identity is None:
+            try:
+                unused_key, fingerprint = _public_identity(row.strip())
+            except AnsibleActionFail:
                 continue
-            unused_key, fingerprint = identity
             if fingerprint == expected_fingerprint:
                 matched_fingerprints.append(fingerprint)
         if len(matched_fingerprints) != 1:
@@ -953,7 +928,6 @@ class _OnePasswordSSHKeyItemStore:
         os.chmod(temporary_root, 0o700)
         public_key_path = os.path.join(temporary_root, "identity.pub")
         allowed_signers_path = os.path.join(temporary_root, "allowed_signers")
-        challenge_path = os.path.join(temporary_root, "challenge")
         signature_path = os.path.join(temporary_root, "challenge.sig")
         try:
             _write_controller_file(
@@ -963,7 +937,6 @@ class _OnePasswordSSHKeyItemStore:
                 allowed_signers_path,
                 (principal + " " + expected_public_key + "\n").encode("ascii"),
             )
-            _write_controller_file(challenge_path, bytes(challenge))
             try:
                 ssh_keygen = trusted_executable(
                     config["ssh_keygen_path"],
@@ -972,8 +945,9 @@ class _OnePasswordSSHKeyItemStore:
                 )
                 agent_socket = trusted_agent_socket(config["agent_socket_path"])
                 environment["SSH_AUTH_SOCK"] = agent_socket
-                signed = ssh_keygen.run(
+                signed = subprocess.run(
                     [
+                        ssh_keygen,
                         "-Y",
                         "sign",
                         "-f",
@@ -982,10 +956,9 @@ class _OnePasswordSSHKeyItemStore:
                         namespace,
                         "-O",
                         "hashalg=sha256",
-                        challenge_path,
                     ],
-                    stdin=subprocess.DEVNULL,
-                    stdout=subprocess.DEVNULL,
+                    input=bytes(challenge),
+                    stdout=subprocess.PIPE,
                     stderr=subprocess.DEVNULL,
                     env=environment,
                     check=False,
@@ -995,24 +968,16 @@ class _OnePasswordSSHKeyItemStore:
                 _fail(
                     "The approved SSH Agent signing challenge could not be executed safely."
                 )
-            if signed.returncode != 0:
-                _fail(
-                    "The approved SSH Agent did not produce a valid signing challenge response."
-                )
-            try:
-                signature = Path(signature_path).read_bytes()
-            except OSError:
-                _fail(
-                    "The approved SSH Agent did not produce a signing challenge response."
-                )
             if (
-                not signature.startswith(b"-----BEGIN SSH SIGNATURE-----\n")
-                or not signature.endswith(b"-----END SSH SIGNATURE-----\n")
-                or len(signature) > 65536
+                signed.returncode != 0
+                or not signed.stdout.startswith(b"-----BEGIN SSH SIGNATURE-----\n")
+                or not signed.stdout.endswith(b"-----END SSH SIGNATURE-----\n")
+                or len(signed.stdout) > 65536
             ):
                 _fail(
                     "The approved SSH Agent did not produce a valid signing challenge response."
                 )
+            _write_controller_file(signature_path, signed.stdout)
             try:
                 ssh_keygen = trusted_executable(
                     config["ssh_keygen_path"],
@@ -1021,8 +986,9 @@ class _OnePasswordSSHKeyItemStore:
                 )
                 agent_socket = trusted_agent_socket(config["agent_socket_path"])
                 environment["SSH_AUTH_SOCK"] = agent_socket
-                verified = ssh_keygen.run(
+                verified = subprocess.run(
                     [
+                        ssh_keygen,
                         "-Y",
                         "verify",
                         "-f",
@@ -1050,12 +1016,7 @@ class _OnePasswordSSHKeyItemStore:
         finally:
             for index in range(len(challenge)):
                 challenge[index] = 0
-            for path in (
-                signature_path,
-                challenge_path,
-                allowed_signers_path,
-                public_key_path,
-            ):
+            for path in (signature_path, allowed_signers_path, public_key_path):
                 if os.path.lexists(path):
                     os.unlink(path)
             os.rmdir(temporary_root)
@@ -1092,39 +1053,27 @@ class _OnePasswordSSHKeyItemStore:
 
         created = False
         if operation == "apply":
-            lock_descriptor = claim_creation_lock(
-                config["approval"],
-                "{0}/{1}/{2}".format(
-                    config["account_id"], config["vault_id"], config["item_title"]
-                ),
-            )
-            try:
-                observed = self.inspect(config)
-                if observed["exists"]:
-                    _fail("Concurrent creation found an existing SSH Key item.")
-                claim_approval(config["approval"])
-                creation_arguments = [
-                    "item",
-                    "create",
-                    "--account",
-                    config["account_id"],
-                    "--vault",
-                    config["vault_id"],
-                    "--category=ssh",
-                    "--title",
-                    config["item_title"],
-                    "--generate-ssh-key=ed25519",
-                    "subject[text]={0}".format(config["subject"]),
-                    "schema_version[text]={0}".format(config["schema_version"]),
-                ]
-                if config["tags"]:
-                    creation_arguments[9:9] = ["--tags", ",".join(config["tags"])]
-                self.client.discard(creation_arguments, "SSH item creation")
-                observed = self.inspect(config)
-                if not observed["exists"]:
-                    _fail("1Password did not return the created SSH item metadata.")
-            finally:
-                os.close(lock_descriptor)
+            claim_approval(config["approval"])
+            creation_arguments = [
+                "item",
+                "create",
+                "--account",
+                config["account_id"],
+                "--vault",
+                config["vault_id"],
+                "--category=ssh",
+                "--title",
+                config["item_title"],
+                "--ssh-generate-key=ed25519",
+                "subject[text]={0}".format(config["subject"]),
+                "schema_version[text]={0}".format(config["schema_version"]),
+            ]
+            if config["tags"]:
+                creation_arguments[9:9] = ["--tags", ",".join(config["tags"])]
+            self.client.discard(creation_arguments, "SSH item creation")
+            observed = self.inspect(config)
+            if not observed["exists"]:
+                _fail("1Password did not return the created SSH item metadata.")
             created = True
         if not observed["exists"]:
             _fail("The exact SSH Key item is absent.")

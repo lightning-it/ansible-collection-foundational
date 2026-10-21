@@ -27,7 +27,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Run immutable OpenSSF Scorecard analysis
+      - name: Run commit-pinned OpenSSF Scorecard analysis
         uses: ossf/scorecard-action@2d1146689b8cda280b9bc96326124645441f03bc # v2.4.4
         with:
           results_file: scorecard.sarif
@@ -61,7 +61,7 @@ jobs:
           path: .
 
       - name: Upload Scorecard SARIF to code scanning
-        uses: github/codeql-action/upload-sarif@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4.37.3
+        uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
         # Private repositories without GitHub Advanced Security still retain
         # the SARIF workflow-run artifact without failing the scan.
         continue-on-error: ${{ github.event.repository.visibility != 'public' }}
