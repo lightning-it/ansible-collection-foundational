@@ -1,8 +1,0 @@
----
-minor_changes:
-  - >-
-    luks_header_custody_cac - publish immutable encrypted header packages to Vault KV2 and an explicitly enabled native
-    1Password executor, with full provider readback and no overwrite or fallback.
-  - >-
-    onepassword trust boundary - share the unchanged signature and replay protections between controller actions
-    and packaged managed-node provider code.

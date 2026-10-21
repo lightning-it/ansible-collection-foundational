@@ -38,6 +38,10 @@ objects:
       description: Discover Redfish IDs and basic inventory.
       name: oob_redfish_inventory
       version_added: null
+    root_of_trust_validate:
+      description: Select an inert or explicit root-of-trust validation action.
+      name: root_of_trust_validate
+      version_added: null
     secret_resolver:
       description: Resolve controller-side secrets into a provider-independent dictionary.
       name: secret_resolver
@@ -63,6 +67,36 @@ plugins:
       name: ansible_vault_secret_document
       namespace: ''
       version_added: 1.27.0
+    luks_header_custody:
+      description: Publish and verify an immutable encrypted header package
+      name: luks_header_custody
+      namespace: ''
+      version_added: 1.34.0
+    luks_header_custody_package:
+      description: Export or read an immutable ciphertext-only provider handoff
+      name: luks_header_custody_package
+      namespace: ''
+      version_added: 1.34.0
+    luks_header_custody_prepare:
+      description: Prepare a ciphertext-only header custody package
+      name: luks_header_custody_prepare
+      namespace: ''
+      version_added: 1.34.0
+    luks_header_escrow_read:
+      description: Read an identity-pinned encrypted LUKS header into protected memory
+      name: luks_header_escrow_read
+      namespace: ''
+      version_added: 1.34.0
+    luks_header_native_handoff:
+      description: Exchange encrypted header packages with a native desktop client
+      name: luks_header_native_handoff
+      namespace: ''
+      version_added: 1.34.0
+    luks_header_restore_drill:
+      description: Prove a LUKS2 header restore on an independent witness
+      name: luks_header_restore_drill
+      namespace: ''
+      version_added: 1.34.0
     onepassword_approval:
       description: Sign one short-lived controller-local 1Password approval
       name: onepassword_approval
@@ -71,6 +105,11 @@ plugins:
     onepassword_secret_item:
       description: Plan or create one exact 1Password Password item
       name: onepassword_secret_item
+      namespace: ''
+      version_added: 1.34.0
+    onepassword_ssh_key_import:
+      description: Import one exact local Ed25519 key into 1Password
+      name: onepassword_ssh_key_import
       namespace: ''
       version_added: 1.34.0
     onepassword_ssh_key_item:
@@ -83,9 +122,14 @@ plugins:
       name: onepassword_ssh_secret_stdin
       namespace: ''
       version_added: 1.34.0
+    onepassword_vault_co_manager:
+      description: Verify or grant exact 1Password vault Co-Manager access
+      name: onepassword_vault_co_manager
+      namespace: ''
+      version_added: 1.34.0
   netconf: {}
   shell: {}
   strategy: {}
   test: {}
   vars: {}
-version: 1.36.0
+version: 1.37.0
