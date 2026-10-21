@@ -14,7 +14,11 @@ luks_header_custody_cac_retention: ""
 luks_header_custody_cac_key_retrieval_reference: ""
 luks_header_custody_cac_vault: {}
 luks_header_custody_cac_onepassword_enabled: false
+luks_header_custody_cac_onepassword_transport: ssh
 luks_header_custody_cac_onepassword_executor: ""
+luks_header_custody_cac_onepassword_native_request_path: ""
+luks_header_custody_cac_onepassword_native_response_path: ""
+luks_header_custody_cac_onepassword_native_exchange: {}
 luks_header_custody_cac_onepassword: {}
 luks_header_custody_cac_onepassword_title_prefix: ""
 luks_header_custody_cac_approval_authority: {}

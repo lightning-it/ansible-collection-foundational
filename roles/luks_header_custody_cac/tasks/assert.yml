@@ -6,6 +6,7 @@
       - luks_header_custody_cac_onepassword_enabled is boolean
       - luks_header_custody_cac_allow_create is boolean
       - luks_header_custody_cac_operation in ['plan', 'apply', 'verify']
+      - luks_header_custody_cac_onepassword_transport in ['ssh', 'native_handoff']
     quiet: true
 
 - name: Require pinned source and approved custody inputs
@@ -34,7 +35,7 @@
   when: luks_header_custody_cac_enabled
   no_log: true
 
-- name: Require an explicit native desktop executor for additional custody
+- name: Require an explicit SSH executor when that transport is selected
   ansible.builtin.assert:
     that:
       - luks_header_custody_cac_onepassword_executor | length > 0
@@ -48,4 +49,23 @@
       - luks_header_custody_cac_onepassword_title_prefix | trim | length > 0
     fail_msg: "Additional custody requires an inventory-pinned native SSH executor with strict host-key verification."
     quiet: true
-  when: luks_header_custody_cac_enabled and luks_header_custody_cac_onepassword_enabled
+  when:
+    - luks_header_custody_cac_enabled and luks_header_custody_cac_onepassword_enabled
+    - luks_header_custody_cac_onepassword_transport == 'ssh'
+
+- name: Require distinct protected paths for the native desktop exchange
+  ansible.builtin.assert:
+    that:
+      - luks_header_custody_cac_onepassword_executor | length == 0
+      - luks_header_custody_cac_onepassword_native_request_path is match('^/')
+      - luks_header_custody_cac_onepassword_native_response_path is match('^/')
+      - >-
+        luks_header_custody_cac_onepassword_native_request_path
+        != luks_header_custody_cac_onepassword_native_response_path
+      - luks_header_custody_cac_onepassword is mapping
+      - luks_header_custody_cac_onepassword_title_prefix | trim | length > 0
+    fail_msg: "Native custody requires a trusted desktop exchange; it does not require an SSH executor."
+    quiet: true
+  when:
+    - luks_header_custody_cac_enabled and luks_header_custody_cac_onepassword_enabled
+    - luks_header_custody_cac_onepassword_transport == 'native_handoff'

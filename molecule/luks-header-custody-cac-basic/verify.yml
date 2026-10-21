@@ -3,6 +3,21 @@
   hosts: custody-controller
   gather_facts: false
   tasks:
+    - name: Verify the native exchange and real role without desktop SSH
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -m
+          - unittest
+          - tests.unit.plugins.action.test_luks_header_native_handoff
+          - tests.unit.plugins.action.test_luks_header_native_role
+          - -v
+        chdir: "{{ lookup('ansible.builtin.env', 'MOLECULE_PROJECT_DIRECTORY') }}"
+      environment:
+        HOME: "{{ lookup('ansible.builtin.env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}"
+      changed_when: false
+      no_log: true
+
     - name: Verify disabled mode requires no provider credentials
       ansible.builtin.include_role:
         name: lit.foundational.luks_header_custody_cac
