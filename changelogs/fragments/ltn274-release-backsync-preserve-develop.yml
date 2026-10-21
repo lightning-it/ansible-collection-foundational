@@ -1,0 +1,5 @@
+---
+bugfixes:
+  - >-
+    Release back-sync now updates only the collection version in galaxy.yml,
+    preserving dependency and other manifest changes already integrated on develop.
