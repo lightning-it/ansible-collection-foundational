@@ -65,13 +65,62 @@
         operation: plan
       delegate_to: >-
         {{ luks_header_custody_cac_onepassword_executor
-           if luks_header_custody_cac_onepassword_enabled else 'localhost' }}
+           if luks_header_custody_cac_onepassword_transport == 'ssh'
+              and luks_header_custody_cac_onepassword_enabled else 'localhost' }}
       become: false
       vars:
         ansible_become: false
       register: _luks_header_custody_cac_native_plan
-      when: luks_header_custody_cac_onepassword_enabled
+      when:
+        - luks_header_custody_cac_onepassword_enabled
+        - luks_header_custody_cac_onepassword_transport == 'ssh'
       no_log: true
+
+    - name: Consume the exact separately executed native provider result
+      lit.foundational.luks_header_native_handoff:
+        operation: consume
+        request_path: "{{ luks_header_custody_cac_onepassword_native_request_path }}"
+        response_path: "{{ luks_header_custody_cac_onepassword_native_response_path }}"
+        request:
+          schema_version: 1
+          exchange: "{{ luks_header_custody_cac_onepassword_native_exchange }}"
+          operation: "{{ 'plan' if luks_header_custody_cac_operation == 'plan' else 'verify' }}"
+          provider_config: "{{ _luks_header_custody_cac_native_config }}"
+          package: "{{ _luks_header_custody_cac_prepared.package }}"
+          read_pins:
+            package_sha256: "{{ _luks_header_custody_cac_prepared.package_sha256 }}"
+            subject: "{{ luks_header_custody_cac_subject }}"
+            source_machine_id: "{{ luks_header_custody_cac_source_machine_id }}"
+            luks_uuid: "{{ luks_header_custody_cac_luks_uuid }}"
+          allow_create: false
+          approval_authority: {}
+          approval: {}
+      register: _luks_header_custody_cac_native_handoff
+      when:
+        - luks_header_custody_cac_onepassword_enabled
+        - luks_header_custody_cac_onepassword_transport == 'native_handoff'
+      no_log: true
+
+    - name: Bind the native result without creating a provider object from the EE
+      ansible.builtin.set_fact:
+        _luks_header_custody_cac_native_plan: "{{ _luks_header_custody_cac_native_handoff }}"
+        cacheable: false
+      changed_when: false
+      when:
+        - luks_header_custody_cac_onepassword_enabled
+        - luks_header_custody_cac_onepassword_transport == 'native_handoff'
+      no_log: true
+
+    - name: Require native verification before any Vault write
+      ansible.builtin.assert:
+        that:
+          - _luks_header_custody_cac_native_plan.verified is sameas true
+        quiet: true
+        fail_msg: "Create and verify the additional copy through the admitted native adapter before Vault apply."
+      when:
+        - luks_header_custody_cac_onepassword_enabled
+        - luks_header_custody_cac_onepassword_transport == 'native_handoff'
+        - luks_header_custody_cac_operation != 'plan'
 
     - name: Preflight every Vault chunk and manifest before writes
       lit.foundational.luks_header_custody:
@@ -98,12 +147,14 @@
         approval: "{{ luks_header_custody_cac_approval }}"
       delegate_to: >-
         {{ luks_header_custody_cac_onepassword_executor
-           if luks_header_custody_cac_onepassword_enabled else 'localhost' }}
+           if luks_header_custody_cac_onepassword_transport == 'ssh'
+              and luks_header_custody_cac_onepassword_enabled else 'localhost' }}
       become: false
       vars:
         ansible_become: false
       when:
         - luks_header_custody_cac_onepassword_enabled
+        - luks_header_custody_cac_onepassword_transport == 'ssh'
         - luks_header_custody_cac_operation == 'apply'
         - not (_luks_header_custody_cac_native_plan.verified | default(false))
       no_log: true
@@ -133,12 +184,25 @@
         operation: "{{ 'plan' if luks_header_custody_cac_operation == 'plan' or ansible_check_mode else 'verify' }}"
       delegate_to: >-
         {{ luks_header_custody_cac_onepassword_executor
-           if luks_header_custody_cac_onepassword_enabled else 'localhost' }}
+           if luks_header_custody_cac_onepassword_transport == 'ssh'
+              and luks_header_custody_cac_onepassword_enabled else 'localhost' }}
       become: false
       vars:
         ansible_become: false
       register: _luks_header_custody_cac_native_verified
-      when: luks_header_custody_cac_onepassword_enabled
+      when:
+        - luks_header_custody_cac_onepassword_enabled
+        - luks_header_custody_cac_onepassword_transport == 'ssh'
+      no_log: true
+
+    - name: Bind the consumed native verification after the alternative SSH task
+      ansible.builtin.set_fact:
+        _luks_header_custody_cac_native_verified: "{{ _luks_header_custody_cac_native_handoff }}"
+        cacheable: false
+      changed_when: false
+      when:
+        - luks_header_custody_cac_onepassword_enabled
+        - luks_header_custody_cac_onepassword_transport == 'native_handoff'
       no_log: true
 
     - name: Read and reassemble every Vault chunk and manifest again
@@ -184,6 +248,7 @@
         _luks_header_custody_cac_prepared: null
         _luks_header_custody_cac_handoff: null
         _luks_header_custody_cac_native_config: null
+        _luks_header_custody_cac_native_handoff: null
         _luks_header_custody_cac_native_plan: null
         _luks_header_custody_cac_vault_plan: null
         _luks_header_custody_cac_native_verified: null

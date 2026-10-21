@@ -9,12 +9,14 @@ trusted CA file. Ambient tokens, HTTP, redirect-following and retries are not
 supported. The credential needs read access to data and metadata, and create
 access with CAS=0 on the chosen dedicated prefix.
 
-Additional 1Password custody is disabled by default. Enabling it requires an
-explicit native desktop executor in inventory, SSH with strict host-key
-verification, its exact effective UID/node, the approved CLI path/digest/version,
-account/operator/vault pins and desktop CLI integration. The managed module runs
-there; Ansible itself remains in the Linux EE. Do not mount an engine socket,
-export a session/service-account token or substitute a native binary in the EE.
+Additional 1Password custody is disabled by default. Enabling it requires the
+native desktop's exact effective UID/node, approved CLI path/digest/version,
+account/operator/vault pins and desktop CLI integration. Ansible remains in
+the Linux EE. Select an explicit transport: `ssh` retains the inventoried
+executor with strict host-key checks; `native_handoff` uses the client already
+running on the controller desktop and requires no SSH service on that desktop.
+Do not mount an engine socket, export a session/service-account token or
+substitute a native binary in the EE.
 The executor needs no Vault credential or plaintext header. Existing desktop
 account/vault access is validated, not granted by this role.
 
@@ -48,7 +50,7 @@ retrieval must still be qualified with the actual accepted artifact.
 `luks-header-custody-v1` containing encrypted packages. It does not reinterpret
 or replace legacy raw-header KV manifests.
 
-For `*_onepassword_enabled: true`, set `*_onepassword_executor`,
+For `*_onepassword_enabled: true`, select `*_onepassword_transport`, set
 `*_onepassword_title_prefix` and `*_onepassword` with exactly:
 
 - `cli_path`, `cli_sha256`, `cli_version`;
@@ -66,6 +68,36 @@ signature covers native configuration, package hash and explicit creation
 permission. The authority/trust files belong on the native executor. They are
 not installed, weakened or replaced by this role. Existing matching copies
 are read-only and need no new creation approval.
+
+With `*_onepassword_transport: native_handoff`, leave `*_onepassword_executor`
+empty. Supply distinct protected `*_onepassword_native_request_path` and
+`*_onepassword_native_response_path`, plus `*_onepassword_native_exchange`:
+an actual execution ID, unique 256-bit nonce, UTC issued/expiry timestamps
+(`YYYY-MM-DDTHH:MM:SSZ`), valid for at most 900 seconds. An old or cross-execution
+response fails closed. These fields contain no credentials.
+
+Use `luks_header_native_handoff` with `operation: prepare` inside the EE to
+export a closed request. The request includes its explicit native operation,
+CLI/account/object pins, ciphertext package (empty for independent read),
+retained source/checksum pins and only the necessary public creation signature.
+The trusted outer launcher runs the published Collection's
+`scripts/luks-header-native-custody.py --request-sha256 <EE-request-hash>` through
+`python3 -I -S` on the desktop, piping the request on stdin and capturing its
+response into a new protected file. This is a fixed provider adapter, without
+host Ansible, shell command input, Vault credentials or recovery-password reads.
+The launcher must bind the complete installed Collection and record the actual
+native process, CLI pin and result under the applicable execution authorization.
+A response file or hash alone does not prove admitted execution.
+
+Creation uses a separate `apply` request and the unchanged one-time signed
+provider authority. After creation, use a new `verify` request and native
+response for this role's `apply`/`verify`; `plan` consumes a `plan` response.
+The EE never creates the native object through a hidden fallback. It requires
+the verified native copy before any Vault write, then verifies Vault completely.
+The native response is accepted only for the exact non-expired request and
+Document pins. Independently retained read pins allow a `read` exchange while
+the source host and Vault are unavailable. Retain the native execution receipt
+alongside these provider receipts; cold recovery still needs its own drill.
 
 `*_result` contains only provider object references/versions, package checksum,
 verified flags and the public signing binding. It deliberately excludes module
