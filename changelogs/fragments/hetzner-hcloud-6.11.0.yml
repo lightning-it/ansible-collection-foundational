@@ -1,3 +1,0 @@
----
-minor_changes:
-  - Update the ``hetzner.hcloud`` collection dependency to version 6.11.0.

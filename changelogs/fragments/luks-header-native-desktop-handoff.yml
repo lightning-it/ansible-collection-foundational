@@ -1,6 +1,0 @@
----
-minor_changes:
-  - >-
-    Add a ciphertext-only EE/native-desktop header custody handoff that reuses
-    the pinned 1Password client without requiring SSH access to the desktop
-    or running Ansible outside its execution environment.
